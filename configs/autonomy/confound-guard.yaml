@@ -1,0 +1,152 @@
+version: 1
+policy_name: deeploop-confound-guard
+artifact_dir_name: confound_guard
+prompt_templates:
+  asym_nli_json_v1:
+    parser_id: nli_json_v1
+analysis_prep_markers:
+  resource_tiers: [cpu-smoke]
+  execution_profiles: [analysis-prep]
+  model_backends: [analysis-prep]
+  prompt_template_ids: [none]
+  prompt_parser_ids: [none]
+  notes_contain:
+    - Preparation artifact only
+proposal_types:
+  baseline-eval:
+    prompt_alignment:
+      severity: block
+      registry_name: prompt_templates
+      registry_template_field: prompt.template_id
+      registry_parser_field: prompt.parser_id
+    evaluation_guard:
+      severity: block
+      required_config_fields:
+        - dataset.promotion_manifest
+        - run.output_dir
+  mechanistic-localization:
+    reference_manifests:
+      - field: behavioral_source_manifest
+        role: baseline
+        parse_as: json
+        required: true
+        severity: block
+        strength:
+          require_run_status: completed
+          forbid_analysis_prep: true
+          require_metric_paths:
+            - metrics.accuracy
+            - metrics.count
+            - metrics.rule_family
+            - metrics.lexicalization_gap
+    evaluation_guard:
+      severity: block
+      required_config_fields:
+        - methods.patch_metric
+      require_any_true_fields:
+        - methods.probe
+        - methods.activation_patching
+      reference_requirements:
+        - field: behavioral_source_manifest
+          required_metric_paths:
+            - metrics.accuracy
+            - metrics.count
+            - metrics.rule_family
+            - metrics.lexicalization_gap
+    comparability:
+      severity: block
+      config_reference_pairs:
+        - config_field: model.family
+          reference_field: model.family
+          reference_manifests: [behavioral_source_manifest]
+        - config_field: model.checkpoint
+          reference_field: model.identifier
+          reference_manifests: [behavioral_source_manifest]
+      notes_field: reporting.notes
+      require_notes: true
+      notes_severity: warn
+  causal-intervention:
+    reference_manifests:
+      - field: localization_source
+        role: localization
+        parse_as: json
+        required: true
+        severity: block
+        strength:
+          require_run_status: completed
+          forbid_analysis_prep: true
+          require_any_metric_paths:
+            - metrics.localized_targets
+            - metrics.target_layers
+            - metrics.candidate_layers
+            - metrics.target_units
+          forbid_notes_containing:
+            - Preparation artifact only
+      - field: evaluation.compare_against
+        role: baseline
+        parse_as: json
+        required: true
+        severity: block
+        strength:
+          require_run_status: completed
+          forbid_analysis_prep: true
+          require_metric_paths:
+            - metrics.accuracy
+            - metrics.count
+            - metrics.rule_family
+            - metrics.lexicalization_gap
+    prompt_alignment:
+      severity: block
+      reference_fields:
+        - localization_source
+        - evaluation.compare_against
+      compare_reference_fields:
+        - prompt.template_id
+        - prompt.parser_id
+    evaluation_guard:
+      severity: block
+      required_config_fields:
+        - intervention.method
+        - intervention.strength
+        - evaluation.compare_against
+      required_true_fields:
+        - evaluation.require_side_effect_checks
+      reference_requirements:
+        - field: evaluation.compare_against
+          required_metric_paths:
+            - metrics.accuracy
+            - metrics.count
+            - metrics.rule_family
+            - metrics.lexicalization_gap
+        - field: localization_source
+          required_any_metric_paths:
+            - metrics.localized_targets
+            - metrics.target_layers
+            - metrics.candidate_layers
+            - metrics.target_units
+    runtime_guard:
+      fallback_severity: warn
+      suspect_config_fields:
+        - intervention.fallback_policy
+      reference_mismatch_severity: block
+      compare_reference_fields:
+        - resource_tier
+        - execution_profile
+        - model.backend
+    comparability:
+      severity: block
+      compare_reference_fields:
+        - dataset.name
+        - dataset.slice
+        - model.family
+        - model.identifier
+      config_reference_pairs:
+        - config_field: model.family
+          reference_field: model.family
+          reference_manifests: [localization_source, evaluation.compare_against]
+        - config_field: model.checkpoint
+          reference_field: model.identifier
+          reference_manifests: [localization_source, evaluation.compare_against]
+      notes_field: reporting.notes
+      require_notes: true
+      notes_severity: warn

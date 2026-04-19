@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Agent Handoff",
+  "type": "object",
+  "required": ["mission_id", "role", "target_repo", "env_name", "sandbox_root", "rule_sources"],
+  "properties": {
+    "mission_id": { "type": "string" },
+    "role": { "type": "string" },
+    "target_repo": { "type": "string" },
+    "env_name": { "type": "string" },
+    "sandbox_root": { "type": "string" },
+    "rule_sources": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "input_artifacts": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "expected_outputs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "instructions": { "type": "array", "items": { "type": "string" } }
+  }
+}

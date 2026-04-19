@@ -1,0 +1,215 @@
+version: 1
+policy_name: deeploop-self-optimization
+artifact_dir_name: self_optimization
+
+description: |
+  Deterministic self-optimization engine that learns from runtime telemetry,
+  findings history, and mission artifacts to recommend profile adjustments
+  and branch resizing/pruning strategies.
+
+# Configuration sources for optimization recommendations
+data_sources:
+  utility_scorer:
+    description: Multi-factor branch ranking and prioritization
+    artifact_patterns:
+      - "**/utility_scorer_report.json"
+      - "**/utility-score-reports/*report.json"
+      - "**/utility-score-reports/*.json"
+      - "**/branch_scores.json"
+    key_fields:
+      - overall_score
+      - evidence_quality
+      - cost_risk_profile
+      - expected_information_gain
+  
+  self_correction:
+    description: Branch health assessment and recovery recommendations
+    artifact_patterns:
+      - "**/self_correction_report.json"
+      - "**/self_correction/*.json"
+      - "**/correction_decisions.json"
+    key_fields:
+      - final_decision
+      - assessments
+      - recommendations
+  
+  statistical_rigor:
+    description: Evidence quality and statistical power assessment
+    artifact_patterns:
+      - "**/statistical_rigor_report.json"
+      - "**/statistical_rigor/*.json"
+    key_fields:
+      - effective_sample_size
+      - confidence_intervals
+      - power_analysis
+  
+  confound_guard:
+    description: Confounding factor detection and mitigation
+    artifact_patterns:
+      - "**/confound_guard_report.json"
+      - "**/confound_guard/*.json"
+    key_fields:
+      - detected_confounds
+      - risk_level
+      - mitigation_strategies
+  
+  sanity_gates:
+    description: Pre-execution validation and readiness assessment
+    artifact_patterns:
+      - "**/sanity_gates_report.json"
+    key_fields:
+      - pass_rate
+      - warning_count
+      - blocking_issues
+
+# Optimization recommendation thresholds
+thresholds:
+  # Branch expansion criteria (recommend creating more branches)
+  high_utility_floor: 0.75          # Score above this triggers expansion
+  low_variance_ceiling: 0.15        # Low variance suggests stable strategy
+  evidence_surplus_min: 0.8         # Sufficient evidence to branch
+  
+  # Branch shrinkage criteria (recommend consolidation/pruning)
+  low_utility_floor: 0.35           # Score below this triggers review
+  high_variance_floor: 0.5          # High variance suggests instability
+  evidence_deficit_max: 0.3         # Insufficient evidence to continue
+  
+  # Profile adjustment criteria
+  cost_efficiency_threshold: 0.4    # Cost factor below this triggers optimization
+  information_gain_threshold: 0.3   # Low info gain triggers reallocation
+  confound_risk_threshold: 0.6      # Confound risk above this needs mitigation
+  
+  # Ledger flush frequency
+  optimization_history_window_days: 30
+  min_samples_for_trend: 3
+
+# Recommendation strategies
+strategies:
+  # Expansion strategies (when conditions favor more exploration)
+  expansion:
+    aggressive_branching:
+      condition: high_utility + low_variance + high_evidence
+      action: recommend_branch_expansion
+      parameters:
+        expansion_factor: 1.5
+        max_new_branches: 3
+    
+    targeted_slice_exploration:
+      condition: high_utility + low_evidence_in_subspace
+      action: recommend_slice_branching
+      parameters:
+        focus_dimension: lowest_evidence_subspace
+        branch_count: 2
+  
+  # Shrinkage strategies (when conditions favor consolidation)
+  shrinkage:
+    low_utility_consolidation:
+      condition: low_utility + high_variance
+      action: recommend_branch_pruning
+      parameters:
+        pruning_rate: 0.3
+        keep_top_n: 5
+    
+    evidence_deficit_halt:
+      condition: low_utility + low_evidence + high_cost
+      action: recommend_branch_pause
+      parameters:
+        action: pause_or_merge
+        merge_into: highest_utility_peer
+  
+  # Adjustment strategies (modify existing branches)
+  adjustment:
+    profile_retuning:
+      condition: available_optimization_vector
+      action: recommend_profile_adjustment
+      parameters:
+        adjustment_intensity: moderate
+        estimated_improvement: computed_from_utility_factors
+    
+    resource_reallocation:
+      condition: cost_efficiency_poor + potential_elsewhere
+      action: recommend_resource_shift
+      parameters:
+        shift_percentage: 0.2
+        target_branch: highest_expected_gain
+
+# Decision tree: how to combine multiple signals
+decision_logic:
+  primary_signal: overall_utility_score
+  fallback_signals:
+    - consistency_across_missions
+    - trend_in_optimization_history
+    - expert_intent_from_mission_state
+  
+  confidence_thresholds:
+    high_confidence: 0.8
+    medium_confidence: 0.6
+    low_confidence: 0.4
+
+# Bounded output constraints
+output_constraints:
+  max_recommendations_per_run: 5
+  max_branch_changes_percent: 20      # Don't recommend >20% changes at once
+  min_observation_window_runs: 2      # Need at least 2 runs to make recommendation
+  require_multiple_signal_agreement: false  # Can act on single strong signal
+
+# Substrates and known mission patterns
+substrates:
+  translation-pilot:
+    project: translation-pilot
+    mission_id: translation-full
+    run_roots:
+      - ~/workspaces/runs/translation-pilot
+    branch_identification:
+      pattern: model_family + model_identifier
+      examples:
+        - qwen35-2b-base
+        - qwen35-4b
+        - qwen35-7b
+    optimization_targets:
+      - branch_count (model family distribution)
+      - checkpoint_strategy (which model versions to pursue)
+      - slice_focus (lexicalization, rule_family, etc.)
+      - intervention_readiness (when to escalate to interventions)
+
+# Artifact output configuration
+artifacts:
+  report_json:
+    filename_pattern: "self_optimization_report_{timestamp}.json"
+    required_fields:
+      - timestamp
+      - mission_id
+      - optimization_phase
+      - signal_summary
+      - recommendations
+      - decision_rationale
+      - bounded_constraints_applied
+      - next_recommended_observation_window
+  
+  recommendations_yaml:
+    filename_pattern: "optimization_recommendations_{timestamp}.yaml"
+    structure:
+      - recommendation_id
+      - category (expansion/shrinkage/adjustment)
+      - target_branch_or_profile
+      - action
+      - confidence_level
+      - rationale
+      - estimated_impact
+      - fallback_if_not_adopted
+  
+  ledger_entry:
+    filename_pattern: "ledger.jsonl"
+    kind: "self-optimization"
+    metadata_fields:
+      - signals_considered
+      - primary_recommendation
+      - confidence_score
+      - constraints_applied
+
+# Fallback and retry logic
+fallback_behavior:
+  if_insufficient_data: continue_with_previous_strategy
+  if_conflicting_signals: use_primary_signal_with_lower_confidence
+  if_ledger_unavailable: emit_standalone_artifacts_only
+  retry_on_stale_artifacts: max_age_days=1

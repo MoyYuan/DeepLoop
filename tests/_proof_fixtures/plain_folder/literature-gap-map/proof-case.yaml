@@ -1,0 +1,11 @@
+case_id: literature-gap-map
+title: Literature gap map
+summary: Plain-folder case emphasizing literature review and hypothesis shaping.
+workflow_shape: literature-heavy
+expected_focus: prior-art synthesis, hypothesis narrowing, and evidence-gap mapping
+autonomy_claims:
+  - DeepLoop can drive a literature-heavy substrate through the canonical mission/operator surface.
+  - DeepLoop keeps substrate-owned facts in the project folder while runtime state stays outside it.
+  - DeepLoop reaches final-report with explicit evidence outputs instead of a partial literature stub.
+acceptance_thresholds:
+  require_final_report_outputs: true

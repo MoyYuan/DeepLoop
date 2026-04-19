@@ -1,0 +1,58 @@
+version: 1
+summary: DeepLoop-owned runnable stage kernels exposed through a substrate-adapter contract.
+stages:
+  - id: baseline-evaluation
+    mode: runnable
+    runner: deeploop.runtime.stage_kernels:run_baseline_evaluation
+    outputs:
+      - predictions.jsonl
+      - metrics.json
+      - run_manifest.json
+    substrate_contracts:
+      - promoted dataset manifest resolution
+      - prompt formatting
+      - label parsing
+      - metrics aggregation
+  - id: prompt-decode-sweep
+    mode: runnable
+    runner: deeploop.runtime.stage_kernels:run_prompt_decode_sweep
+    outputs:
+      - prompt_decode_scoreboard.json
+      - prompt_decode_promotion_decision.json
+      - summary.json
+      - run_manifest.json
+    substrate_contracts:
+      - promoted dataset manifest resolution
+      - prompt formatting
+      - label parsing
+      - metrics aggregation
+      - benchmark split materialization facts
+      - prompt variant ladder facts
+  - id: mechanistic-localization
+    mode: runnable-deterministic-proxy
+    runner: deeploop.runtime.stage_kernels:run_mechanistic_localization
+    outputs:
+      - localization_observations.jsonl
+      - localization_candidates.json
+      - study_summary.json
+      - study_manifest.json
+    substrate_contracts:
+      - promoted dataset manifest resolution
+      - prompt formatting
+      - label parsing
+      - metrics aggregation
+      - dataset filter facts
+  - id: causal-intervention
+    mode: runnable-deterministic-proxy
+    runner: deeploop.runtime.stage_kernels:run_causal_intervention
+    outputs:
+      - intervention_predictions.jsonl
+      - intervention_metrics.json
+      - study_summary.json
+      - study_manifest.json
+    substrate_contracts:
+      - promoted dataset manifest resolution
+      - prompt formatting
+      - label parsing
+      - metrics aggregation
+      - localization manifest facts

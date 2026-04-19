@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Run Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "project",
+    "mode",
+    "loop_id",
+    "claim_state",
+    "resource_tier",
+    "execution_profile",
+    "code",
+    "model",
+    "dataset",
+    "run",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "project": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "description": "Canonical modes are human-directed, sandboxed-yolo, and managed.",
+      "type": "string",
+      "enum": ["human-directed", "sandboxed-yolo", "managed"]
+    },
+    "loop_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "claim_state": {
+      "type": "string",
+      "enum": ["exploratory", "replicated", "paper-candidate", "release-candidate"]
+    },
+    "mission_id": {
+      "type": ["string", "null"]
+    },
+    "resource_tier": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_profile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval": {
+      "type": "object"
+    },
+    "code": {
+      "type": "object",
+      "required": ["repo", "git_commit"],
+      "properties": {
+        "repo": { "type": "string" },
+        "git_commit": { "type": "string" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "required": ["family", "identifier", "backend", "dtype"],
+      "properties": {
+        "family": { "type": "string" },
+        "identifier": { "type": "string" },
+        "backend": { "type": "string" },
+        "dtype": { "type": "string" }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "required": ["name", "slice", "provenance"],
+      "properties": {
+        "name": { "type": "string" },
+        "slice": { "type": "string" },
+        "provenance": { "type": "string" }
+      }
+    },
+    "prompt": {
+      "type": "object"
+    },
+    "run": {
+      "type": "object",
+      "required": ["seed", "command", "status"],
+      "properties": {
+        "seed": { "type": "integer" },
+        "command": { "type": "string" },
+        "started_at": { "type": ["string", "null"] },
+        "completed_at": { "type": ["string", "null"] },
+        "status": { "type": "string" }
+      }
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["log_path", "output_dir", "report_paths"],
+      "properties": {
+        "log_path": { "type": ["string", "null"] },
+        "output_dir": { "type": ["string", "null"] },
+        "report_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "runtime": {
+      "type": "object"
+    },
+    "stage_context": {
+      "type": "object"
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

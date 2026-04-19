@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Release Candidate Review",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "policy_name",
+    "policy_version",
+    "generated_at",
+    "package_id",
+    "mission_id",
+    "package_root",
+    "package_manifest_path",
+    "package_digest",
+    "package_claim_state",
+    "decision",
+    "eligible_for_promotion",
+    "gates",
+    "failed_gate_ids",
+    "blocking_reasons",
+    "required_approvals",
+    "missing_approvals",
+    "review_artifacts",
+    "next_actions"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "policy_name": { "type": "string", "minLength": 1 },
+    "policy_version": { "type": "integer", "minimum": 1 },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "package_id": { "type": "string", "minLength": 1 },
+    "mission_id": { "type": "string", "minLength": 1 },
+    "package_root": { "type": "string", "minLength": 1 },
+    "package_manifest_path": { "type": "string", "minLength": 1 },
+    "package_digest": { "type": "string", "minLength": 8 },
+    "package_claim_state": { "type": "string", "minLength": 1 },
+    "decision": { "type": "string", "enum": ["blocked", "promotable"] },
+    "eligible_for_promotion": { "type": "boolean" },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gate_id", "description", "status", "details"],
+        "properties": {
+          "gate_id": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "enum": ["passed", "failed"] },
+          "details": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "failed_gate_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blocking_reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "required_approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["approval_id", "description", "approved"],
+        "properties": {
+          "approval_id": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "approved": { "type": "boolean" },
+          "approved_by": { "type": ["string", "null"] },
+          "note": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "missing_approvals": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "review_artifacts": {
+      "type": "object",
+      "required": ["json", "markdown", "promotion"],
+      "properties": {
+        "json": { "type": "string", "minLength": 1 },
+        "markdown": { "type": "string", "minLength": 1 },
+        "promotion": { "type": ["string", "null"] }
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

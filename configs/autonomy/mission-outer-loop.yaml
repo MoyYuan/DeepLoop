@@ -1,0 +1,158 @@
+version: 2
+policy_name: deeploop-mission-outer-loop
+summary: Product-facing mission outer-loop contract for sandboxed-yolo, managed, and human-directed missions.
+default_mode: sandboxed-yolo
+
+mode_defaults:
+  default:
+    execution_mode: sandboxed-yolo
+    internal_execution: sandboxed
+    permissions_profile: sandboxed
+    intervention_profile: outcome-review
+    external_publish: human-review-required
+    default_operator_approval: not-required
+  human-directed:
+    execution_mode: human-directed
+    internal_execution: human-approved
+    permissions_profile: human-approved
+    intervention_profile: step-by-step
+    external_publish: human-review-required
+    default_operator_approval: required
+  sandboxed-yolo:
+    execution_mode: sandboxed-yolo
+    internal_execution: sandboxed
+    permissions_profile: sandboxed
+    intervention_profile: outcome-review
+    external_publish: human-review-required
+    default_operator_approval: not-required
+  managed:
+    execution_mode: managed
+    internal_execution: expanded
+    permissions_profile: expanded
+    intervention_profile: hook-enabled
+    external_publish: human-review-required
+    default_operator_approval: not-required
+
+allowed_internal_operations:
+  - phase transitions allowed by configs/autonomy/state-machine.yaml
+  - runtime-owned research branch creation
+  - edits to runtime-owned artifacts under workspace runs and scratch roots
+  - bounded local training under autonomy gates and mission budgets
+  - bounded local evaluation under autonomy gates and mission budgets
+  - critique, replanning, and recovery routing
+  - replication branches and follow-up queues
+  - private final reports and operator handoff bundles
+
+out_of_scope_by_default:
+  - public release packaging
+  - external publication or announcement
+  - public artifact distribution outside private mission/package roots
+
+runtime_ownership:
+  mutable_roots:
+    - ~/workspaces/runs/deeploop
+    - ~/workspaces/scratch/deeploop
+  protected_surfaces:
+    - substrate benchmark definitions
+    - substrate evaluation metrics
+    - public release artifacts
+
+action_classes:
+  phase-transition:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - configs/autonomy/state-machine.yaml
+      - configs/autonomy/gates.yaml
+  branch-create:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - configs/autonomy/state-machine.yaml
+      - configs/autonomy/gates.yaml
+  artifact-edit:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - runtime-owned mutable roots only
+  local-training:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - configs/autonomy/gates.yaml
+      - mission budget
+  local-eval:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - configs/autonomy/gates.yaml
+      - mission budget
+  critique:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - configs/autonomy/evidence-policy.yaml
+  replication:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - configs/autonomy/evidence-policy.yaml
+      - configs/autonomy/gates.yaml
+  final-report:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - configs/autonomy/evidence-policy.yaml
+  operator-review:
+    scope: internal
+    requires_operator_approval: false
+    bounded_by:
+      - request only; no external publish implied
+  external-publish:
+    scope: external
+    requires_operator_approval: true
+    bounded_by:
+      - explicit operator approval
+      - provenance and release review
+
+action_statuses:
+  - pending
+  - in_progress
+  - completed
+  - blocked
+  - deferred
+  - cancelled
+
+branch_statuses:
+  - planned
+  - active
+  - recovery-active
+  - replication-active
+  - critique-ready
+  - report-ready
+  - completed
+  - blocked
+  - abandoned
+
+recovery_statuses:
+  - not-needed
+  - retry-planned
+  - reroute-planned
+  - recovering
+  - recovered
+  - blocked
+  - failed
+
+record_files:
+  mission_decisions: mission_decisions.jsonl
+  mission_branches: mission_branches.jsonl
+  mission_memory: mission_memory.json
+  mission_experiments: mission_experiments.jsonl
+  mission_operator_requests: mission_operator_requests.jsonl
+  current_operator_request: current_operator_request.json
+
+schema_paths:
+  mission_action: schemas/mission-action.schema.json
+  mission_decision: schemas/mission-decision.schema.json
+  mission_branch_record: schemas/mission-branch-record.schema.json
+  mission_operator_request: schemas/mission-operator-request.schema.json

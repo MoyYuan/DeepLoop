@@ -1,0 +1,175 @@
+version: 1
+contract_id: public-provider-selection
+canonical_public_doc: docs/reference/provider-selection.md
+first_class_provider_families:
+  - copilot-cli
+  - openai-compatible-api
+  - anthropic-api
+  - local-transformers
+  - vllm
+scope:
+  layer: mission-runtime-provider-selection
+  includes:
+    - selecting a provider family for a mission, loop, role, or phase
+    - selecting the runtime backend and concrete model identifier or alias
+    - declaring allowed fallback ladders and operator override points
+    - recording effective selections in manifests and runtime artifacts
+  excludes:
+    - machine-level provider availability, auth, or tooling setup
+    - checked-in secrets, credential values, or endpoint secrets
+related_runtime_surfaces:
+  provider_setup_registry: configs/runtime/provider-setup-registry.yaml
+  backend_policy: configs/runtime/backend-policy.yaml
+  recursive_agent_runtime_policy: configs/runtime/recursive-agent-runtime.yaml
+  recursive_agent_runtime_example: configs/runtime/recursive-agent-runtime-provider.example.yaml
+  sandbox_launch_policy: configs/sandbox/agent-launch-policy.yaml
+  run_manifest_template: configs/manifests/run-manifest-template.json
+resolution_axes:
+  - mission
+  - loop
+  - phase
+  - role
+  - run-manifest
+resolution_precedence:
+  highest_to_lowest:
+    - operator or launcher override supplied at mission start
+    - mission runtime.provider_selection block
+    - loop config provider_selection block
+    - phase override inside the selected profile
+    - role override inside the selected profile
+    - repo default profile from this registry
+selection_profiles:
+  control-plane-copilot-cli:
+    status: implemented
+    intended_roles:
+      - planner
+      - literature-scout
+      - dataset-strategist
+      - experiment-designer
+      - critic-verifier
+      - report-synthesizer
+    intended_loops:
+      - recursive-agent
+    provider_family: copilot-cli
+    backend: copilot-cli
+    model_selection:
+      mode: optional-explicit
+      default_behavior: use the operator-local Copilot default unless a mission or loop explicitly sets a model alias or identifier
+      allowed_fields:
+        - model.alias
+        - model.identifier
+      notes:
+        - current recursive-agent examples route through the provider launcher and its Copilot CLI adapter
+        - keep machine auth in provider setup; selection here only chooses usage
+    fallbacks:
+      provider_family_switch: disallowed-by-default
+      backend_switch: disallowed
+      model_fallback: operator-local alias fallback only
+  local-transformers-execution:
+    status: implemented
+    intended_roles:
+      - execution-operator
+    intended_phases:
+      - execution
+      - replication
+    provider_family: local-transformers
+    backend: local-transformers
+    model_selection:
+      mode: explicit-required
+      default_behavior: mission or execution config must name a concrete local model path or identifier
+      allowed_fields:
+        - model.identifier
+        - model.dtype
+      policy_inputs:
+        - configs/runtime/backend-policy.yaml
+    fallbacks:
+      provider_family_switch: disallowed-by-default
+      backend_switch: allow-via-backend-policy
+      ordered_backends:
+        - local-transformers
+        - vllm
+  vllm-execution:
+    status: implemented
+    intended_roles:
+      - execution-operator
+    intended_phases:
+      - execution
+      - replication
+    provider_family: vllm
+    backend: vllm
+    model_selection:
+      mode: explicit-required
+      default_behavior: mission or execution config must name a concrete model identifier compatible with vllm
+      allowed_fields:
+        - model.identifier
+        - model.dtype
+      policy_inputs:
+        - configs/runtime/backend-policy.yaml
+    fallbacks:
+      provider_family_switch: disallowed-by-default
+      backend_switch: allow-via-backend-policy
+      ordered_backends:
+        - vllm
+        - local-transformers
+  openai-compatible-api-control-plane:
+    status: reserved-runtime-adapter
+    provider_family: openai-compatible-api
+    backend: openai-compatible-api
+    model_selection:
+      mode: explicit-required
+      default_behavior: mission or operator override must declare the target model identifier and any non-secret endpoint alias
+      allowed_fields:
+        - model.identifier
+        - model.endpoint_alias
+    fallbacks:
+      provider_family_switch: explicit-only
+      backend_switch: provider-native
+      model_fallback: explicit-model-ladder-only
+  anthropic-api-control-plane:
+    status: reserved-runtime-adapter
+    provider_family: anthropic-api
+    backend: anthropic-api
+    model_selection:
+      mode: explicit-required
+      default_behavior: mission or operator override must declare the target model identifier and any non-secret endpoint alias
+      allowed_fields:
+        - model.identifier
+        - model.endpoint_alias
+    fallbacks:
+      provider_family_switch: explicit-only
+      backend_switch: provider-native
+      model_fallback: explicit-model-ladder-only
+override_points:
+  repo_default_profile:
+    description: selected from this registry and referenced by repo docs/config
+  mission_runtime_config:
+    description: a mission may declare runtime.provider_selection without restating machine setup
+  loop_runtime_config:
+    description: recursive loop configs may pin or override provider/model selection for that loop
+  operator_start_override:
+    description: launch-time flags or environment-specific wrappers may override profile, provider, backend, or model for one run
+  run_manifest_record:
+    description: the effective resolved selection should be recorded under runtime.provider_selection and mirrored by the resolved top-level model block
+fallback_profiles:
+  no-cross-provider-fallback:
+    description: stay on the selected provider family; only allow provider-native or operator-local model fallback
+  local-inference-backend-ladder:
+    description: use local-transformers first unless a mission explicitly selects vllm, then follow backend-policy for allowed backend changes
+  explicit-provider-ladder:
+    description: only switch provider families when the mission or operator explicitly supplies an ordered fallback list
+selection_fields:
+  required_when_resolved:
+    - provider_family
+    - backend
+    - model.identifier or model.alias
+  optional_context:
+    - mission_id
+    - loop_name
+    - role
+    - phase
+    - fallback_profile
+    - selection_source
+notes:
+  - provider setup answers whether a machine can use a provider family; provider selection answers which configured family/backend/model a mission should use
+  - role_env_map in configs/sandbox/agent-launch-policy.yaml chooses execution environments, not providers
+  - keep secrets and credential values out of checked-in selection config

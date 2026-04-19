@@ -1,0 +1,89 @@
+version: 1
+policy_name: deeploop-research-sanity-gates
+artifact_dir_name: research_sanity
+default_power_warning_threshold: 16
+prompt_contracts:
+  asym_nli_json_v1:
+    parser_id: nli_json_v1
+    output_contract: label-json
+proposal_types:
+  baseline-eval:
+    required_paths:
+      - field: dataset.promotion_manifest
+        parse_as: json
+        required: true
+        severity: block
+    dataset_source:
+      promotion_manifest_field: dataset.promotion_manifest
+      selection_field: dataset.selection
+      lexicalizations_field: dataset.selection.lexicalizations
+    prompt_contract:
+      applicable: true
+      required_any:
+        - prompt.template_id
+        - prompt.parser_id
+        - prompt.output_contract
+      template_field: prompt.template_id
+      template_registry: prompt_contracts
+    evaluation_intent:
+      contract_relative_path: configs/eval/behavioral-matrix.yaml
+    cheap_power_check:
+      warn_if_examples_below: 16
+      limit_examples_field: dataset.limit_examples
+  mechanistic-localization:
+    required_paths:
+      - field: behavioral_source_manifest
+        parse_as: json
+        required: true
+        severity: block
+    dataset_source:
+      manifest_field: behavioral_source_manifest
+      selection_map:
+        tiers: dataset.tiers
+        split_families: dataset.split_families
+        lexicalizations: dataset.lexicalizations
+    prompt_contract:
+      applicable: false
+    evaluation_intent:
+      required_all:
+        - methods.patch_metric
+      require_any_true:
+        - methods.probe
+        - methods.activation_patching
+    comparability:
+      manifest_field: behavioral_source_manifest
+      model_fields:
+        family: model.family
+        identifier: model.checkpoint
+      notes_field: reporting.notes
+    cheap_power_check:
+      warn_if_examples_below: 16
+  causal-intervention:
+    required_paths:
+      - field: localization_source
+        parse_as: json
+        required: true
+        severity: block
+      - field: evaluation.compare_against
+        parse_as: json
+        required: true
+        severity: block
+    dataset_source:
+      manifest_field: evaluation.compare_against
+    prompt_contract:
+      applicable: false
+    evaluation_intent:
+      required_all:
+        - intervention.method
+        - intervention.strength
+        - evaluation.compare_against
+      required_true:
+        - evaluation.require_side_effect_checks
+    comparability:
+      manifest_fields:
+        - localization_source
+        - evaluation.compare_against
+      model_fields:
+        family: model.family
+        identifier: model.checkpoint
+      notes_field: reporting.notes

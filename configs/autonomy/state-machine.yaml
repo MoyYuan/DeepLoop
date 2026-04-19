@@ -1,0 +1,109 @@
+version: 1
+transition_defaults:
+  decision_type: phase-transition
+  branch_status: active
+  recovery_status: not-needed
+states:
+  - id: idea-intake
+    outputs:
+      - mission brief
+      - rough constraints
+    transitions:
+      - literature-review
+  - id: literature-review
+    outputs:
+      - prior-art memo
+      - benchmark and method watchlist
+    transitions:
+      - question-design
+  - id: question-design
+    outputs:
+      - hypotheses
+      - evaluation targets
+    transitions:
+      - experiment-design
+      - benchmark-selection
+  - id: benchmark-selection
+    outputs:
+      - dataset shortlist
+      - slice plan
+    transitions:
+      - experiment-design
+  - id: experiment-design
+    outputs:
+      - run manifest draft
+      - execution profile selection
+      - resource tier selection
+    transitions:
+      - execution
+  - id: execution
+    outputs:
+      - run logs
+      - metrics
+      - crash / stability notes
+    transitions:
+      - critique
+  - id: critique
+    outputs:
+      - evidence assessment
+      - confound notes
+      - next-step recommendation
+    transitions:
+      - experiment-design
+      - replication
+      - final-report
+  - id: replication
+    outputs:
+      - repeated-run manifests
+      - replication summary
+    transitions:
+      - critique
+      - final-report
+  - id: final-report
+    outputs:
+      - findings summary
+      - paper-candidate recommendation
+      - artifact readiness notes
+transition_metadata:
+  idea-intake:
+    literature-review:
+      summary: Ground the mission in prior art before hypothesis design.
+  literature-review:
+    question-design:
+      summary: Convert prior-art coverage into concrete hypotheses and targets.
+  question-design:
+    experiment-design:
+      summary: Promote the current hypothesis into a concrete execution plan.
+    benchmark-selection:
+      summary: Route through benchmark selection when dataset choices remain open.
+  benchmark-selection:
+    experiment-design:
+      summary: Carry the chosen benchmark contract into manifest and resource design.
+  experiment-design:
+    execution:
+      summary: Move from approved manifests into bounded execution.
+  execution:
+    critique:
+      summary: Feed observed metrics and failures into critique before promotion.
+      branch_status: critique-ready
+  critique:
+    experiment-design:
+      summary: Reroute into revised experiment design when critique finds blockers.
+      branch_status: recovery-active
+      recovery_status: reroute-planned
+    replication:
+      summary: Open a replication branch when the result merits confirmation.
+      branch_status: replication-active
+    final-report:
+      summary: Produce a private final report only after critique closes blockers.
+      branch_status: report-ready
+  replication:
+    critique:
+      summary: Return replication evidence to critique before stronger claims.
+      branch_status: critique-ready
+    final-report:
+      summary: Close the branch into a final report when replication is sufficient.
+      branch_status: report-ready
+terminal_rules:
+  - no promotion to final-report without critique output
+  - no promotion to replicated evidence without at least one follow-up manifest

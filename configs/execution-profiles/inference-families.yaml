@@ -1,0 +1,81 @@
+version: 1
+machine: public-single-gpu-reference
+defaults:
+  backend_priority:
+    - vllm
+    - transformers
+  dtype: float16
+  gpu_memory_headroom_gb: 6
+  metrics:
+    - peak_vram_mb
+    - toks_per_s
+    - ttft_s
+    - oom_retries
+  fallback_ladder:
+    - lower batch size
+    - lower max model length
+    - lower max new tokens
+    - switch backend
+profiles:
+  - id: qwen3_5-small-fp16
+    applies_to:
+      - qwen3.5-0.8b
+      - qwen3.5-2b
+    preferred_backend: vllm
+    context_buckets:
+      short:
+        prompt_tokens: 512
+        max_new_tokens: 256
+        batch_probe_order: [32, 24, 16, 8, 4, 2, 1]
+      medium:
+        prompt_tokens: 2048
+        max_new_tokens: 512
+        batch_probe_order: [16, 12, 8, 4, 2, 1]
+      long:
+        prompt_tokens: 4096
+        max_new_tokens: 512
+        batch_probe_order: [8, 4, 2, 1]
+  - id: qwen3_5-mid-fp16
+    applies_to:
+      - qwen3.5-4b
+      - gemma-4-e4b
+    preferred_backend: vllm
+    context_buckets:
+      short:
+        prompt_tokens: 512
+        max_new_tokens: 256
+        batch_probe_order: [16, 12, 8, 4, 2, 1]
+      medium:
+        prompt_tokens: 2048
+        max_new_tokens: 512
+        batch_probe_order: [8, 4, 2, 1]
+      long:
+        prompt_tokens: 4096
+        max_new_tokens: 512
+        batch_probe_order: [4, 2, 1]
+  - id: single-gpu-8b-9b-fp16
+    applies_to:
+      - qwen3.5-9b
+      - llama-3.2-3b
+      - gemma-4-e2b
+    preferred_backend: vllm
+    context_buckets:
+      short:
+        prompt_tokens: 512
+        max_new_tokens: 256
+        batch_probe_order: [8, 4, 2, 1]
+      medium:
+        prompt_tokens: 2048
+        max_new_tokens: 512
+        batch_probe_order: [4, 2, 1]
+      long:
+        prompt_tokens: 4096
+        max_new_tokens: 512
+        batch_probe_order: [2, 1]
+deferred_profiles:
+  - id: gguf-runtime-required
+    applies_to:
+      - deepseek-r1-0528-qwen3-8b-gguf
+      - deepseek-r1-distill-llama-8b-gguf
+    status: backend_not_yet_standardized
+    note: Enable only after a llama.cpp-style runtime is documented in DeepLoop contracts.

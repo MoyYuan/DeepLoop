@@ -1,0 +1,108 @@
+version: 1
+description: >
+  Deterministic novelty-refresh loop that revisits literature/related-work status
+  when mission branches shift. Evaluates mission novelty against prior-art artifacts
+  and emits a novelty delta memo with stale-literature warnings and recommendations.
+
+artifact_dir_name: novelty_refresh
+
+evaluation_triggers:
+  - mission_phase_transition
+  - branch_shift_detected
+  - new_findings_registered
+  - scheduled_interval
+
+mission_contexts:
+  - id: translation-full-mission
+    target_repo: ~/workspaces/repos/translation-pilot
+    prior_art_source: docs/research/novelty-positioning.md
+    literature_artifacts:
+      - docs/research/novelty-positioning.md
+      - docs/research/evaluation-contract.md
+      - docs/research/mechanistic-localization-plan.md
+    related_work_sections:
+      - Closest prior work
+      - Key novelty claims to earn
+      - Anti-derivative constraints
+
+literature_staleness_thresholds:
+  - category: mechanistic-interpretability
+    max_age_months: 12
+    warn_before_months: 6
+  - category: activation-steering
+    max_age_months: 18
+    warn_before_months: 9
+  - category: factual-knowledge-editing
+    max_age_months: 12
+    warn_before_months: 6
+  - category: benchmark-design
+    max_age_months: 24
+    warn_before_months: 12
+
+novelty_assessment_dimensions:
+  - id: behavioral_characterization
+    description: How well the project characterizes failure modes vs prior work
+    scoring_scale: 1-5
+    evidence_sources:
+      - evaluation_contract
+      - baseline_results
+  - id: mechanistic_localization
+    description: Whether localization goes beyond generic factual memory
+    scoring_scale: 1-5
+    evidence_sources:
+      - mechanistic-localization-plan
+      - ablation_studies
+  - id: intervention_novelty
+    description: Whether interventions are specific to asymmetry, not generic
+    scoring_scale: 1-5
+    evidence_sources:
+      - causal-intervention-plan
+      - side_effect_analysis
+  - id: empirical_rigor
+    description: Replication and robustness against prior-art baselines
+    scoring_scale: 1-5
+    evidence_sources:
+      - replication_count
+      - statistical_validation
+
+delta_report_sections:
+  - title: "Novelty Status Summary"
+    content_keys:
+      - overall_novelty_score
+      - mission_branch_shifts
+      - findings_delta
+  - title: "Prior-Art Alignment"
+    content_keys:
+      - prior_art_closest_matches
+      - differentiation_against_each
+  - title: "Literature Staleness Check"
+    content_keys:
+      - stale_categories
+      - warn_categories
+      - recommended_recent_papers
+  - title: "Assessment Dimensions"
+    content_keys:
+      - behavioral_characterization_score
+      - mechanistic_localization_score
+      - intervention_novelty_score
+      - empirical_rigor_score
+  - title: "Follow-Up Recommendations"
+    content_keys:
+      - priority_gaps
+      - suggested_replications
+      - literature_review_actions
+  - title: "Caveat & Boundaries"
+    content_keys:
+      - evaluation_scope
+      - assumed_constraints
+      - unverified_claims
+
+output_formats:
+  json: novelty-delta-report.json
+  markdown: novelty-delta-report.md
+  ledger_entry:
+    kind: novelty-refresh
+    metadata:
+      novelty_score: numeric
+      branch_shifts_detected: numeric
+      stale_literature_count: numeric

@@ -1,0 +1,53 @@
+version: 1
+summary: DeepLoop owns behavior, build surfaces, and generated execution logic; substrate repos own minimal facts/contracts.
+ownership:
+  deeploop:
+    - mission orchestration
+    - critique, retry, reroute, and queue execution
+    - runtime backend policy and fallback decisions
+    - generic behavioral baseline kernels
+    - generic mechanistic localization kernels
+    - generic causal intervention kernels
+    - manifest registration and artifact policy
+    - build repo code and runtime scripts
+    - generated configs and experiment implementation surfaces
+    - scientific expansion decisions such as proposing extra datasets, metrics, and training plans
+  substrate:
+    - benchmark and dataset facts
+    - minimal project brief and hypotheses
+    - baseline prompts, metrics, slice definitions, and evaluation contracts
+    - safety and scientific rules that define the initial substrate contract
+    - explicit migration shims that remain temporary until DeepLoop absorbs them
+minimal_project_repo_surfaces:
+  - brief
+  - benchmark/test set
+  - baseline metrics
+  - slice definitions
+  - safety/scientific rules
+deeploop_scientific_freedom:
+  - may propose additional trusted external datasets
+  - may propose improved metrics or evaluation slices
+  - may propose new training or adaptation plans
+  - must record those choices as DeepLoop-owned design/runtime artifacts
+generated_artifact_roots:
+  - ~/workspaces/runs/deeploop/
+  - ~/workspaces/runs/<substrate>/
+  - ~/workspaces/scratch/<project>/
+allowed_surface_classes:
+  - substrate-fact
+  - generic-behavior
+  - migration-shim
+forbidden_substrate_entrypoint_terms:
+  - mission
+  - queue
+  - autoexec
+  - orchestr
+  - scheduler
+  - critic
+  - meta_eval
+  - retry
+  - build
+forbidden_substrate_config_terms:
+  - fallback_policy
+  - runtime_fallback
+  - generated_config_root

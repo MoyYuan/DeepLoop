@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Mission Meta Evaluation",
+  "type": "object",
+  "required": ["mission_id", "autonomy_state", "scores", "summary"],
+  "properties": {
+    "mission_id": { "type": "string" },
+    "autonomy_state": { "type": "string" },
+    "summary": { "type": "string" },
+    "scores": { "type": "object" },
+    "counts": { "type": "object" },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "related_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

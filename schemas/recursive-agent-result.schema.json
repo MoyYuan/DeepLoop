@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Recursive Agent Result",
+  "type": "object",
+  "required": ["status", "summary"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["continue", "complete", "blocked", "failed"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "next_role": {
+      "type": "string"
+    },
+    "next_task": {
+      "type": "string"
+    },
+    "produced_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mission_state_updates": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true
+}

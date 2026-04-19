@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Mission Artifact Package",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "package_id",
+    "mission_id",
+    "package_root",
+    "package_digest",
+    "mission",
+    "claim_summary",
+    "artifacts",
+    "artifact_map",
+    "run_bundles",
+    "cross_links",
+    "summary",
+    "checks"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "package_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "package_digest": {
+      "type": "string",
+      "minLength": 8
+    },
+    "mission": {
+      "type": "object",
+      "required": [
+        "title",
+        "objective",
+        "current_phase",
+        "status",
+        "target_repo"
+      ],
+      "properties": {
+        "title": { "type": "string" },
+        "objective": { "type": "string" },
+        "current_phase": { "type": "string" },
+        "status": { "type": "string" },
+        "target_repo": { "type": "string" },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "claim_summary": {
+      "type": "object",
+      "required": [
+        "package_claim_state",
+        "manifest_claim_counts",
+        "critique_ceiling",
+        "paper_candidate_blockers",
+        "release_candidate_blockers"
+      ],
+      "properties": {
+        "package_claim_state": { "type": "string" },
+        "manifest_claim_counts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        },
+        "critique_ceiling": { "type": "string" },
+        "promotion_requirements": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "paper_candidate_blockers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "release_candidate_blockers": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifactRef"
+      }
+    },
+    "artifact_map": {
+      "type": "object",
+      "required": [
+        "mission_specs",
+        "mission_configs",
+        "ledgers",
+        "findings",
+        "manifests",
+        "kernel_outputs",
+        "critique_reports",
+        "runtime_metadata"
+      ],
+      "properties": {
+        "mission_specs": { "$ref": "#/$defs/artifactIdArray" },
+        "mission_configs": { "$ref": "#/$defs/artifactIdArray" },
+        "ledgers": { "$ref": "#/$defs/artifactIdArray" },
+        "findings": { "$ref": "#/$defs/artifactIdArray" },
+        "manifests": { "$ref": "#/$defs/artifactIdArray" },
+        "kernel_outputs": { "$ref": "#/$defs/artifactIdArray" },
+        "critique_reports": { "$ref": "#/$defs/artifactIdArray" },
+        "runtime_metadata": { "$ref": "#/$defs/artifactIdArray" }
+      }
+    },
+    "replication_evidence": {
+      "type": "object",
+      "required": [
+        "total_manifests",
+        "independent_runs",
+        "manifest_groups"
+      ],
+      "properties": {
+        "total_manifests": { "type": "integer", "minimum": 0 },
+        "independent_runs": { "type": "integer", "minimum": 0 },
+        "manifest_groups": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "run_bundles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runBundle"
+      }
+    },
+    "cross_links": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/crossLink"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "operator_handoff",
+        "paper_drafting",
+        "release_review"
+      ],
+      "properties": {
+        "operator_handoff": { "$ref": "#/$defs/summarySection" },
+        "paper_drafting": { "$ref": "#/$defs/summarySection" },
+        "release_review": { "$ref": "#/$defs/summarySection" }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "required": [
+        "copy_complete",
+        "outside_repo_outputs",
+        "all_required_artifacts_present",
+        "missing_required_artifacts",
+        "validation_errors"
+      ],
+      "properties": {
+        "copy_complete": { "type": "boolean" },
+        "outside_repo_outputs": { "type": "boolean" },
+        "all_required_artifacts_present": { "type": "boolean" },
+        "missing_required_artifacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "validation_errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "artifact_count_by_category": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        }
+      }
+    },
+    "release_automation": {
+      "type": "object",
+      "required": [
+        "policy_name",
+        "decision",
+        "eligible_for_promotion",
+        "failed_gate_ids",
+        "missing_approvals",
+        "review_artifacts"
+      ],
+      "properties": {
+        "policy_name": { "type": "string", "minLength": 1 },
+        "decision": { "type": "string", "enum": ["blocked", "promotable"] },
+        "eligible_for_promotion": { "type": "boolean" },
+        "failed_gate_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "missing_approvals": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "review_artifacts": {
+          "type": "object",
+          "required": ["json", "markdown", "promotion"],
+          "properties": {
+            "json": { "type": "string", "minLength": 1 },
+            "markdown": { "type": "string", "minLength": 1 },
+            "promotion": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifactIdArray": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifactRef": {
+      "type": "object",
+      "required": [
+        "artifact_id",
+        "kind",
+        "label",
+        "source_path",
+        "package_path",
+        "size_bytes"
+      ],
+      "properties": {
+        "artifact_id": { "type": "string" },
+        "kind": { "type": "string" },
+        "label": { "type": "string" },
+        "source_path": { "type": "string" },
+        "package_path": { "type": "string" },
+        "status": {
+          "type": ["string", "null"]
+        },
+        "claim_state": {
+          "type": ["string", "null"]
+        },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "metadata": {
+          "type": "object"
+        }
+      }
+    },
+    "runBundle": {
+      "type": "object",
+      "required": [
+        "bundle_id",
+        "loop_id",
+        "stage_id",
+        "manifest_artifact_id",
+        "status",
+        "claim_state",
+        "artifact_ids"
+      ],
+      "properties": {
+        "bundle_id": { "type": "string" },
+        "loop_id": { "type": "string" },
+        "stage_id": { "type": "string" },
+        "manifest_artifact_id": { "type": "string" },
+        "status": { "type": "string" },
+        "claim_state": { "type": "string" },
+        "artifact_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "critique_artifact_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "primary_metric": {
+          "type": ["number", "null"]
+        },
+        "metric_name": {
+          "type": ["string", "null"]
+        },
+        "summary_lines": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "crossLink": {
+      "type": "object",
+      "required": [
+        "source_artifact_id",
+        "target_artifact_id",
+        "relationship"
+      ],
+      "properties": {
+        "source_artifact_id": { "type": "string" },
+        "target_artifact_id": { "type": "string" },
+        "relationship": { "type": "string" }
+      }
+    },
+    "summarySection": {
+      "type": "object",
+      "required": [
+        "headline",
+        "bullets"
+      ],
+      "properties": {
+        "headline": { "type": "string" },
+        "bullets": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "key_artifact_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

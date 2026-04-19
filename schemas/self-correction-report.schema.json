@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Self-Correction Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "artifact_name",
+    "generated_at",
+    "contract_path",
+    "manifest_paths",
+    "assessments",
+    "recommendations",
+    "final_decision"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "artifact_name": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "mission_id": { "type": ["string", "null"] },
+    "substrate": { "type": ["string", "null"] },
+    "contract_path": { "type": "string" },
+    "manifest_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "mission_context": { "type": "object" },
+    "assessments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "manifest_path",
+          "loop_id",
+          "study_kind",
+          "run_status",
+          "classifications",
+          "decision"
+        ],
+        "properties": {
+          "manifest_path": { "type": "string" },
+          "loop_id": { "type": "string" },
+          "study_kind": { "type": "string" },
+          "run_status": { "type": "string" },
+          "classifications": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "severity", "default_action", "summary"],
+              "properties": {
+                "id": { "type": "string" },
+                "severity": { "type": "string" },
+                "default_action": {
+                  "type": "string",
+                  "enum": ["continue", "reroute", "stop"]
+                },
+                "summary": { "type": "string" },
+                "details": { "type": "object" }
+              }
+            }
+          },
+          "decision": {
+            "type": "object",
+            "required": ["action", "route_to", "rationale", "triggered_by"],
+            "properties": {
+              "action": {
+                "type": "string",
+                "enum": ["continue", "reroute", "stop"]
+              },
+              "route_to": { "type": "string" },
+              "rationale": { "type": "string" },
+              "triggered_by": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "recommendation_id",
+          "action",
+          "route_to",
+          "summary",
+          "source_manifests",
+          "triggered_by"
+        ],
+        "properties": {
+          "recommendation_id": { "type": "string" },
+          "action": {
+            "type": "string",
+            "enum": ["continue", "reroute", "stop"]
+          },
+          "route_to": { "type": "string" },
+          "priority": { "type": "integer" },
+          "summary": { "type": "string" },
+          "source_manifests": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "triggered_by": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "final_decision": {
+      "type": "object",
+      "required": ["action", "route_to", "rationale", "branch_actions"],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["continue", "reroute", "stop"]
+        },
+        "route_to": { "type": "string" },
+        "rationale": { "type": "string" },
+        "branch_actions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["continue", "reroute", "stop"]
+          }
+        }
+      }
+    }
+  }
+}

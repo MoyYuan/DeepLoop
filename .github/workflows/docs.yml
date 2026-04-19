@@ -1,0 +1,48 @@
+name: Docs
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - README.md
+      - mkdocs.yml
+      - Makefile
+      - docs/**
+      - scripts/repo_check.py
+      - tests/test_repo_contract.py
+      - .github/workflows/docs.yml
+  pull_request:
+    paths:
+      - README.md
+      - mkdocs.yml
+      - Makefile
+      - docs/**
+      - scripts/repo_check.py
+      - tests/test_repo_contract.py
+      - .github/workflows/docs.yml
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install docs tooling
+        run: python -m pip install --upgrade pip mkdocs mkdocs-material
+
+      - name: Repo scaffold check
+        run: python scripts/repo_check.py
+
+      - name: Repo contract tests
+        run: python -m unittest tests.test_repo_contract -q
+
+      - name: Strict docs build
+        run: make docs-build

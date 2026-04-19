@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Research Sanity Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "created_at",
+    "config_path",
+    "config_kind",
+    "contract_path",
+    "verdict",
+    "summary",
+    "reasons",
+    "checks",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "mission_id": {
+      "type": ["string", "null"]
+    },
+    "queue_entry_id": {
+      "type": ["string", "null"]
+    },
+    "config_path": {
+      "type": "string"
+    },
+    "config_kind": {
+      "type": "string"
+    },
+    "contract_path": {
+      "type": "string"
+    },
+    "repo_root": {
+      "type": ["string", "null"]
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "warn", "block"]
+    },
+    "summary": {
+      "type": "object",
+      "required": ["passed", "warned", "blocked", "skipped"],
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "warned": { "type": "integer", "minimum": 0 },
+        "blocked": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["check_id", "severity", "message"],
+        "properties": {
+          "check_id": { "type": "string" },
+          "severity": { "type": "string", "enum": ["warn", "block"] },
+          "message": { "type": "string" }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "status", "message", "details"],
+        "properties": {
+          "id": { "type": "string" },
+          "severity": { "type": "string" },
+          "status": { "type": "string", "enum": ["pass", "warn", "block", "skip"] },
+          "message": { "type": "string" },
+          "details": { "type": "object" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["report_json", "report_markdown"],
+      "properties": {
+        "report_json": { "type": "string" },
+        "report_markdown": { "type": "string" },
+        "confound_guard_json": { "type": "string" },
+        "confound_guard_markdown": { "type": "string" }
+      }
+    }
+  }
+}

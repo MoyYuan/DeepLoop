@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Mission Action",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "action_id",
+    "mission_id",
+    "kind",
+    "role",
+    "task",
+    "status",
+    "phase",
+    "runtime_owner",
+    "requires_operator_approval"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "action_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_id": {
+      "type": ["string", "null"]
+    },
+    "branch_id": {
+      "type": ["string", "null"]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "phase-transition",
+        "branch-create",
+        "artifact-edit",
+        "local-training",
+        "local-eval",
+        "critique",
+        "replication",
+        "final-report",
+        "operator-review",
+        "external-publish"
+      ]
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "in_progress", "completed", "blocked", "deferred", "cancelled"]
+    },
+    "phase": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime_owner": {
+      "type": "string",
+      "enum": ["deeploop", "operator", "substrate"]
+    },
+    "requires_operator_approval": {
+      "type": "boolean"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "output_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "produces_outputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "next_phase_on_success": {
+      "type": ["string", "null"]
+    },
+    "executor": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "params": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

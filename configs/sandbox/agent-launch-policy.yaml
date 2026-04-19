@@ -1,0 +1,27 @@
+version: 1
+rule_ingestion_order:
+  - ~/.copilot/copilot-instructions.md
+  - ~/workspaces/AGENTS.md
+  - ~/workspaces/repos/deeploop/AGENTS.md
+  - target repo AGENTS.md
+  - target repo .github/copilot-instructions.md
+sandbox_defaults:
+  per_agent_isolation: true
+  sandbox_root: ~/workspaces/scratch/deeploop/sandboxes
+  artifact_mode: explicit_paths_only
+  permission_mode: minimum-necessary
+related_runtime_contracts:
+  provider_setup: configs/runtime/provider-setup-registry.yaml
+  provider_selection: configs/runtime/provider-selection-registry.yaml
+role_env_map:
+  planner: deeploop
+  literature-scout: deeploop
+  dataset-strategist: deeploop
+  experiment-designer: deeploop
+  execution-operator: llm
+  critic-verifier: deeploop
+  report-synthesizer: deeploop
+notes:
+  - role_env_map chooses the execution environment for a role; provider/model choice lives in provider-selection-registry and mission/loop overrides
+  - full host-level access should be the exception, not the default
+  - every spawned agent should receive its sandbox path and rule sources before acting

@@ -1,0 +1,11 @@
+case_id: translation-budget-ladder
+title: Translation budget ladder
+summary: Plain-folder translation case with benchmark and budget emphasis.
+workflow_shape: benchmark-heavy
+expected_focus: dataset choice, slice design, and metric improvement under strict budget
+autonomy_claims:
+  - DeepLoop keeps the operator inbox clear through bounded benchmark execution.
+  - DeepLoop respects the plain-folder substrate boundary while finishing in final-report.
+  - DeepLoop produces final-report outputs without leaking runtime state into the substrate tree.
+acceptance_thresholds:
+  require_final_report_outputs: true

@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "project": "TBD_PROJECT",
+  "mode": "sandboxed-yolo",
+  "loop_id": "TBD_LOOP_ID",
+  "claim_state": "exploratory",
+  "mission_id": "TBD_MISSION_ID",
+  "resource_tier": "single-gpu-infer-short",
+  "execution_profile": "TBD_PROFILE_ID",
+  "approval": {
+    "required": false,
+    "approved_by": null,
+    "approved_at": null
+  },
+  "code": {
+    "repo": "TBD_REPO",
+    "git_commit": "TBD_COMMIT"
+  },
+  "model": {
+    "family": "TBD_FAMILY",
+    "identifier": "TBD_MODEL",
+    "backend": "TBD_BACKEND",
+    "dtype": "TBD_DTYPE"
+  },
+  "dataset": {
+    "name": "TBD_DATASET",
+    "slice": "TBD_SLICE",
+    "provenance": "TBD_PROVENANCE"
+  },
+  "prompt": {
+    "template_id": "TBD_TEMPLATE_ID",
+    "parser_id": "TBD_PARSER_ID"
+  },
+  "run": {
+    "seed": 0,
+    "command": "TBD_COMMAND",
+    "started_at": null,
+    "completed_at": null,
+    "status": "planned"
+  },
+  "metrics": {},
+  "artifacts": {
+    "log_path": null,
+    "output_dir": null,
+    "report_paths": []
+  },
+  "runtime": {
+    "provider_selection": {
+      "contract_ref": "configs/runtime/provider-selection-registry.yaml"
+    }
+  },
+  "notes": []
+}

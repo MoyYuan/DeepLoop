@@ -1,0 +1,64 @@
+version: 1
+machine: public-single-gpu-reference
+tiers:
+  - id: cpu-smoke
+    hardware:
+      gpu: false
+    intended_for:
+      - repo validation
+      - parser checks
+      - manifest checks
+    max_runtime_minutes: 15
+  - id: single-gpu-infer-short
+    hardware:
+      gpu: true
+      gpu_count: 1
+    intended_for:
+      - interactive inference
+      - short evaluation batches
+    max_runtime_minutes: 120
+    required_logs:
+      - peak_vram_mb
+      - toks_per_s
+      - oom_retries
+  - id: single-gpu-infer-sweep
+    hardware:
+      gpu: true
+      gpu_count: 1
+    intended_for:
+      - overnight prompt or profile sweeps
+      - baseline evaluation batches
+    max_runtime_minutes: 720
+    required_logs:
+      - peak_vram_mb
+      - toks_per_s
+      - completed_examples
+      - crash_count
+  - id: single-gpu-lora-train
+    hardware:
+      gpu: true
+      gpu_count: 1
+    intended_for:
+      - SFT LoRA
+      - QLoRA
+      - small adapter studies
+    max_runtime_minutes: 720
+    required_logs:
+      - peak_vram_mb
+      - train_loss
+      - eval_metric
+      - checkpoint_path
+  - id: single-gpu-dpo-train
+    hardware:
+      gpu: true
+      gpu_count: 1
+    intended_for:
+      - preference optimization
+    max_runtime_minutes: 1440
+    required_logs:
+      - peak_vram_mb
+      - train_loss
+      - eval_metric
+      - preference_data_version
+notes:
+  - resource tiers describe allowed workload classes and expected logging, not final approval policy

@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deeploop"
+version = "0.1.0"
+description = "DeepLoop autonomous research autopilot control plane."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name = "DeepLoop maintainers" },
+]
+dependencies = [
+  "jsonschema",
+  "pandas",
+  "pyyaml",
+  "rich",
+  "typer",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Homepage = "https://deeplooplabs.com/"
+Documentation = "https://github.com/deeplooplabs/deeploop/tree/main/docs"
+Issues = "https://github.com/deeplooplabs/deeploop/issues"
+Source = "https://github.com/deeplooplabs/deeploop"
+Changelog = "https://github.com/deeplooplabs/deeploop/blob/main/CHANGELOG.md"
+
+[project.scripts]
+deeploop = "deeploop.mission.mission_management:main"
+deeploop-init-mission = "deeploop.cli.init_mission:main"
+deeploop-run-project = "deeploop.cli.run_project:main"
+deeploop-package-mission = "deeploop.cli.package_mission:main"
+
+[project.optional-dependencies]
+docs = [
+  "mkdocs",
+  "mkdocs-material",
+  "pymdown-extensions",
+]
+llm = [
+  "accelerate",
+  "safetensors",
+  "sentencepiece",
+  "torch",
+  "transformers",
+]
+dev = [
+  "deeploop[docs]",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

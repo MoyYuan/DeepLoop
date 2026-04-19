@@ -1,0 +1,102 @@
+site_name: DeepLoop Docs
+site_description: DeepLoop documentation for operators, contributors, and readers
+docs_dir: docs
+theme:
+  name: material
+  features:
+    - navigation.expand
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+    - search.share
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - How-to:
+      - Examples: how-to/examples.md
+      - Plain-folder starter: how-to/plain-folder-starter.md
+  - Operator guide:
+      - Mission operations: guide/operator.md
+      - FAQ: guide/faq.md
+  - Concepts:
+      - Runtime architecture: concepts/architecture.md
+      - Glossary: concepts/glossary.md
+  - Reference:
+      - Technical reference: reference/index.md
+      - Provider setup: reference/provider-setup.md
+      - Provider selection: reference/provider-selection.md
+      - Testing strategy: reference/testing-strategy.md
+      - Acceptance campaign: reference/acceptance-campaign.md
+      - Docs maintenance: reference/docs-maintenance.md
+      - Design notes:
+          - Design index: design/README.md
+          - Mission control and runtime:
+              - Operating model: design/operating-model.md
+              - Mission orchestrator: design/mission-orchestrator.md
+              - State machine: design/state-machine.md
+              - Role contract: design/role-contract.md
+              - Stage kernels: design/stage-kernels.md
+              - Self-healing runtime: design/self-healing-runtime.md
+              - Recursive agent runtime: design/recursive-agent-runtime.md
+              - Bounded autoexecutor: design/bounded-autoexecutor.md
+          - Evidence and evaluation:
+              - Evaluation plan: design/evaluation-plan.md
+              - Evidence policy: design/evidence-policy.md
+              - Statistical rigor: design/statistical-rigor.md
+              - Confound guard: design/confound-guard.md
+              - Mission meta-eval: design/mission-meta-eval.md
+              - Utility scorer: design/utility-scorer.md
+              - Memory registry: design/memory-registry.md
+              - Experiment ledger: design/experiment-ledger.md
+              - Research sanity gates: design/research-sanity-gates.md
+              - Mission artifact packager: design/mission-artifact-packager.md
+              - Mission artifact package: design/mission-artifact-package.md
+          - Research, release, and change management:
+              - Autonomy boundary reduction: design/autonomy-boundary-reduction.md
+              - Self-correction: design/self-correction.md
+              - Self-correction engine: design/self-correction-engine.md
+              - Novelty refresh: design/novelty-refresh.md
+              - Self-optimization: design/self-optimization.md
+              - Release automation: design/release-automation.md
+              - Rollout plan: design/rollout-plan.md
+              - Translation full autonomy: design/translation-full-autonomy.md
+              - Platform expansion: design/platform-expansion.md
+              - Policy placement: design/policy-placement.md
+              - Runtime standardization: design/runtime-standardization.md
+          - Supporting concepts:
+              - Agent spawner: design/agent-spawner.md
+              - Sandboxed agents: design/sandboxed-agents.md
+              - Fresh context redteam: design/fresh-context-redteam.md
+              - Substrate boundary: design/substrate-boundary.md
+              - Optimization skills: design/optimization-skills.md
+      - Companion deep dives:
+          - Deep dives index: wiki/README.md
+          - Mission operator deep dive: wiki/mission-ops.md
+          - Runtime architecture deep dive: wiki/runtime-architecture.md
+          - Research and release deep dive: wiki/research-and-release.md
+      - Prior art: prior-art/ralph-vs-autoresearch.md
+  - Research: research/README.md
+  - Release:
+      - Release posture: release/README.md
+      - Release maintenance: release/release-maintenance.md
+      - Public autonomy roadmap: release/public-autonomy-roadmap.md
+      - Public alpha foundations: release/public-alpha-foundations.md
+      - Portable bootstrap: release/portable-bootstrap.md
+      - Autonomy governance: release/autonomy-governance.md
+      - Multi-substrate proof: release/multi-substrate-proof.md
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+plugins:
+  - search
+extra:
+  generator: false

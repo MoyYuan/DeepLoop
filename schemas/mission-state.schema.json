@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Mission State",
+  "type": "object",
+  "required": ["schema_version", "mission_id", "mode", "title", "summary", "current_phase", "status", "roles"],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "mission_id": { "type": "string" },
+    "mode": {
+      "type": "string",
+      "description": "Canonical modes are human-directed, sandboxed-yolo, and managed.",
+      "enum": ["human-directed", "sandboxed-yolo", "managed"]
+    },
+    "title": { "type": "string" },
+    "summary": { "type": "string" },
+    "objective": { "type": "string" },
+    "current_phase": { "type": "string" },
+    "status": { "type": "string" },
+    "target_repo": { "type": "string" },
+    "mission_profile": { "type": "string" },
+    "completed_phases": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "phase_history": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "next_phase": { "type": "string" },
+    "autonomy_status": { "type": "object" },
+    "roles": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "produced_outputs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "phase_outputs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "phase_outputs_by_phase": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "rule_sources": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifacts": { "type": "object" },
+    "project_contract": { "type": "object" },
+    "contract_snapshot": {
+      "type": "object",
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "path": { "type": "string" },
+        "snapshot_path": { "type": "string" }
+      }
+    },
+    "next_actions": { "type": "object" },
+    "sandboxes": { "type": "object" },
+    "handoffs": { "type": "object" },
+    "runtime_profiles": { "type": "object" },
+    "phase_execution_hints": { "type": "object" },
+    "bootstrap": { "type": "object" },
+    "runtime_launcher": { "type": "object" },
+    "platform_expansion": { "type": "object" },
+    "mission_runtime": { "type": "object" },
+    "operator_inbox": { "type": "object" },
+    "runtime_recovery": { "type": "object" },
+    "adaptation_training": { "type": "object" },
+    "evaluation_comparison": { "type": "object" },
+    "self_correction": { "type": "object" },
+    "mission_package": { "type": "object" },
+    "stage_runs": { "type": "object" },
+    "mission_scheduler": { "type": "object" },
+    "branch_records": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "recent_failures": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "blocked_reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "failure_count": { "type": "integer", "minimum": 0 },
+    "branch_closure_mode": { "type": "string" },
+    "downstream_execution_authorized": { "type": "boolean" },
+    "final_report": { "type": "object" },
+    "completion_contract": { "type": "object" },
+    "agent_driver": { "type": "object" },
+    "outer_loop": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["human-directed", "sandboxed-yolo", "managed"]
+        },
+        "policy_name": { "type": "string" },
+        "policy_path": { "type": "string" },
+        "contract_snapshot_path": { "type": "string" },
+        "execution_mode": { "type": "string" },
+        "internal_execution": { "type": "string" },
+        "permissions_profile": { "type": "string" },
+        "intervention_profile": { "type": "string" },
+        "external_publish": { "type": "string" },
+        "default_operator_approval": { "type": "string" },
+        "action_schema": { "type": "string" },
+        "decision_schema": { "type": "string" },
+        "branch_schema": { "type": "string" },
+        "operator_request_schema": { "type": "string" },
+        "decision_log_path": { "type": "string" },
+        "branch_log_path": { "type": "string" },
+        "mission_memory_path": { "type": "string" },
+        "experiment_ledger_path": { "type": "string" },
+        "research_memory_root": { "type": "string" },
+        "research_memory_registry_path": { "type": "string" },
+        "research_memory_schema_path": { "type": "string" },
+        "research_memory_events_path": { "type": "string" },
+        "research_memory_index_path": { "type": "string" },
+        "operator_request_log_path": { "type": "string" },
+        "current_operator_request_path": { "type": "string" },
+        "gate_policy_name": { "type": "string" },
+        "gate_policy_path": { "type": "string" },
+        "hard_gate_profile": { "type": "string" },
+        "hard_gate_profile_summary": { "type": "string" },
+        "branch_statuses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "hard_gate_risk_classes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "recovery_statuses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "soft_gate_risk_classes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "soft_gate_preferred_actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "gate_risk_classes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "autonomous_action_kinds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "mutable_roots": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

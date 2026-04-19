@@ -1,0 +1,97 @@
+version: 1
+policy_name: deeploop-fresh-context-redteam
+artifact_dir_name: fresh_context_redteam
+
+description: >
+  Dedicated fresh-context skeptic/red-team loop that challenges DeepLoop's
+  current favored interpretation by re-examining mission findings from first principles
+  without anchoring to existing conclusions. Produces alternative explanations,
+  falsification prompts, and destructive sanity checks with durable artifacts
+  and ledger integration.
+
+scope:
+  - mission_findings
+  - correction_outputs
+  - run_manifests
+  - study_manifests
+
+default_manifest_globs:
+  - "**/run_manifest.json"
+  - "**/study_manifest.json"
+  - "**/findings_manifest.json"
+
+challenge_modes:
+  fresh_reading:
+    description: Re-read the raw data without reference to existing interpretations
+    severity: high
+    enabled: true
+  alternative_explanations:
+    description: Generate plausible competing hypotheses
+    severity: medium
+    enabled: true
+  falsification_checks:
+    description: Identify specific conditions that would falsify the primary claim
+    severity: high
+    enabled: true
+  destructive_sanity:
+    description: >
+      Apply deliberately adversarial checks: confound blindness,
+      measurement error, cherry-picking, observer bias
+    severity: high
+    enabled: true
+  assumption_audit:
+    description: Expose all implicit assumptions and their dependency graph
+    severity: medium
+    enabled: true
+  confound_surface:
+    description: Identify unmeasured or partially measured confounds
+    severity: high
+    enabled: true
+
+adversarial_tactics:
+  measurement_attacks:
+    - assume all metrics are subject to ±10% systematic error
+    - question whether reported effect size is robust to measurement noise
+    - check for ceiling/floor effects that might artifactually inflate signals
+  cherry_picking_audit:
+    - verify that p-hacking or multiple-testing corrections are documented
+    - check whether subset selection was pre-registered or post-hoc
+    - identify "researcher degrees of freedom"
+  confound_blindness:
+    - list all known confounds that were not controlled
+    - propose unmeasured confounds likely to impact effect size
+    - calculate bounds on effect size after confound adjustment
+  interaction_pathologies:
+    - check whether sample stratification reveals effect heterogeneity
+    - test whether effects reverse in opposite subgroups
+    - examine whether effect interacts with measurement domain
+  alternate_causal_routes:
+    - propose causal paths other than the primary interpretation
+    - weight plausibility by observational priors
+    - generate interventions that would discriminate paths
+
+evidence_standards:
+  threshold_primary_claim_credibility: 0.65
+  min_findings_for_redteam: 2
+  max_alternative_explanations: 5
+  require_falsification_specificity: true
+
+report_structure:
+  - fresh_reading_summary
+  - alternative_explanations_ranked_by_plausibility
+  - falsification_checks_with_operationalizations
+  - destructive_sanity_results
+  - assumption_audit_dependency_graph
+  - confound_surface_catalog
+  - aggregate_credibility_reassessment
+  - recommended_followup_experiments
+
+substrates:
+  translation-pilot:
+    project: translation-pilot
+    run_roots:
+      - ~/workspaces/runs/translation-pilot
+    preferred_challenge_artifacts:
+      - baseline_findings
+      - mechanistic_hypothesis
+      - intervention_predictions

@@ -1,0 +1,59 @@
+version: 1
+roles:
+  - id: planner
+    responsibilities:
+      - translate mission into loop objectives
+      - keep loop state synchronized
+    artifacts:
+      - mission brief
+      - loop plan
+  - id: literature-scout
+    responsibilities:
+      - gather and summarize prior art
+      - maintain benchmark and method watchlists
+    artifacts:
+      - prior-art memo
+      - literature notes
+  - id: experiment-designer
+    responsibilities:
+      - define hypotheses, metrics, and manifests
+      - choose dataset slices and execution settings
+    artifacts:
+      - run manifest draft
+      - ablation plan
+  - id: inference-optimizer
+    responsibilities:
+      - resolve backend, context, and batch probe plans
+      - choose fallback ladders for inference stability
+    artifacts:
+      - resolved inference profile
+      - tuning notes
+  - id: training-optimizer
+    responsibilities:
+      - resolve LoRA/QLoRA/SFT/DPO presets
+      - choose safe precision and optimizer defaults
+    artifacts:
+      - resolved training profile
+      - capacity notes
+  - id: execution-operator
+    responsibilities:
+      - launch runs
+      - capture logs, metrics, and failures
+      - register outputs
+    artifacts:
+      - completed run manifest
+      - run log index
+  - id: critic-verifier
+    responsibilities:
+      - inspect evidence quality
+      - surface confounds and replication gaps
+    artifacts:
+      - critique memo
+      - evidence-state recommendation
+  - id: report-synthesizer
+    responsibilities:
+      - turn validated findings into tables, figures, and prose
+      - preserve uncertainty and caveats
+    artifacts:
+      - summary report
+      - paper-candidate package

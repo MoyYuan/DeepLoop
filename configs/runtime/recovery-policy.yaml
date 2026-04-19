@@ -1,0 +1,32 @@
+version: 1
+summary: Bounded retry, reroute, and resume policy for DeepLoop stage execution.
+
+resume_if_manifest_exists: true
+max_attempts: 2
+
+fallback_backends:
+  default:
+    backend: mock-entailment
+    identifier: mock://entailment
+    dtype: none
+
+classifications:
+  unsupported-backend:
+    action: fallback-backend
+  dependency-missing:
+    action: fallback-backend
+  missing-artifact:
+    action: reroute-prerequisite
+  stage-blocked:
+    action: reroute-prerequisite
+  config-error:
+    action: stop
+  unexpected-error:
+    action: stop
+
+artifact_names:
+  report_json: recovery-report.json
+  history_jsonl: recovery-history.jsonl
+
+ledger:
+  kind: stage-recovery

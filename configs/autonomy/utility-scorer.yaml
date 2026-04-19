@@ -1,0 +1,187 @@
+version: 1
+policy_name: deeploop-utility-scorer
+
+# Multi-factor scoring weights (must sum to 1.0)
+weights:
+  evidence_quality: 0.25
+  replication_gap: 0.20
+  cost_risk_profile: 0.20
+  novelty_proxy: 0.20
+  expected_information_gain: 0.15
+
+# Individual factor configurations
+factors:
+  evidence_quality:
+    description: "Quality of empirical evidence from statistical-rigor evaluation"
+    sources:
+      - statistical-rigor reports (JSON)
+      - manifest metrics
+    inputs:
+      effective_sample_size_path: "metadata.effective_count"
+      confidence_interval_width_path: "metrics.primary.confidence_interval.width"
+      warning_count_path: "metadata.warning_count"
+    computation:
+      # Normalize effective sample size (0-1 scale, typical range 10-1000)
+      sample_size_factor: "min(1.0, max(0, (effective_count - 10) / 500))"
+      # Invert CI width (narrower = higher quality)
+      ci_quality_factor: "max(0, 1 - min(1.0, ci_width / 0.5))"
+      # Penalize warnings
+      warning_factor: "max(0, 1 - (warning_count * 0.1))"
+      # Combined: geometric mean
+      final_computation: "pow(sample_size_factor * ci_quality_factor * warning_factor, 1/3)"
+
+  replication_gap:
+    description: "Consistency and stability across experiment branches"
+    sources:
+      - self-correction ledger
+      - sanity-gates reports
+      - branch manifest comparisons
+    inputs:
+      self_correction_consistency: "metadata.correction_consistency"
+      sanity_pass_rate: "metadata.sanity_pass_rate"
+      branch_variance: "metadata.cross_branch_variance"
+    computation:
+      consistency_component: "self_correction_consistency"  # 0-1
+      pass_rate_component: "sanity_pass_rate"  # 0-1
+      stability_component: "max(0, 1 - branch_variance)"  # variance [0,1] -> stability
+      final_computation: "0.4 * consistency_component + 0.3 * pass_rate_component + 0.3 * stability_component"
+
+  cost_risk_profile:
+    description: "Resource efficiency and execution risk"
+    sources:
+      - run manifests (GPU hours, memory)
+      - retry/failure logs
+      - timing information
+    inputs:
+      gpu_hours: "artifacts.runtime_metrics.gpu_hours"
+      memory_gb: "artifacts.runtime_metrics.peak_memory_gb"
+      retry_count: "artifacts.runtime_metrics.retry_count"
+      total_wall_time_seconds: "artifacts.runtime_metrics.total_seconds"
+    computation:
+      # GPU cost factor (lower hours = higher value)
+      gpu_cost_factor: "max(0, 1 - min(1.0, gpu_hours / 4))"
+      # Memory efficiency (lower peak = higher value)
+      memory_factor: "max(0, 1 - min(1.0, memory_gb / 40))"
+      # Reliability (fewer retries = higher value)
+      reliability_factor: "max(0, 1 - (retry_count * 0.15))"
+      # Efficiency (wall time per GPU hour)
+      efficiency_factor: "min(1.0, max(0, gpu_hours / (total_wall_time_seconds / 3600))) if gpu_hours > 0 else 0.5"
+      final_computation: "0.35 * gpu_cost_factor + 0.25 * memory_factor + 0.25 * reliability_factor + 0.15 * efficiency_factor"
+
+  novelty_proxy:
+    description: "Unexpectedness and divergence from baseline expectations"
+    sources:
+      - sanity-gates deviation analysis
+      - finding summary metrics
+      - baseline comparison
+    inputs:
+      finding_deviation: "metrics.finding_deviation_from_baseline"
+      unexpected_score: "metrics.unexpectedness_factor"
+      findings_count: "findings.total_count"
+      baseline_findings_count: "findings.baseline_count"
+    computation:
+      # Deviation component (higher = more novel, capped)
+      deviation_component: "min(1.0, abs(finding_deviation) / 0.3)"
+      # Unexpectedness component
+      unexpectedness_component: "unexpected_score"  # already 0-1
+      # Finding ratio (more finding per baseline = higher novelty)
+      finding_ratio: "min(1.0, findings_count / max(1, baseline_findings_count))"
+      final_computation: "0.4 * deviation_component + 0.35 * unexpectedness_component + 0.25 * finding_ratio"
+
+  expected_information_gain:
+    description: "Potential for mechanistic understanding and confound mitigation"
+    sources:
+      - confound-guard risk assessment
+      - mechanistic clarity (if applicable)
+      - gap closure potential
+    inputs:
+      confound_pass_rate: "metadata.confound_pass_rate"
+      mechanistic_clarity: "metadata.mechanistic_clarity"
+      gap_closure_potential: "metadata.gap_closure_potential"
+    computation:
+      # Confound safety (higher pass rate = more information gain)
+      confound_component: "confound_pass_rate"  # 0-1
+      # Mechanistic clarity (higher = more specific learning)
+      clarity_component: "mechanistic_clarity"  # 0-1
+      # Gap closure (higher potential = more information)
+      gap_component: "gap_closure_potential"  # 0-1
+      final_computation: "0.5 * confound_component + 0.3 * clarity_component + 0.2 * gap_component"
+
+# Recommendation thresholds
+recommendations:
+  PRIORITIZE:
+    min_score: 0.80
+    conditions:
+      - evidence_quality >= 0.60
+    description: "High value, well-supported findings. Candidate for publication or immediate follow-up."
+
+  CONTINUE:
+    min_score: 0.60
+    max_score: 0.80
+    conditions:
+      - OR:
+          - score >= 0.60
+          - "AND: novelty_proxy > 0.70 AND score >= 0.50"
+    description: "Worth pursuing with potential improvements or replication."
+
+  DEFER:
+    min_score: 0.40
+    max_score: 0.60
+    conditions: []
+    description: "Low priority but not hopeless. Revisit after higher-priority branches complete."
+
+  PRUNE:
+    max_score: 0.40
+    conditions:
+      - OR:
+          - score < 0.40
+          - "AND: confound_risk > 0.80 AND evidence_quality < 0.40"
+    description: "Insufficient value for current constraints. May be resurrected with additional context."
+
+# Adjustment penalties
+penalties:
+  low_evidence_quality:
+    threshold: 0.30
+    penalty: -0.15
+    description: "Applied when evidence quality falls below threshold"
+
+  high_confound_risk:
+    threshold: 0.70
+    penalty: -0.20
+    description: "Applied when confound risk exceeds threshold"
+
+  high_cost:
+    cost_multiplier: 2.0
+    median_reference: true
+    penalty: -0.10
+    description: "Applied when cost exceeds 2x median branch cost"
+
+# Ledger and artifact configuration
+artifacts:
+  report_json_basename: "utility-score-report.json"
+  report_markdown_basename: "utility-score-summary.md"
+  nested_reports: true  # write co-located copies in branch dirs
+
+ledger:
+  kind: "utility-score"
+  include_top_ranked: 5
+
+# Validation configuration
+validation:
+  require_all_source_artifacts: false
+  allow_missing_factors: true
+  missing_factor_value: 0.5  # neutral value if artifact missing
+  min_branches_to_score: 1
+  round_decimal_places: 6
+
+# Performance parameters
+performance:
+  parallel_branch_scoring: true
+  max_workers: 4
+  timeout_per_branch_seconds: 30
+
+# Logging and debugging
+logging:
+  verbose: false
+  include_computation_trace: true
+  artifact_preservation: true

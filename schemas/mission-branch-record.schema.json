@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Mission Branch Record",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "branch_id",
+    "mission_id",
+    "branch_type",
+    "objective",
+    "status",
+    "recovery_status",
+    "runtime_owner",
+    "source_phase"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "branch_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "branch_type": {
+      "type": "string",
+      "enum": ["analysis", "execution", "recovery", "replication", "report"]
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "active",
+        "recovery-active",
+        "replication-active",
+        "critique-ready",
+        "report-ready",
+        "completed",
+        "blocked",
+        "abandoned"
+      ]
+    },
+    "recovery_status": {
+      "type": "string",
+      "enum": ["not-needed", "retry-planned", "reroute-planned", "recovering", "recovered", "blocked", "failed"]
+    },
+    "runtime_owner": {
+      "type": "string",
+      "enum": ["deeploop", "operator", "substrate"]
+    },
+    "source_phase": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_phase": {
+      "type": ["string", "null"]
+    },
+    "parent_branch_id": {
+      "type": ["string", "null"]
+    },
+    "created_by_decision_id": {
+      "type": ["string", "null"]
+    },
+    "git_branch": {
+      "type": ["string", "null"]
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

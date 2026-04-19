@@ -1,0 +1,14 @@
+name: deeploop
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pyyaml
+  - jsonschema
+  - pandas
+  - rich
+  - typer
+  - mkdocs
+  - mkdocs-material
+  - pymdown-extensions

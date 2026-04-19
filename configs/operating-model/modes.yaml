@@ -1,0 +1,68 @@
+version: 2
+default_mode: sandboxed-yolo
+modes:
+  - id: sandboxed-yolo
+    label: Sandboxed YOLO
+    description: Default autopilot-like mode. DeepLoop handles the loop inside explicit sandbox and policy gates.
+    operator_promise: Users set the mission, guardrails, and budget without worrying about runtime internals.
+    human_role:
+      - define mission, guardrails, and budget
+      - review outcomes and intervene only when needed
+    agent_role:
+      - propose hypotheses
+      - prioritize experiments
+      - execute, critique, and summarize bounded work
+    contract:
+      permissions_profile: sandboxed
+      intervention_profile: outcome-review
+      default_operator_approval: not-required
+      hard_gate_profile: minimal
+      public_release: human-review-required
+    required_companions:
+      - configs/autonomy/gates.yaml
+      - configs/autonomy/mission-outer-loop.yaml
+      - configs/autonomy/state-machine.yaml
+      - configs/roles/agent-roles.yaml
+  - id: managed
+    label: Managed
+    description: Expert mode with broader permissions and more operator intervention hooks.
+    operator_promise: Experts can widen permissions and steer the runtime more directly without changing the core loop.
+    human_role:
+      - widen or narrow permissions explicitly
+      - attach intervention hooks and review checkpoints
+      - review strategic outcomes and risky changes
+    agent_role:
+      - run the same mission loop with expanded authority when explicitly configured
+      - surface intervention points and status clearly
+    contract:
+      permissions_profile: expanded
+      intervention_profile: hook-enabled
+      default_operator_approval: not-required
+      hard_gate_profile: minimal
+      public_release: human-review-required
+    required_companions:
+      - configs/autonomy/gates.yaml
+      - configs/autonomy/mission-outer-loop.yaml
+      - configs/autonomy/state-machine.yaml
+      - configs/roles/agent-roles.yaml
+  - id: human-directed
+    label: Human-directed
+    description: Least autonomous mode. Humans stay in charge of design and approval decisions.
+    operator_promise: Use this when close supervision matters more than autonomy.
+    human_role:
+      - define mission and constraints
+      - approve scientific pivots and important changes
+      - review paper-candidate claims
+    agent_role:
+      - implement approved experiments
+      - keep manifests, configs, and reports synchronized
+    contract:
+      permissions_profile: human-approved
+      intervention_profile: step-by-step
+      default_operator_approval: required
+      hard_gate_profile: minimal
+      public_release: human-review-required
+    allowed_without_extra_approval:
+      - literature review
+      - small CPU checks
+      - bounded single-GPU inference under the configured autonomy gates

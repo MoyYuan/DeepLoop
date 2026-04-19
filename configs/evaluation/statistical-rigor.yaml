@@ -1,0 +1,81 @@
+# Statistical Rigor Evaluation Configuration
+# ============================================
+# This configuration defines parameters for evaluating and reporting
+# the statistical rigor of bounded runs and studies.
+
+version: 1
+policy_name: evaluation-statistical-rigor
+description: |
+  Evaluation-phase configuration for statistical rigor assessment of runs
+  and studies. Used to validate rigor properties before promotion decisions.
+
+# Evaluation thresholds for rigor checks
+rigor_assessment:
+  # Minimum sample size for "bounded" verdict
+  minimum_bounded_examples: 32
+  
+  # Minimum sample size for "exploratory" verdict
+  minimum_exploratory_examples: 16
+  
+  # Threshold for flagging slice as degenerate (too few examples)
+  degenerate_slice_threshold: 3
+  
+  # Threshold for flagging slice as small (below caution level)
+  small_slice_threshold: 8
+  
+  # Confidence level for uncertainty intervals (e.g., 0.95 for 95%)
+  confidence_level: 0.95
+  
+  # Z-value for 95% confidence interval (1.96 standard)
+  z_value: 1.959963984540054
+
+# Acceptance criteria for evaluation phase
+acceptance_criteria:
+  # Accept only completed runs
+  require_completed_status: true
+  
+  # Blocked statuses that fail rigor check
+  blocked_statuses:
+    - blocked
+    - failed
+    - planned
+  
+  # Maximum allowed interval width for acceptance
+  max_interval_width: 0.5
+  
+  # Whether to require direct measurement (vs inherited reference)
+  require_direct_measurement: false
+
+# Report generation for evaluation
+report_generation:
+  # Write detailed markdown reports
+  write_markdown: true
+  
+  # Write machine-readable JSON reports
+  write_json: true
+  
+  # Include slice-level summaries
+  include_group_summaries: true
+  
+  # Include difference summaries (e.g., lexicalization gap)
+  include_difference_summaries: true
+  
+  # Include warnings in report
+  include_warnings: true
+  
+  # Include promotion guidance
+  include_promotion_guidance: true
+
+# Artifact output naming
+artifacts:
+  # Directory where evaluation reports are written
+  artifact_dir: evaluation-reports
+  
+  # JSON artifact name pattern
+  json_name_pattern: rigor_evaluation_{artifact_name}.json
+  
+  # Markdown artifact name pattern
+  markdown_name_pattern: rigor_evaluation_{artifact_name}.md
+  
+  # Ledger entry type
+  ledger_entry_kind: rigor-evaluation

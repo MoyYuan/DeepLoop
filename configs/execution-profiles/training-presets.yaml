@@ -1,0 +1,39 @@
+version: 1
+machine: public-single-gpu-reference
+hardware_notes:
+  - prefer fp16 over bf16 on this GPU class
+  - treat full dense 7B-9B fine-tuning as non-default
+presets:
+  - id: lora-small-fp16
+    applies_to:
+      - 1b-to-4b models
+    load_strategy: full_fp16
+    precision: fp16
+    optimizer: adamw_8bit
+    gradient_checkpointing: true
+    target_runtime_tier: single-gpu-lora-train
+    fallback_ladder:
+      - reduce sequence length
+      - increase gradient accumulation
+      - reduce per-device batch size
+  - id: qlora-large-single-gpu
+    applies_to:
+      - 7b-to-9b models
+    load_strategy: four_bit_base_plus_lora
+    precision: fp16
+    optimizer: paged_adamw_8bit
+    gradient_checkpointing: true
+    target_runtime_tier: single-gpu-lora-train
+    fallback_ladder:
+      - reduce max sequence length
+      - reduce LoRA target modules
+      - reduce per-device batch size
+  - id: dpo-adapter-single-gpu
+    applies_to:
+      - 3b-to-9b models
+    load_strategy: adapter_based_only
+    precision: fp16
+    optimizer: paged_adamw_8bit
+    gradient_checkpointing: true
+    target_runtime_tier: single-gpu-dpo-train
+    approval_required: true

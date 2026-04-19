@@ -1,0 +1,62 @@
+version: 1
+entities:
+  - id: mission
+    required_fields:
+      - mission_id
+      - summary
+      - constraints
+      - owner_mode
+      - current_phase
+  - id: hypothesis
+    required_fields:
+      - hypothesis_id
+      - mission_id
+      - statement
+      - status
+  - id: experiment
+    required_fields:
+      - manifest_id
+      - hypothesis_id
+      - resource_tier
+      - execution_profile
+      - result_state
+  - id: critique
+    required_fields:
+      - critique_id
+      - manifest_id
+      - finding
+      - recommendation
+  - id: decision
+    required_fields:
+      - decision_id
+      - related_entity_id
+      - rationale
+      - actor
+retrieval:
+  default_limit: 5
+  min_term_length: 3
+  evidence_strength: grounded
+promotion:
+  statuses:
+    - candidate
+    - promoted
+  promoted_sources:
+    - promoted-finding
+    - branching-decision
+retention_policy:
+  default_active_entries_per_mission_entity_type: 8
+  preserve_experiment_statuses:
+    - failed
+    - blocked
+  preserve_decision_types:
+    - branch
+    - reroute
+    - phase-transition
+retention_rules:
+  keep_negative_results: true
+  keep_failed_experiments: true
+  keep_branching_decisions: true
+  keep_promoted_findings: true
+notes:
+  - The indexed memory keeps an append-only event log plus a materialized retrieval index.
+  - Retrieval is inverted-index based and only surfaces grounded evidence with provenance.

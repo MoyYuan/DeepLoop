@@ -1,0 +1,26 @@
+project:
+  name: replication-heavy-redteam
+  title: Replication-heavy prompt-defense redteam
+  summary: >
+    Plain minimal researcher folder for a bounded prompt-defense evaluation that
+    should emphasize repeatability and replication notes.
+  objective: >
+    Evaluate a small-model prompt-defense idea against a bounded adversarial
+    prompt set, prefer repeatable manifests over broad exploration, and finish
+    the project autonomously from this folder only.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the substrate folder free of DeepLoop runtime state, generated configs, and code.
+    - Stay within 10 GPU-hours total and at most 2 parallel jobs.
+    - Prefer a small number of repeatable evaluation runs over broad speculative work.
+  human_inputs:
+    ideas:
+      - Prompt-defense robustness on a bounded adversarial prompt set
+    budgets:
+      max_gpu_hours: 10
+      max_parallel_jobs: 2
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/benchmark-and-metrics.md
+    - docs/replication-notes.md

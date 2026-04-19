@@ -1,0 +1,45 @@
+version: 1
+policy_name: deeploop-release-candidate
+claim_state_floor: paper-candidate
+evidence_policy_reference: ../autonomy/evidence-policy.yaml
+
+required_package_checks:
+  - copy_complete
+  - outside_repo_outputs
+  - all_required_artifacts_present
+
+required_artifact_categories:
+  - mission_specs
+  - mission_configs
+  - ledgers
+  - findings
+  - manifests
+  - critique_reports
+  - runtime_metadata
+
+required_summary_sections:
+  - operator_handoff
+  - paper_drafting
+  - release_review
+
+required_approvals:
+  - id: provenance-review
+    description: Mission provenance, cross-links, and copied artifact lineage were reviewed.
+    satisfies_blockers:
+      - provenance
+  - id: licensing-review
+    description: Redistribution and licensing constraints were reviewed for the package contents.
+    satisfies_blockers:
+      - licensing
+  - id: release-operator
+    description: A human operator approved the release-candidate promotion decision.
+    satisfies_blockers:
+      - human approval
+
+blocker_policies:
+  fail_on_release_candidate_blockers: true
+
+outputs:
+  review_json: release_candidate_review.json
+  review_markdown: release_candidate_review.md
+  promotion_json: release_candidate_promotion.json

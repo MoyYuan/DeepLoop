@@ -1,0 +1,42 @@
+version: 1
+policy_name: deeploop-self-healing-runtime
+artifact_dir_name: self_healing_runtime
+max_attempts: 3
+max_retries: 1
+max_resumes: 1
+max_reroutes: 1
+signal_detection:
+  import_env_patterns:
+    - module not found
+    - modulenotfounderror
+    - importerror
+    - environmentname not found
+    - condaenvnotfounderror
+    - no such file or directory
+    - command not found
+taxonomy:
+  command-failure:
+    severity: high
+    default_action: retry
+    repair_order: [retry, reroute, stop]
+    summary: The command exited non-zero before DeepLoop observed a usable manifest.
+  import-env-failure:
+    severity: high
+    default_action: reroute
+    repair_order: [reroute, stop]
+    summary: Environment bootstrap or Python imports failed before the stage logic could run.
+  missing-artifact:
+    severity: high
+    default_action: resume
+    repair_order: [resume, retry, stop]
+    summary: The command exited but did not materialize the expected manifest artifact.
+  schema-mismatch:
+    severity: high
+    default_action: resume
+    repair_order: [resume, reroute, stop]
+    summary: The expected manifest exists but is malformed or violates the runtime contract.
+  scientific-failure:
+    severity: high
+    default_action: reroute
+    repair_order: [reroute, stop]
+    summary: The stage produced a manifest whose scientific outcome requires reroute or halt.

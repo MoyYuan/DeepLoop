@@ -1,0 +1,18 @@
+policy_name: deeploop-multi-mission-scheduler
+base_priority_weight: 100.0
+budget:
+  max_total_iterations: 12
+  default_mission_budget_iterations: 6
+  slice_iterations: 1
+  max_consecutive_slices: 1
+fairness:
+  starvation_window: 2
+  aging_weight: 25.0
+preemption:
+  higher_priority_delta: 1
+  preempt_for_higher_priority: true
+  preempt_for_operator_attention: true
+  preempt_for_safety: true
+composition:
+  open_request_policy: pause-lower-priority
+  safety_block_policy: pause-lower-priority

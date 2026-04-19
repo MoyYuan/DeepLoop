@@ -1,0 +1,22 @@
+version: 1
+primary_local_inference_backend: local-transformers
+secondary_local_inference_backend: vllm
+runtime_envs:
+  planning: deeploop
+  local_inference: llm
+  repo_contract_checks: deeploop
+env_specs:
+  planning: environment.yml
+  local_inference: environment.llm.yml
+related_contracts:
+  provider_setup: configs/runtime/provider-setup-registry.yaml
+  provider_selection: configs/runtime/provider-selection-registry.yaml
+backend_rules:
+  - use the `llm` Conda env for real local model execution unless a repo-specific override exists
+  - prefer `local-transformers` as the first standardized runtime because it already works with local downloaded models
+  - enable `vllm` only when the environment and model family are confirmed to work cleanly
+  - keep backend choice explicit in manifests and findings
+  - backend-policy informs local backend fallback inside the separate provider-selection contract; it does not choose mission-time providers by itself
+deferred:
+  - distributed inference backends
+  - multi-node execution

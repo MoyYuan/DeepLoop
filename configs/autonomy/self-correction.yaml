@@ -1,0 +1,70 @@
+version: 1
+policy_name: deeploop-self-correction
+artifact_dir_name: self_correction
+default_manifest_globs:
+  - "**/run_manifest.json"
+  - "**/study_manifest.json"
+thresholds:
+  min_examples_for_signal: 8
+  min_examples_for_confident_claim: 16
+  accuracy_collapse_max: 0.05
+  weak_accuracy_max: 0.30
+  lexicalization_gap_abs_min: 0.25
+  family_collapse_accuracy_max: 0.05
+  min_family_examples: 1
+signal_detection:
+  blocked_prerequisite_phrases:
+    - do not execute until
+    - gated on
+    - gated until
+    - missing prerequisite
+  prep_only_phrases:
+    - preparation artifact only
+    - analysis-prep
+taxonomy:
+  insufficient-evidence:
+    severity: warn
+    default_action: continue
+    summary: The run is too small for confident claims but can still serve as a diagnostic anchor.
+  accuracy-collapse:
+    severity: high
+    default_action: stop
+    summary: Accuracy collapsed to near-zero and the branch should not remain a primary anchor.
+  weak-accuracy-signal:
+    severity: medium
+    default_action: continue
+    summary: The run has non-zero signal and can still anchor failure-focused follow-up work.
+  lexicalization-instability:
+    severity: medium
+    default_action: reroute
+    summary: Performance differs sharply across lexicalization settings and needs targeted follow-up.
+  rule-family-collapse:
+    severity: high
+    default_action: reroute
+    summary: Specific rule families collapsed and should become explicit reroute targets.
+  execution-failed:
+    severity: high
+    default_action: stop
+    summary: The run failed and should not be treated as valid evidence.
+  execution-blocked:
+    severity: high
+    default_action: reroute
+    summary: The run was blocked before producing usable evidence.
+  blocked-prerequisite:
+    severity: high
+    default_action: reroute
+    summary: The run was blocked by a missing prerequisite artifact or gating dependency.
+  prep-only-artifact:
+    severity: warn
+    default_action: continue
+    summary: The artifact is preparation-only and should not be treated as completed evidence.
+substrates:
+  translation-pilot:
+    project: translation-pilot
+    run_roots:
+      - ~/workspaces/runs/translation-pilot
+    preferred_followups:
+      weak-baseline: mechanistic-localization
+      lexicalization-instability: lexicalization-slice-audit
+      blocked-intervention: mechanistic-localization
+      stopped-baseline: alternate-checkpoint-or-prompt

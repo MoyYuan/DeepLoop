@@ -1,0 +1,155 @@
+version: 1
+contract_id: public-provider-setup
+canonical_public_doc: docs/reference/provider-setup.md
+first_class_provider_families:
+  - copilot-cli
+  - openai-compatible-api
+  - anthropic-api
+  - local-transformers
+  - vllm
+scope:
+  layer: machine-level-provider-availability
+  includes:
+    - required tools and Python modules
+    - expected env var names and auth prerequisites
+    - readiness expectations before mission execution
+  excludes:
+    - mission/runtime provider-model selection
+    - per-mission model routing and fallback policy
+    - checked-in secrets or credential values
+related_runtime_surfaces:
+  local_backend_policy: configs/runtime/backend-policy.yaml
+  mission_runtime_selection: configs/runtime/provider-selection-registry.yaml
+  recursive_agent_runtime_example: configs/runtime/recursive-agent-runtime-provider.example.yaml
+provider_families:
+  copilot-cli:
+    display_name: Copilot CLI
+    public_contract_tier: first-class
+    runtime_integration: implemented
+    required_tools:
+      - command: copilot
+        purpose: CLI entrypoint used by deeploop.runtime.provider_launcher
+      - command: python
+        purpose: runs scripts/runtime/invoke_provider_prompt.py
+    expected_env_vars:
+      required: []
+      optional:
+        - GITHUB_TOKEN
+    auth_prerequisites:
+      - complete Copilot CLI authentication on the machine before mission execution
+    readiness_expectations:
+      automated:
+        - kind: command
+          command: copilot --help
+          expectation: exits 0
+        - kind: command
+          command: python scripts/runtime/invoke_provider_prompt.py --help
+          expectation: exits 0
+      manual:
+        - an authenticated Copilot CLI session is already available on the machine
+  openai-compatible-api:
+    display_name: OpenAI-compatible API providers
+    public_contract_tier: first-class
+    runtime_integration: deferred
+    required_tools:
+      - command: python
+        purpose: control-plane entrypoint
+      - command: curl
+        purpose: optional manual HTTPS reachability check
+    expected_env_vars:
+      required:
+        - OPENAI_API_KEY
+      optional:
+        - OPENAI_BASE_URL
+        - OPENAI_ORG_ID
+    auth_prerequisites:
+      - provision API credentials outside the repo
+    readiness_expectations:
+      automated:
+        - kind: env
+          name: OPENAI_API_KEY
+          expectation: set in the operator shell or runner environment
+      manual:
+        - if OPENAI_BASE_URL is set, confirm the endpoint is reachable over HTTPS
+        - DeepLoop does not yet ship a public request adapter or mission/runtime selector for this family
+  anthropic-api:
+    display_name: Anthropic API providers
+    public_contract_tier: first-class
+    runtime_integration: deferred
+    required_tools:
+      - command: python
+        purpose: control-plane entrypoint
+      - command: curl
+        purpose: optional manual HTTPS reachability check
+    expected_env_vars:
+      required:
+        - ANTHROPIC_API_KEY
+      optional:
+        - ANTHROPIC_BASE_URL
+    auth_prerequisites:
+      - provision API credentials outside the repo
+    readiness_expectations:
+      automated:
+        - kind: env
+          name: ANTHROPIC_API_KEY
+          expectation: set in the operator shell or runner environment
+      manual:
+        - if ANTHROPIC_BASE_URL is set, confirm the endpoint is reachable over HTTPS
+        - DeepLoop does not yet ship a public request adapter or mission/runtime selector for this family
+  local-transformers:
+    display_name: local-transformers
+    public_contract_tier: first-class
+    runtime_integration: implemented
+    suggested_env_file: environment.llm.yml
+    required_tools:
+      - command: python
+        purpose: local inference runtime
+    required_python_modules:
+      - torch
+      - transformers
+    expected_env_vars:
+      required: []
+      optional:
+        - HF_HOME
+        - TRANSFORMERS_CACHE
+        - HUGGING_FACE_HUB_TOKEN
+    auth_prerequisites:
+      - if model weights are gated or private, provision access outside the repo
+    readiness_expectations:
+      automated:
+        - kind: python-import
+          modules:
+            - torch
+            - transformers
+          expectation: imports succeed
+      manual:
+        - target model weights are reachable through a local path or configured cache/access path
+  vllm:
+    display_name: vllm
+    public_contract_tier: first-class
+    runtime_integration: implemented
+    suggested_env_file: environment.llm.yml
+    required_tools:
+      - command: python
+        purpose: local inference runtime
+    required_python_modules:
+      - torch
+      - vllm
+    expected_env_vars:
+      required: []
+      optional:
+        - CUDA_VISIBLE_DEVICES
+        - HF_HOME
+        - HUGGING_FACE_HUB_TOKEN
+    auth_prerequisites:
+      - if model weights are gated or private, provision access outside the repo
+    readiness_expectations:
+      automated:
+        - kind: python-import
+          modules:
+            - torch
+            - vllm
+          expectation: imports succeed
+      manual:
+        - the machine exposes a suitable accelerator/runtime for the intended vllm workload
+        - backend-policy keeps vllm secondary until a mission explicitly chooses it

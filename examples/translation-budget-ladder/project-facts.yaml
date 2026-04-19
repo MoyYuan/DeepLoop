@@ -1,0 +1,26 @@
+project:
+  name: translation-budget-ladder
+  title: Translation budget ladder
+  summary: >
+    Plain minimal researcher folder for a benchmark-heavy translation project
+    with explicit budget and baseline constraints.
+  objective: >
+    Improve a trusted machine translation metric over the stronger starting
+    baseline on at least one direction while keeping this folder as
+    researcher-owned input only.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the substrate folder free of DeepLoop runtime state, generated configs, and code.
+    - Limit the initial model roster to Qwen3.5-0.5B-Instruct and Qwen3.5-1.5B-Instruct.
+    - Stay within 12 GPU-hours total and at most 2 parallel jobs.
+  human_inputs:
+    ideas:
+      - English <-> Chinese machine translation
+    budgets:
+      max_gpu_hours: 12
+      max_parallel_jobs: 2
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/benchmark-and-metrics.md
+    - docs/budget-and-baselines.md

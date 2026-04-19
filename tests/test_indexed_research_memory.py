@@ -1,0 +1,156 @@
+from __future__ import annotations
+
+import json
+import sys
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = REPO_ROOT / "src"
+TESTS_ROOT = REPO_ROOT / "tests"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+if str(TESTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(TESTS_ROOT))
+
+from deeploop.research.indexed_memory import (
+    build_research_memory_contract,
+    load_research_memory_index,
+    record_research_memory_entry,
+    retrieve_research_memory,
+)
+from runtime_artifact_helpers import fresh_test_root
+
+TEST_WORK_ROOT = REPO_ROOT / "tests" / "_runtime_artifacts" / "indexed_research_memory"
+
+
+def _fresh_test_root(name: str) -> Path:
+    return fresh_test_root(TEST_WORK_ROOT, name)
+
+
+class IndexedResearchMemoryTests(unittest.TestCase):
+    def test_records_retrievable_grounded_evidence_with_provenance(self) -> None:
+        test_root = _fresh_test_root("retrieves_grounded_evidence")
+        contract = build_research_memory_contract(memory_root=test_root / "research-memory")
+
+        recorded = record_research_memory_entry(
+            {
+                "entity_type": "critique",
+                "entity_id": "finding-adapter-patch",
+                "mission_id": "mission-prior",
+                "status": "recorded",
+                "summary": "Adapter patch reduced crash rate while preserving accuracy.",
+                "payload": {
+                    "critique_id": "finding-adapter-patch",
+                    "manifest_id": "manifest-7",
+                    "finding": "Adapter patch reduced crash rate while preserving accuracy.",
+                    "recommendation": "Reuse the patch whenever the failure mode is crash instability.",
+                },
+                "provenance": {
+                    "source_kind": "promoted-finding",
+                    "mission_id": "mission-prior",
+                    "recorded_at": "2026-01-01T00:00:00+00:00",
+                    "source_paths": [str(test_root / "mission-prior" / "findings" / "finding-adapter-patch.md")],
+                    "source_entry_id": "promoted-finding-finding-adapter-patch",
+                },
+                "promotion": {
+                    "status": "promoted",
+                    "promoted_at": "2026-01-01T00:00:00+00:00",
+                    "source_entry_ids": ["promoted-finding-finding-adapter-patch"],
+                },
+            },
+            contract=contract,
+        )
+
+        matches = retrieve_research_memory(query="crash rate accuracy patch", contract=contract, limit=3)
+
+        self.assertEqual(recorded["entity_type"], "critique")
+        self.assertEqual(matches[0]["entity_id"], "finding-adapter-patch")
+        self.assertEqual(matches[0]["promotion"]["status"], "promoted")
+        self.assertIn("finding-adapter-patch.md", matches[0]["provenance"]["source_paths"][0])
+
+    def test_retention_archives_old_ephemeral_entries_but_keeps_failed_results(self) -> None:
+        test_root = _fresh_test_root("retains_failed_results")
+        contract = build_research_memory_contract(memory_root=test_root / "research-memory")
+
+        for index in range(10):
+            record_research_memory_entry(
+                {
+                    "entity_type": "experiment",
+                    "entity_id": f"experiment-{index}",
+                    "mission_id": "mission-retention",
+                    "status": "completed",
+                    "summary": f"Completed bounded run {index}.",
+                    "payload": {
+                        "manifest_id": f"manifest-{index}",
+                        "hypothesis_id": "hypothesis-main",
+                        "resource_tier": "bounded",
+                        "execution_profile": "stage-kernel",
+                        "result_state": "completed",
+                    },
+                    "provenance": {
+                        "source_kind": "experiment-run",
+                        "mission_id": "mission-retention",
+                        "recorded_at": f"2026-01-01T00:00:{index:02d}+00:00",
+                        "source_paths": [str(test_root / f"run-{index}.json")],
+                        "source_entry_id": f"experiment-{index}",
+                    },
+                    "promotion": {"status": "candidate", "source_entry_ids": [f"experiment-{index}"]},
+                },
+                contract=contract,
+            )
+        record_research_memory_entry(
+            {
+                "entity_type": "experiment",
+                "entity_id": "experiment-failed-anchor",
+                "mission_id": "mission-retention",
+                "status": "failed",
+                "summary": "Failed run exposed a reproducible crash loop.",
+                "payload": {
+                    "manifest_id": "manifest-failed",
+                    "hypothesis_id": "hypothesis-main",
+                    "resource_tier": "bounded",
+                    "execution_profile": "stage-kernel",
+                    "result_state": "failed",
+                },
+                "provenance": {
+                    "source_kind": "experiment-run",
+                    "mission_id": "mission-retention",
+                    "recorded_at": "2026-01-01T00:00:59+00:00",
+                    "source_paths": [str(test_root / "failed-run.json")],
+                    "source_entry_id": "experiment-failed-anchor",
+                },
+                "promotion": {"status": "candidate", "source_entry_ids": ["experiment-failed-anchor"]},
+            },
+            contract=contract,
+        )
+
+        index = load_research_memory_index(contract=contract)
+        active_ids = {entry["entity_id"] for entry in index["active_entries"]}
+        archived_ids = {entry["entity_id"] for entry in index["archived_entries"]}
+
+        self.assertIn("experiment-failed-anchor", active_ids)
+        self.assertNotIn("experiment-0", active_ids)
+        self.assertIn("experiment-0", archived_ids)
+
+    def test_load_research_memory_index_repairs_concatenated_json_documents(self) -> None:
+        test_root = _fresh_test_root("repairs_concatenated_index")
+        contract = build_research_memory_contract(memory_root=test_root / "research-memory")
+        index_path = Path(contract["research_memory_index_path"])
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        first = {"schema_version": 1, "active_entries": [{"entity_id": "old"}], "archived_entries": []}
+        second = {"schema_version": 1, "active_entries": [{"entity_id": "new"}], "archived_entries": []}
+        index_path.write_text(
+            json.dumps(first, indent=2) + "\n" + json.dumps(second, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+        repaired = load_research_memory_index(contract=contract)
+
+        self.assertEqual([entry["entity_id"] for entry in repaired["active_entries"]], ["new"])
+        persisted = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual([entry["entity_id"] for entry in persisted["active_entries"]], ["new"])
+
+
+if __name__ == "__main__":
+    unittest.main()

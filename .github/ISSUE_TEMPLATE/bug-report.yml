@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible problem in DeepLoop's bootstrap, runtime, packaging, or docs.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please keep the report grounded in the exact command, environment, and mission/package state you observed.
+        Do not use this form for security vulnerabilities; follow `SECURITY.md` instead.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Supported environment shape you used (for example Linux + Python 3.11 + pip editable install or Conda).
+      placeholder: Linux, Python 3.11, pip install -e .
+    validations:
+      required: true
+  - type: dropdown
+    id: bootstrap-path
+    attributes:
+      label: Bootstrap path
+      options:
+        - Plain folder bootstrap
+        - Explicit mission config
+        - Stage kernel only
+        - Release/package workflow
+        - Docs-only path
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Exact command
+      description: Include the exact command you ran.
+      placeholder: python scripts/mission/run_project.py --project-root <project-folder> --until-complete
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened
+      description: Include mission status, operator inbox state, and any release/package outcome when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Relevant artifacts
+      description: Mission state, package manifest, release review, logs, or minimal reproduction paths if safe to share.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Extra context
+      description: Anything else that narrows the reproduction or helps classify the boundary.

@@ -1,0 +1,23 @@
+version: 1
+artifact_dir_name: recursive_agent_runtime
+max_iterations: 12
+max_consecutive_failures: 2
+timeout_seconds: 1800
+phase_timeout_seconds:
+  execution: 21600
+  replication: 10800
+recent_ledger_limit: 8
+recent_memory_limit: 6
+completion_token: "<DEE PLOOP COMPLETE>"
+selection_contract: configs/runtime/provider-selection-registry.yaml
+supported_selection_axes:
+  - mission
+  - loop
+  - phase
+  - role
+notes:
+  - Inspired by Ralph's fresh-context loop and AutoResearch's keep-discard experiment loop.
+  - Provider setup stays in docs/reference/provider-setup.md and configs/runtime/provider-setup-registry.yaml.
+  - Provider/model selection stays in the separate provider-selection contract; loop configs can attach a provider_selection block without restating machine setup.
+  - DeepLoop supplies the recursive runtime; operator-local config supplies the actual provider-compatible CLI command or provider launcher invocation.
+  - Override mission-specific values in a separate config passed to scripts/mission/run_recursive_agent_loop.py.

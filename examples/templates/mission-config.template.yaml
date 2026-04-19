@@ -1,0 +1,39 @@
+mission:
+  id: TODO_MISSION_ID
+  mode: sandboxed-yolo
+  title: TODO_MISSION_TITLE
+  summary: TODO_MISSION_SUMMARY
+  objective: TODO_MISSION_OBJECTIVE
+  target_repo: ~/workspaces/repos/TODO_REPO
+  target_project: TODO_PROJECT
+  constraints:
+    - TODO_CONSTRAINT
+  human_inputs:
+    ideas:
+      - TODO_IDEA
+    budgets:
+      max_gpu_hours: TODO_MAX_GPU_HOURS
+      max_parallel_jobs: 1
+roles:
+  - planner
+  - literature-scout
+  - dataset-strategist
+  - experiment-designer
+  - execution-operator
+  - critic-verifier
+  - report-synthesizer
+phases:
+  - idea-intake
+  - literature-review
+  - question-design
+  - benchmark-selection
+  - experiment-design
+  - execution
+  - critique
+  - replication
+  - final-report
+artifacts:
+  docs:
+    - TODO_DOC
+  configs:
+    - TODO_CONFIG

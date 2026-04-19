@@ -1,0 +1,28 @@
+version: 1
+comparison_axes:
+  - useful_findings_rate
+  - reproducibility_rate
+  - crash_free_run_rate
+  - time_to_first_useful_finding
+  - human_review_load
+  - final_report_quality
+baselines:
+  - human-directed
+  - sandboxed-yolo
+  - managed
+measurement_rules:
+  useful_findings_rate:
+    definition: fraction of completed runs that lead to a critique-validated improvement or insight
+  reproducibility_rate:
+    definition: fraction of exploratory findings that survive replication attempts
+  crash_free_run_rate:
+    definition: fraction of runs completed without fatal errors or abandoned instability
+  time_to_first_useful_finding:
+    definition: wall-clock time from mission start to first critique-validated useful result
+  human_review_load:
+    definition: count of human approvals or interventions required per mission
+  final_report_quality:
+    definition: reviewer-scored quality of the synthesized findings package
+notes:
+  - DeepLoop should be measured as a system, not only by its best individual run.
+  - First comparisons should benchmark sandboxed-yolo against human-directed; managed is the expert follow-up tier.

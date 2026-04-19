@@ -1,0 +1,62 @@
+version: 1
+policy_name: deeploop-platform-expansion
+summary: |
+  Coordination contract for mission-linked scheduler, indexed-memory, and
+  release-automation surfaces. Mission bootstrap seeds stable handoff paths,
+  then runtime, packaging, and release review keep those artifacts synchronized
+  while the higher-level services continue to mature.
+
+materialization:
+  platform_root: "{mission_root}/runtime/platform"
+  manifest_name: "platform-expansion.json"
+
+shared_contracts:
+  memory_registry: "{repo_root}/configs/memory/registry.yaml"
+  artifact_package_contract: "{repo_root}/configs/runtime/artifact-package-contract.yaml"
+  mission_package_contract: "{repo_root}/configs/runtime/mission-package.yaml"
+  release_scripts_root: "{repo_root}/scripts/release"
+
+surfaces:
+  scheduler:
+    status: planned
+    description: Mission-linked scheduler handoff rooted above the repaired single-mission runtime.
+    handoff_name: "scheduler-handoff.json"
+    consumes:
+      - "{mission_state_path}"
+      - "{mission_root}/mission_memory.json"
+      - "{mission_root}/mission_experiments.jsonl"
+    produces:
+      - "{mission_root}/runtime/platform/scheduler/mission-queue.json"
+      - "{mission_root}/runtime/platform/scheduler/dispatch-records.jsonl"
+    integration_hooks:
+      - Mission bootstrap seeds the canonical queue and dispatch-log paths for the scheduler surface.
+      - Scheduler sync writes queue, dispatch, and summary artifacts back to those published locations.
+  indexed_memory:
+    status: planned
+    description: Cross-mission indexed-memory ingestion surface rooted in the stable memory registry contract.
+    handoff_name: "indexed-memory-handoff.json"
+    consumes:
+      - "{repo_root}/configs/memory/registry.yaml"
+      - "{mission_root}/mission_memory.json"
+      - "{mission_root}/mission_experiments.jsonl"
+      - "{mission_root}/ledger.jsonl"
+    produces:
+      - "{mission_root}/runtime/platform/indexed-memory/source-catalog.json"
+      - "{mission_root}/runtime/platform/indexed-memory/ingest-jobs.jsonl"
+    integration_hooks:
+      - The catalog must only point at durable mission artifacts or stable contracts.
+      - Current sync emits source catalogs plus ingest-job records; deeper indexing can extend the same artifact locations.
+  release_automation:
+    status: planned
+    description: Release automation handoff rooted in the existing mission and artifact package contracts plus review gates.
+    handoff_name: "release-automation-handoff.json"
+    consumes:
+      - "{repo_root}/configs/runtime/mission-package.yaml"
+      - "{repo_root}/configs/runtime/artifact-package-contract.yaml"
+      - "{mission_root}/runtime/platform/platform-expansion.json"
+    produces:
+      - "{mission_root}/runtime/platform/release/release-candidate-request.json"
+      - "{mission_root}/runtime/platform/release/release-notes-draft.md"
+    integration_hooks:
+      - Release automation reads the packaged mission summary and critique ceiling before proposing promotion.
+      - Operator-facing release review remains the canonical approval gate even when automation can draft requests and notes.

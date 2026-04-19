@@ -1,0 +1,161 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - docs/**
+      - mkdocs.yml
+      - .github/workflows/docs.yml
+  pull_request:
+
+jobs:
+  repo-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install control-plane deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Repo scaffold check
+        run: make repo-check
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run selected unit tests
+        run: python -m unittest tests.test_mission_state tests.test_mission_decision_engine tests.test_recursive_agent_runtime tests.test_artifact_packager -q
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run selected integration tests
+        run: python -m unittest tests.test_mission_autonomy tests.test_mission_runtime tests.test_mission_monitor tests.test_mission_package -q
+
+  smoke-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install smoke deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run selected smoke tests
+        run: python -m unittest tests.test_stage_kernels tests.test_end_to_end_smoke -q
+
+  public-bootstrap-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bootstrap deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run public bootstrap contract
+        run: make public-bootstrap-check
+
+  bootstrap-preflight-py312:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bootstrap deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Run bootstrap preflight on Python 3.12
+        run: |
+          make setup
+          make public-bootstrap-preflight
+          python -m unittest tests.test_repo_contract tests.test_public_bootstrap.PublicBootstrapTests.test_public_bootstrap_preflight_reports_supported_environment -q
+
+  docs-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install docs deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[docs]"
+
+      - name: Strict docs build
+        run: make docs-build

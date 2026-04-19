@@ -1,0 +1,27 @@
+version: 1
+summary: Contract for collecting and cross-linking DeepLoop mission artifacts.
+
+package_dir_name: mission_packages
+artifact_index_name: artifact-index.json
+package_manifest_name: package-manifest.json
+summary_markdown_name: package-summary.md
+link_dir_name: linked_artifacts
+
+mission_root_globs:
+  - "**/*.json"
+  - "**/*.jsonl"
+  - "**/*.md"
+  - "**/*.yaml"
+
+include_ledger_related_paths: true
+include_substrate_manifests: true
+
+substrate_manifest_globs:
+  - "**/run_manifest.json"
+  - "**/study_manifest.json"
+
+extra_globs:
+  - "{runs_root}/utility-score-reports/*.json"
+  - "{runs_root}/utility-score-reports/*.md"
+  - "{runs_root}/self_optimization/{mission_slug}/*.json"
+  - "{runs_root}/self_optimization/{mission_slug}/*.yaml"

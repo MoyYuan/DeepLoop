@@ -1,0 +1,104 @@
+version: 2
+policy_name: deeploop-autonomy-gates
+summary: Hard-vs-soft autonomy gates for the canonical DeepLoop runtime.
+default_hard_gate_profile: minimal
+
+mode_defaults:
+  default:
+    hard_gate_profile: minimal
+  sandboxed-yolo:
+    hard_gate_profile: minimal
+  managed:
+    hard_gate_profile: minimal
+  human-directed:
+    hard_gate_profile: minimal
+
+soft_gate_defaults:
+  preferred_actions:
+    - retry
+    - reroute
+    - downscope
+  terminal_actions:
+    - operator-review
+
+risk_classes:
+  system-global-safety:
+    label: system/global safety
+    description: Avoid harmful or globally unsafe runtime behavior.
+    default_gate: hard
+    default_response: stop-and-escalate
+  sandbox-boundary:
+    label: sandbox boundary
+    description: Prevent writes or execution outside bounded mutable roots.
+    default_gate: hard
+    default_response: stop-and-escalate
+  secrets-provenance-licensing:
+    label: secrets/provenance/licensing
+    description: Prevent unsafe handling of secrets, provenance, or licensing constraints.
+    default_gate: hard
+    default_response: stop-and-escalate
+  external-release:
+    label: external release
+    description: Prevent autonomous external publication or release.
+    default_gate: hard
+    default_response: stop-and-escalate
+  unsandboxed-escalation:
+    label: unsandboxed escalation
+    description: Prevent autonomous escalation outside approved runtime boundaries.
+    default_gate: hard
+    default_response: stop-and-escalate
+  scientific-validity:
+    label: scientific validity
+    description: Evidence or reasoning quality is insufficient.
+    default_gate: soft
+    default_response: retry-reroute-downscope
+    preferred_actions:
+      - retry
+      - reroute
+      - downscope
+  budget-overrun:
+    label: budget overrun
+    description: Runtime would exceed bounded resource budgets.
+    default_gate: soft
+    default_response: downscope-reroute-retry
+    preferred_actions:
+      - downscope
+      - reroute
+      - retry
+  executor-mismatch:
+    label: executor mismatch
+    description: Requested work falls outside the currently bounded executor surface.
+    default_gate: soft
+    default_response: reroute-downscope-retry
+    preferred_actions:
+      - reroute
+      - downscope
+      - retry
+  quality-shortfall:
+    label: quality shortfall
+    description: Required outputs or evaluation artifacts are incomplete.
+    default_gate: soft
+    default_response: retry-downscope-reroute
+    preferred_actions:
+      - retry
+      - downscope
+      - reroute
+
+hard_gate_profiles:
+  minimal:
+    summary: Default lightweight hard-gate profile for operator-light autonomy.
+    hard_stop_risk_classes:
+      - system-global-safety
+      - sandbox-boundary
+      - secrets-provenance-licensing
+      - external-release
+      - unsandboxed-escalation
+
+failure_policy:
+  max_oom_retries_per_run: 3
+
+budget_controls:
+  max_single_gpu_hours_without_approval: 2
+
+approval_required:
+  - preference-optimization

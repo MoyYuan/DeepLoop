@@ -1,0 +1,56 @@
+version: 1
+policy_name: deeploop-statistical-rigor
+artifact_dir_name: statistical_rigor
+write_run_local_copy: true
+co_located_report_names:
+  json: deeploop_statistical_rigor.json
+  markdown: deeploop_statistical_rigor.md
+uncertainty:
+  confidence_level: 0.95
+  z_value: 1.959963984540054
+  interval_method: wilson
+  gap_interval_method: conservative-wilson-difference
+  wide_interval_threshold: 0.5
+power:
+  warn_below_total_examples: 32
+  not_ready_below_total_examples: 16
+  warn_below_slice_examples: 8
+  degenerate_slice_examples: 3
+promotion:
+  allowed_states:
+    - exploratory
+    - not-ready
+  default_state: exploratory
+  max_allowed_state: exploratory
+  minimum_total_examples_for_exploratory: 16
+  blocked_run_statuses:
+    - blocked
+    - failed
+    - planned
+manifest_support:
+  manifest_filenames:
+    - run_manifest.json
+    - study_manifest.json
+  metrics_filenames:
+    - metrics.json
+    - study_summary.json
+  predictions_filenames:
+    - predictions.jsonl
+  primary_metric_paths:
+    - metrics.accuracy
+  sample_size_paths:
+    - metrics.count
+  output_dir_paths:
+    - artifacts.output_dir
+reference_manifest_fields:
+  - behavioral_source_manifest
+  - compare_against
+  - evaluation.compare_against
+  - localization_source
+  - dataset.provenance
+prediction_group_fields:
+  lexicalization: lex
+  rule_family: rule
+  split_family: split_family
+  chain_length: chain_len
+  tiers: tier

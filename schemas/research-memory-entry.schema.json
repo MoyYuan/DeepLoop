@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Research Memory Entry",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "entity_type",
+    "entity_id",
+    "status",
+    "summary",
+    "payload",
+    "provenance",
+    "retrieval",
+    "promotion",
+    "retention",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "entity_type": {
+      "type": "string",
+      "enum": ["mission", "hypothesis", "experiment", "critique", "decision"]
+    },
+    "entity_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "related_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "payload": {
+      "type": "object"
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["source_kind", "recorded_at", "source_paths"],
+      "properties": {
+        "source_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mission_id": {
+          "type": ["string", "null"]
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_entry_id": {
+          "type": ["string", "null"]
+        },
+        "decision_id": {
+          "type": ["string", "null"]
+        },
+        "action_id": {
+          "type": ["string", "null"]
+        },
+        "branch_id": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "retrieval": {
+      "type": "object",
+      "required": ["terms", "query_text", "match_text", "evidence_strength"],
+      "properties": {
+        "terms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "query_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "match_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_strength": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "required": ["status", "source_entry_ids"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["candidate", "promoted"]
+        },
+        "promoted_at": {
+          "type": ["string", "null"]
+        },
+        "source_entry_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "required": ["mode", "reason", "protected", "active"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["protected", "rolling-window"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "protected": {
+          "type": "boolean"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "max_active_entries_per_mission_entity_type": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "archived_at": {
+          "type": ["string", "null"]
+        },
+        "archive_reason": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "fingerprint": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

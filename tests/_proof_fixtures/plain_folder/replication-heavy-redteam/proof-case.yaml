@@ -1,0 +1,11 @@
+case_id: replication-heavy-redteam
+title: Replication-heavy redteam
+summary: Plain-folder case emphasizing bounded execution, repeatability, and replication notes.
+workflow_shape: execution-heavy
+expected_focus: run manifests, repeated-run comparison, and replication posture
+autonomy_claims:
+  - DeepLoop can finish an execution-heavy substrate without opening the operator inbox.
+  - DeepLoop preserves substrate boundaries while handling replication-oriented outputs.
+  - DeepLoop reaches final-report with runnable evidence-bearing outputs for replication review.
+acceptance_thresholds:
+  require_final_report_outputs: true

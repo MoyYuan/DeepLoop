@@ -1,0 +1,25 @@
+project:
+  name: literature-gap-map
+  title: Literature gap map for retrieval QA robustness
+  summary: >
+    Plain minimal researcher folder for a synthesis-heavy project that should
+    map prior art into concrete bounded hypotheses before execution.
+  objective: >
+    Identify a defensible retrieval-augmented QA robustness question, define a
+    bounded evaluation target, and produce a final report from this folder only.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the substrate folder free of DeepLoop runtime state, generated configs, and code.
+    - Stay within 8 GPU-hours total and at most 1 parallel job.
+    - Prefer literature-grounded narrowing before new execution work.
+  human_inputs:
+    ideas:
+      - Retrieval-augmented QA robustness under distractor-heavy contexts
+    budgets:
+      max_gpu_hours: 8
+      max_parallel_jobs: 1
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/literature-and-claims.md
+    - docs/benchmark-and-metrics.md

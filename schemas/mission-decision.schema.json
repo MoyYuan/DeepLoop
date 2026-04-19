@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DeepLoop Mission Decision",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "decision_id",
+    "mission_id",
+    "decision_type",
+    "summary",
+    "phase",
+    "scope",
+    "authority",
+    "result"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mission_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision_type": {
+      "type": "string",
+      "enum": [
+        "phase-transition",
+        "branch-create",
+        "artifact-edit",
+        "local-training",
+        "local-eval",
+        "critique",
+        "replication",
+        "final-report",
+        "operator-review",
+        "external-publish"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "phase": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "string",
+      "enum": ["internal", "external"]
+    },
+    "authority": {
+      "type": "object",
+      "required": ["mode", "requires_operator_approval", "approval_state"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["autonomous", "operator-reviewed", "mixed"]
+        },
+        "requires_operator_approval": {
+          "type": "boolean"
+        },
+        "approval_state": {
+          "type": "string",
+          "enum": ["not-required", "pending", "approved", "denied"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": ["status", "recorded_at"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["selected", "executed", "blocked", "deferred", "rejected"]
+        },
+        "recorded_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "transition": {
+      "type": "object",
+      "required": ["from_phase", "to_phase", "branch_status", "recovery_status"],
+      "properties": {
+        "from_phase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to_phase": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch_status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "active",
+            "recovery-active",
+            "replication-active",
+            "critique-ready",
+            "report-ready",
+            "completed",
+            "blocked",
+            "abandoned"
+          ]
+        },
+        "recovery_status": {
+          "type": "string",
+          "enum": ["not-needed", "retry-planned", "reroute-planned", "recovering", "recovered", "blocked", "failed"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "selected_action_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "selected_branch_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}

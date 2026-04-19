@@ -1,0 +1,90 @@
+version: 1
+policy_name: deeploop-mission-artifact-package
+output_root: ~/workspaces/runs/deeploop/packages
+
+description: |
+  Deterministic mission artifact packaging contract. The packager copies a
+  mission's durable inputs and outputs into a self-contained package rooted
+  under the workspace runs tree, then emits a machine-readable artifact map and
+  a handoff-oriented summary.
+
+artifact_map:
+  mission_root_sections:
+    mission_specs:
+      - mission_state.json
+      - mission_summary.md
+      - mission_decisions.jsonl
+      - mission_branches.jsonl
+      - mission_memory.json
+      - mission_experiments.jsonl
+      - bounded_followup_plan.json
+      - bounded_followup_plan.md
+      - mission_next_actions.json
+      - mission_next_actions.md
+    ledgers:
+      - ledger.jsonl
+    findings:
+      - findings/**/*.md
+    critique_reports:
+      - self_correction/**/*.json
+      - self_correction/**/*.md
+    runtime_metadata:
+      - agent_handoffs/**/*.json
+      - runtime/**/*.yaml
+      - runtime/**/*.json
+      - meta_eval/**/*.json
+      - meta_eval/**/*.md
+  manifest_patterns:
+    - "**/run_manifest.json"
+    - "**/study_manifest.json"
+  kernel_output_globs:
+    - predictions.jsonl
+    - metrics.json
+    - study_summary.json
+    - localization_observations.jsonl
+    - localization_candidates.json
+    - intervention_predictions.jsonl
+    - intervention_metrics.json
+  critique_report_globs:
+    - deeploop_statistical_rigor.json
+    - deeploop_statistical_rigor.md
+    - self_correction_report.json
+    - self_correction_report.md
+    - confound_guard_report.json
+    - confound_guard_report.md
+    - "*_redteam_report.json"
+    - "*_redteam_report.md"
+  global_report_roots:
+    self_optimization:
+      root: ~/workspaces/runs/deeploop/self_optimization
+      patterns:
+        - "**/self_optimization_report_*.json"
+        - "**/optimization_recommendations_*.yaml"
+    fresh_context_redteam:
+      root: ~/workspaces/runs/deeploop/fresh_context_redteam
+      patterns:
+        - "*_redteam_report.json"
+        - "*_redteam_report.md"
+
+required_artifacts:
+  filenames:
+    - mission_state.json
+    - ledger.jsonl
+  categories:
+    - mission_specs
+    - mission_configs
+    - ledgers
+    - findings
+    - manifests
+    - runtime_metadata
+
+supporting_contracts:
+  - ~/workspaces/repos/deeploop/configs/runtime/artifact-package-contract.yaml
+  - ~/workspaces/repos/deeploop/configs/autonomy/evidence-policy.yaml
+  - ~/workspaces/repos/deeploop/configs/platform/expansion.yaml
+  - ~/workspaces/repos/deeploop/configs/runtime/stage-kernel-registry.yaml
+
+outputs:
+  manifest_json: mission_artifact_package.json
+  summary_markdown: mission_artifact_package.md
+  copied_artifact_root: artifacts

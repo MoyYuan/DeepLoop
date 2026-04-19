@@ -1,0 +1,23 @@
+version: 1
+policy_name: mandatory-experiment-ledger
+applies_to:
+  - experiment
+  - inference
+  - findings
+requirements:
+  experiments:
+    - run_manifest
+    - metrics_or_failure_record
+    - durable_ledger_entry
+  inference:
+    - run_manifest
+    - metrics_or_prediction_artifact
+    - durable_ledger_entry
+  findings:
+    - linked_source_manifests
+    - durable_summary_artifact
+    - claim_state
+rules:
+  - shell output is never the system of record
+  - every non-trivial run must be reproducible from a command path or manifest
+  - every promoted finding must point back to source manifests
