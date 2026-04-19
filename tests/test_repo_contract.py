@@ -147,6 +147,7 @@ class RepoContractTests(unittest.TestCase):
         release_design = REPO_ROOT / "docs" / "design" / "release-automation.md"
         examples_doc = REPO_ROOT / "docs" / "how-to" / "examples.md"
         starter_doc = REPO_ROOT / "docs" / "how-to" / "plain-folder-starter.md"
+        contributor_doc = REPO_ROOT / "docs" / "contributors" / "index.md"
         mkdocs_config = REPO_ROOT / "mkdocs.yml"
 
         self.assertTrue(release_readme.exists(), f"missing release README: {release_readme}")
@@ -158,6 +159,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertTrue(autonomy_doc.exists(), f"missing autonomy doc: {autonomy_doc}")
         self.assertTrue(examples_doc.exists(), f"missing examples doc: {examples_doc}")
         self.assertTrue(starter_doc.exists(), f"missing plain-folder starter doc: {starter_doc}")
+        self.assertTrue(contributor_doc.exists(), f"missing contributor doc: {contributor_doc}")
 
         release_text = release_readme.read_text(encoding="utf-8").lower()
         roadmap_text = roadmap_doc.read_text(encoding="utf-8").lower()
@@ -169,6 +171,7 @@ class RepoContractTests(unittest.TestCase):
         design_text = release_design.read_text(encoding="utf-8").lower()
         examples_text = examples_doc.read_text(encoding="utf-8").lower()
         starter_text = starter_doc.read_text(encoding="utf-8").lower()
+        contributor_text = contributor_doc.read_text(encoding="utf-8").lower()
         mkdocs_text = mkdocs_config.read_text(encoding="utf-8").lower()
 
         self.assertIn("public alpha", release_text)
@@ -205,8 +208,12 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("translation-budget-ladder", starter_text)
         self.assertIn("examples/translation-budget-ladder", starter_text)
         self.assertIn("public-bootstrap-check", starter_text)
+        self.assertIn("contributors and developers", contributor_text)
+        self.assertIn("design notes", contributor_text)
+        self.assertIn("deep dives", contributor_text)
         self.assertIn("how-to/examples.md", mkdocs_text)
         self.assertIn("how-to/plain-folder-starter.md", mkdocs_text)
+        self.assertIn("contributors/index.md", mkdocs_text)
         self.assertIn("release/public-autonomy-roadmap.md", mkdocs_text)
         self.assertIn("release/public-alpha-foundations.md", mkdocs_text)
         self.assertIn("release/portable-bootstrap.md", mkdocs_text)

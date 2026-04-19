@@ -18,7 +18,8 @@ documented Linux + Python 3.11 environment and the canonical
 | Trying to understand how DeepLoop works | [Runtime architecture](concepts/architecture.md) | Concept | Summarizes the mission loop and the canonical runtime surfaces |
 | Learning the vocabulary | [Glossary](concepts/glossary.md) | Concept | Defines terms like mission, operator state, soft gate, and bounded support |
 | Looking for an answer to a common problem | [FAQ](guide/faq.md) | Guide | Gives short answers to the questions people ask most often |
-| Need technical depth | [Technical reference](reference/index.md) | Reference | Maps the operator CLI, runtime modules, and design docs |
+| Need technical depth | [Technical reference](reference/index.md) | Reference | Maps the supported technical contracts, provider references, and advanced runtime surfaces |
+| Extending or maintaining DeepLoop | [Contributor and developer docs](contributors/index.md) | Contributor docs | Groups design notes, deep dives, docs maintenance, and contributor-facing guidance into a separate lane |
 
 ## One-minute model
 
@@ -35,7 +36,7 @@ documented Linux + Python 3.11 environment and the canonical
 2. [Mission operations](guide/operator.md)
 3. [Runtime architecture](concepts/architecture.md)
 
-## Deep dives
+## More for users and researchers
 
 - [Research and release](research/README.md)
 - [Examples](how-to/examples.md)
@@ -43,4 +44,7 @@ documented Linux + Python 3.11 environment and the canonical
 - [Provider setup](reference/provider-setup.md)
 - [Provider selection](reference/provider-selection.md)
 - [Technical reference](reference/index.md)
-- [Design index](design/README.md)
+
+## Contributing or maintaining
+
+- [Contributor and developer docs](contributors/index.md)

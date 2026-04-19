@@ -79,10 +79,10 @@ required_artifacts:
     - runtime_metadata
 
 supporting_contracts:
-  - ~/workspaces/repos/deeploop/configs/runtime/artifact-package-contract.yaml
-  - ~/workspaces/repos/deeploop/configs/autonomy/evidence-policy.yaml
-  - ~/workspaces/repos/deeploop/configs/platform/expansion.yaml
-  - ~/workspaces/repos/deeploop/configs/runtime/stage-kernel-registry.yaml
+  - configs/runtime/artifact-package-contract.yaml
+  - configs/autonomy/evidence-policy.yaml
+  - configs/platform/expansion.yaml
+  - configs/runtime/stage-kernel-registry.yaml
 
 outputs:
   manifest_json: mission_artifact_package.json

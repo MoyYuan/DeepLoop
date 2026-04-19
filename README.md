@@ -71,6 +71,8 @@ For the detailed claim ladder and roadmap, start with
 
 ## Read next
 
+### Using DeepLoop
+
 - [Docs home](docs/index.md)
 - [Getting started](docs/getting-started.md)
 - [Examples](docs/how-to/examples.md)
@@ -83,6 +85,10 @@ For the detailed claim ladder and roadmap, start with
 - [Autonomy governance](docs/release/autonomy-governance.md)
 - [Multi-substrate proof](docs/release/multi-substrate-proof.md)
 - [Technical reference](docs/reference/index.md)
+
+### Contributing or maintaining
+
+- [Contributor and developer docs](docs/contributors/index.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security](SECURITY.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)

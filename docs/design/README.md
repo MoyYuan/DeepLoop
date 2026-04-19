@@ -1,12 +1,13 @@
-# DeepLoop design index
+# DeepLoop design notes
 
-This directory contains the lower-level implementation and policy notes that
-support the main docs site. If you are new, start with the docs home and come
-back here when you need design detail.
+This directory contains maintainer-facing implementation and policy notes that
+support the main docs site. If you are using DeepLoop rather than extending it,
+start with the docs home instead.
 
 ## Navigation
 
 - [Docs home](../index.md)
+- [Contributor and developer docs](../contributors/index.md)
 - [Mission operations](../guide/operator.md)
 - [Runtime architecture](../concepts/architecture.md)
 - [Technical reference](../reference/index.md)

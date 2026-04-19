@@ -1,7 +1,10 @@
 # Technical reference
 
-Use this page when you already understand the basics and want implementation
-detail.
+Use this page when you already understand the basics and want the supported
+technical contracts, runtime surfaces, and advanced operator references.
+
+If you are changing DeepLoop itself rather than using it, go to
+[Contributor and developer docs](../contributors/index.md).
 
 ## Content map
 
@@ -13,9 +16,10 @@ Use these surfaces intentionally so the docs stay organized:
 | `examples/` | Public-safe starter projects and onboarding inputs | Proof-only metadata or test harness details |
 | `docs/guide/` | Task-based operator help | Low-level implementation notes |
 | `docs/concepts/` | Plain-language mental models | File-by-file runtime details |
-| `docs/reference/` | Curated map into deeper material | Duplicating beginner guides |
-| `docs/design/` | Implementation notes and design detail | Competing “start here” pages |
-| `docs/wiki/` | Companion deep dives and historical context | The primary docs path for new readers |
+| `docs/reference/` | Supported technical contracts and advanced runtime references | Duplicating beginner guides or maintainer-only notes |
+| `docs/contributors/` | Maintainer/developer entry points | Competing “start here” pages for users |
+| `docs/design/` | Implementation notes and design detail | The primary docs path for new readers |
+| `docs/wiki/` | Companion deep dives and historical context | The default user journey |
 | `docs/research/` / `docs/release/` | Research and release notes | Generic docs navigation |
 
 ## Canonical runtime surfaces
@@ -59,37 +63,6 @@ Use these as the technical map for the current mission runtime:
 - [Provider setup](provider-setup.md)
 - [Provider selection](provider-selection.md)
 
-## Testing
-
-- [Testing strategy](testing-strategy.md)
-- [Acceptance campaign](acceptance-campaign.md)
-
-## Runtime and orchestration
-
-- [Operating model](../design/operating-model.md)
-- [Mission orchestrator](../design/mission-orchestrator.md)
-- [State machine](../design/state-machine.md)
-- [Role contract](../design/role-contract.md)
-- [Stage kernels](../design/stage-kernels.md)
-- [Runtime standardization](../design/runtime-standardization.md)
-- [Self-healing runtime](../design/self-healing-runtime.md)
-- [Recursive agent runtime](../design/recursive-agent-runtime.md)
-- [Bounded autoexecutor](../design/bounded-autoexecutor.md)
-- [Platform expansion](../design/platform-expansion.md)
-
-## Evidence and evaluation
-
-- [Evaluation plan](../design/evaluation-plan.md)
-- [Evidence policy](../design/evidence-policy.md)
-- [Experiment ledger](../design/experiment-ledger.md)
-- [Statistical rigor](../design/statistical-rigor.md)
-- [Confound guard](../design/confound-guard.md)
-- [Research sanity gates](../design/research-sanity-gates.md)
-- [Mission meta-eval](../design/mission-meta-eval.md)
-- [Utility scorer](../design/utility-scorer.md)
-- [Memory registry](../design/memory-registry.md)
-- [Mission artifact package](../design/mission-artifact-package.md)
-
 ## Release and research
 
 - [Research notes](../research/README.md)
@@ -102,13 +75,19 @@ Use these as the technical map for the current mission runtime:
 - [Multi-substrate proof](../release/multi-substrate-proof.md)
 - [Plain-folder starter](../how-to/plain-folder-starter.md)
 - [Prior art](../prior-art/ralph-vs-autoresearch.md)
-- [Release automation](../design/release-automation.md)
-- [Autonomy boundary reduction](../design/autonomy-boundary-reduction.md)
-- [Rollout plan](../design/rollout-plan.md)
 
-## Docs maintenance
+## Maintainers: start here instead
 
+If you are debugging runtime behavior, changing contracts, or maintaining the
+repo, use the contributor lane below before diving into lower-level design
+material from user-facing pages.
+
+- [Contributor and developer docs](../contributors/index.md)
+- [Testing strategy](testing-strategy.md)
+- [Acceptance campaign](acceptance-campaign.md)
 - [Docs maintenance](docs-maintenance.md)
+- [Design notes](../design/README.md)
+- [Companion deep dives](../wiki/README.md)
 
 ## If you are new
 

@@ -1,5 +1,5 @@
 site_name: DeepLoop Docs
-site_description: DeepLoop documentation for operators, contributors, and readers
+site_description: DeepLoop documentation for users and operators, with separate contributor notes
 docs_dir: docs
 theme:
   name: material
@@ -27,9 +27,21 @@ nav:
       - Technical reference: reference/index.md
       - Provider setup: reference/provider-setup.md
       - Provider selection: reference/provider-selection.md
+      - Prior art: prior-art/ralph-vs-autoresearch.md
+  - Research: research/README.md
+  - Release:
+      - Release posture: release/README.md
+      - Release maintenance: release/release-maintenance.md
+      - Public autonomy roadmap: release/public-autonomy-roadmap.md
+      - Public alpha foundations: release/public-alpha-foundations.md
+      - Portable bootstrap: release/portable-bootstrap.md
+      - Autonomy governance: release/autonomy-governance.md
+      - Multi-substrate proof: release/multi-substrate-proof.md
+  - Contributors:
+      - Contributor and developer docs: contributors/index.md
+      - Docs maintenance: reference/docs-maintenance.md
       - Testing strategy: reference/testing-strategy.md
       - Acceptance campaign: reference/acceptance-campaign.md
-      - Docs maintenance: reference/docs-maintenance.md
       - Design notes:
           - Design index: design/README.md
           - Mission control and runtime:
@@ -76,16 +88,6 @@ nav:
           - Mission operator deep dive: wiki/mission-ops.md
           - Runtime architecture deep dive: wiki/runtime-architecture.md
           - Research and release deep dive: wiki/research-and-release.md
-      - Prior art: prior-art/ralph-vs-autoresearch.md
-  - Research: research/README.md
-  - Release:
-      - Release posture: release/README.md
-      - Release maintenance: release/release-maintenance.md
-      - Public autonomy roadmap: release/public-autonomy-roadmap.md
-      - Public alpha foundations: release/public-alpha-foundations.md
-      - Portable bootstrap: release/portable-bootstrap.md
-      - Autonomy governance: release/autonomy-governance.md
-      - Multi-substrate proof: release/multi-substrate-proof.md
 markdown_extensions:
   - admonition
   - attr_list

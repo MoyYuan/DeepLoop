@@ -54,6 +54,27 @@ def _safe_resolve(path: str | Path) -> Path:
     return Path(path).expanduser().resolve()
 
 
+def _infer_repo_root_from_contract_path(contract_path: Path) -> Path | None:
+    for parent in contract_path.parents:
+        if parent.name == "configs":
+            return parent.parent
+    return None
+
+
+def _resolve_contract_declared_path(raw_path: str | Path, *, contract_path: Path) -> Path:
+    raw_text = str(raw_path)
+    normalized_text = raw_text.replace("\\", "/")
+    candidate = Path(normalized_text).expanduser()
+    if candidate.is_absolute() or raw_text.startswith("~"):
+        return candidate.resolve()
+    if normalized_text.startswith(("./", "../")):
+        return (contract_path.parent / candidate).resolve()
+    repo_root = _infer_repo_root_from_contract_path(contract_path)
+    if repo_root is not None:
+        return (repo_root / candidate).resolve()
+    return (contract_path.parent / candidate).resolve()
+
+
 def _packaged_artifacts_root(source_path: Path) -> Path | None:
     for parent in source_path.resolve().parents:
         if parent.name == "artifacts":
@@ -463,6 +484,7 @@ def package_mission_artifacts(
     output_root: Path | None = None,
 ) -> dict[str, Any]:
     mission_state_path = mission_state_path.expanduser().resolve()
+    contract_path = contract_path.expanduser().resolve()
     mission_state = _load_json(mission_state_path)
     mission_root = mission_state_path.parent
     mission_id = str(mission_state["mission_id"])
@@ -538,7 +560,11 @@ def package_mission_artifacts(
     for raw_config in mission_state.get("next_actions", {}).get("generated_configs", []):
         maybe_register(raw_config, category="mission_configs", metadata={"declared_by": "mission_state.next_actions.generated_configs"})
     for support_path in contract.get("supporting_contracts", []):
-        maybe_register(support_path, category="mission_configs", metadata={"declared_by": "artifact_package_contract"})
+        maybe_register(
+            _resolve_contract_declared_path(support_path, contract_path=contract_path),
+            category="mission_configs",
+            metadata={"declared_by": "artifact_package_contract"},
+        )
 
     mission_aliases = {mission_id, mission_id.removesuffix("-mission")}
     manifest_search_roots = [

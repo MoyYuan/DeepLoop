@@ -12,6 +12,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from deeploop.artifacts.artifact_packager import (
+    _resolve_contract_declared_path,
     _resolve_manifest_paths,
     load_package_contract,
     package_mission_artifacts,
@@ -26,6 +27,59 @@ class ArtifactPackagerTests(unittest.TestCase):
         self.assertEqual(contract.get("version"), 1)
         self.assertIn("artifact_map", contract)
         self.assertIn("supporting_contracts", contract)
+        self.assertTrue(contract["supporting_contracts"])
+        self.assertTrue(
+            all(not str(path).startswith("~/workspaces/repos/deeploop") for path in contract["supporting_contracts"])
+        )
+        self.assertTrue(all(str(path).startswith("configs/") for path in contract["supporting_contracts"]))
+
+    def test_contract_declared_paths_resolve_from_contract_repo_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            contract_path = Path(tmpdir) / "alt-repo" / "configs" / "runtime" / "artifact-package-contract.yaml"
+            contract_path.parent.mkdir(parents=True, exist_ok=True)
+            contract_path.write_text("version: 1\n", encoding="utf-8")
+
+            resolved = _resolve_contract_declared_path(
+                "configs/autonomy/evidence-policy.yaml",
+                contract_path=contract_path,
+            )
+
+            self.assertEqual(
+                resolved,
+                (Path(tmpdir) / "alt-repo" / "configs" / "autonomy" / "evidence-policy.yaml").resolve(),
+            )
+
+    def test_contract_declared_paths_fall_back_to_contract_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            contract_path = Path(tmpdir) / "contracts" / "artifact-package-contract.yaml"
+            contract_path.parent.mkdir(parents=True, exist_ok=True)
+            contract_path.write_text("version: 1\n", encoding="utf-8")
+
+            resolved = _resolve_contract_declared_path(
+                "support/evidence-policy.yaml",
+                contract_path=contract_path,
+            )
+
+            self.assertEqual(
+                resolved,
+                (Path(tmpdir) / "contracts" / "support" / "evidence-policy.yaml").resolve(),
+            )
+
+    def test_contract_declared_paths_accept_windows_style_relative_prefixes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            contract_path = Path(tmpdir) / "contracts" / "artifact-package-contract.yaml"
+            contract_path.parent.mkdir(parents=True, exist_ok=True)
+            contract_path.write_text("version: 1\n", encoding="utf-8")
+
+            resolved = _resolve_contract_declared_path(
+                r".\support\evidence-policy.yaml",
+                contract_path=contract_path,
+            )
+
+            self.assertEqual(
+                resolved,
+                (Path(tmpdir) / "contracts" / "support" / "evidence-policy.yaml").resolve(),
+            )
 
     def test_resolve_manifest_paths_searches_mission_runtime_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1,8 +1,9 @@
-# DeepLoop companion deep dives
+# DeepLoop contributor deep dives
 
-This section holds companion pages for readers who already know the basics and
-want extra context. These pages should support the main docs path, not replace
-it. If you are new, start at [the docs home](../index.md).
+This section holds maintainer-facing companion pages for readers who already
+know the basics and need debugging context, historical framing, or lower-level
+runtime maps. These pages should support the main docs path, not replace it. If
+you are new, start at [the docs home](../index.md).
 
 ## Pages
 
@@ -16,7 +17,7 @@ it. If you are new, start at [the docs home](../index.md).
 
 - If you are launching or watching a run, go to [Mission operations](../guide/operator.md).
 - If you are changing runtime behavior or tracing platform handoffs, go to [Runtime architecture](../concepts/architecture.md).
-- If you are turning work into a shareable result, go to [Technical reference](../reference/index.md).
+- If you are maintaining DeepLoop itself, go to [Contributor and developer docs](../contributors/index.md).
 
 ## Canonical runtime surfaces
 
