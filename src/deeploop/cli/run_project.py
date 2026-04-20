@@ -14,6 +14,7 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--until-complete",
         action="store_true",
+        required=True,
         help="Keep extending the bounded mission runtime until completion, operator review, or total-iteration exhaustion.",
     )
     parser.add_argument(
