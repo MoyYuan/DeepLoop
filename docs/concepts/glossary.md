@@ -8,8 +8,8 @@
 | Stage kernel | An executor for a specific evaluation or inference stage |
 | Soft gate | A recoverable problem where DeepLoop should retry or reroute |
 | Hard gate | A real safety or authority boundary that needs review |
-| Operator console | The `manage_mission.py status` surface that tells the operator what is happening and exactly what to do next |
-| Operator inbox | The `manage_mission.py inbox` surface where DeepLoop explains why it needs help |
+| Operator console | The `deeploop status` surface that tells the operator what is happening and exactly what to do next |
+| Operator inbox | The `deeploop inbox` surface where DeepLoop explains why it needs help |
 | Lifecycle state | The mission-level state such as `running`, `blocked`, `paused`, `completed`, or `stopped` |
 | Operator state | The operator-facing posture such as `autopilot-running`, `operator-action-required`, or `needs-investigation` |
 | Attention level | How urgently the operator should look: passive, optional, required, investigate, or complete |

@@ -1,128 +1,120 @@
-# deeploop
+# DeepLoop
 
-DeepLoop is a local-first research autopilot for structured project folders. It
-helps a researcher or operator run a mission, keep the next step tied to what
-is already on disk, and step in only when the system reaches a real decision,
-safety, or support boundary.
+> Structured research missions from a local project folder — with visible autonomy boundaries, durable mission state, and an explicit operator inbox.
 
-Today the honest release posture is still a **bounded-support public alpha** on
-the documented Linux + Python 3.11 path.
+DeepLoop helps researchers and operators run structured work from the artifacts already on disk instead of rebuilding everything around one long chat. It keeps the loop moving, pauses only at real safety, authority, or support boundaries, and makes the path legible when you need to inspect or redirect it.
 
-DeepLoop owns behavior and orchestration; substrate repos own domain or science
-rules.
+DeepLoop **owns behavior** and orchestration; substrate repos own reusable domain or science rules.
 
-## Why researchers and operators care
+## Why it matters
 
-- **Less babysitting:** DeepLoop keeps durable mission state instead of relying
-  on one long chat thread.
-- **Visible handoffs:** `status`, `inbox`, and `resume` make operator
-  intervention explicit and show when a real operator inbox opens.
-- **Auditable autonomy:** runtime telemetry, inner-loop progress, and
-  stage-kernel execution stay inspectable instead of hidden behind one opaque
-  agent loop.
-- **Keep project inputs clean:** your project folder can stay focused on facts
-  and docs while DeepLoop manages runtime state elsewhere.
-- **Evidence-first runs:** `status` can now surface measurable ratchets,
-  reroutes, and temporary-gap recovery hints instead of leaving them buried in
-  raw JSON.
-- **Local-first control:** project folders, review, and release surfaces stay on
-  your machine and in your repo workflow.
+- **Start from real project artifacts:** bootstrap from a plain project folder, not just a prompt.
+- **Keep control visible:** `status`, `inbox`, and `resume` make the operator inbox explicit when DeepLoop needs a real decision.
+- **Inspect the loop:** operator-facing summaries expose runtime telemetry, inner-loop progress, stage-kernel activity, reroutes, and temporary gaps instead of hiding them in raw JSON.
+- **Keep evidence close to the work:** your project folder stays focused on facts, docs, and outputs while DeepLoop keeps durable mission state.
+- **Use autonomy with governance:** the shipped path includes explicit release boundaries, autonomy governance, and reviewed promotion surfaces.
+- **Separate platform from domain logic:** DeepLoop runs the loop; substrate repos keep reusable methods, constraints, and science rules.
 
-## Building toward
+## Getting started
 
-DeepLoop is building toward a research autopilot that can run longer with less
-operator friction, on more machine shapes, with clearer evidence promotion and
-stronger trust surfaces. This public alpha is intentionally narrow today. The
-goal is not a bigger slogan first; it is a system that can earn stronger
-autonomy claims by making its boundaries and proof more legible over time.
+1. **Install DeepLoop**
 
-For the release-facing claim, trust, and next-step docs, start with
-[Release posture](docs/release/README.md). It routes onward to the foundations
-and roadmap pages when you need them.
+   ```text
+   python -m pip install -e .
+   ```
 
-## Fastest path to try it
+   Or use the documented Conda path:
 
-1. Install DeepLoop:
-   - `python -m pip install -e .`
-   - or `conda env create -n deeploop -f environment.yml`
-2. Prepare the documented workspace shape and verify the supported bootstrap
-   path:
-   - `make setup`
-   - `make public-bootstrap-check`
-3. Connect a provider:
+   ```text
+   conda env create -n deeploop -f environment.yml
+   ```
+
+2. **Prepare the workspace and validate the supported path**
+
+   ```text
+   make setup
+   make public-bootstrap-check
+   ```
+
+3. **Prepare a provider**
    - [Provider setup](docs/reference/provider-setup.md)
    - [Provider selection](docs/reference/provider-selection.md)
-4. Run the canonical example or your own plain-folder project:
-   - example project:
-     [`examples/translation-budget-ladder/`](examples/translation-budget-ladder/)
-   - optional copy step: `cp -R examples/translation-budget-ladder <project-folder>`
+
+4. **Run the canonical example or your own plain-folder project**
+   - canonical example: [`examples/translation-budget-ladder/`](examples/translation-budget-ladder/)
+   - optional copy step:
+
+     ```text
+     cp -R examples/translation-budget-ladder PROJECT_FOLDER
+     ```
+
    - fastest path:
-     `deeploop-run-project --project-root examples/translation-budget-ladder --until-complete`
+
+     ```text
+     deeploop-run-project --project-root examples/translation-budget-ladder --until-complete
+     ```
+
    - explicit operator path:
-     `deeploop-init-mission --project-root examples/translation-budget-ladder --force`
-   - on a copied folder, substitute `<project-folder>` in the commands above
-5. When DeepLoop pauses for review, use the operator CLI:
-   - `deeploop status --mission-state <mission-state.json>`
-   - `deeploop inbox --mission-state <mission-state.json>`
-   - `deeploop resume --mission-state <mission-state.json>`
 
-The installed `deeploop*` commands above are the preferred first-run path.
-Lower-level repo scripts remain available for debugging and automation.
+     ```text
+     deeploop-init-mission --project-root examples/translation-budget-ladder --force
+     ```
 
-## What operators will notice on the shipped path
+   On a copied folder, substitute `PROJECT_FOLDER` in the commands above.
 
-- measurable adaptation runs can now surface an `adaptation_metric_ratchet`
-  result and the latest reroute directly in `status`
-- some missions can opt into deterministic routing for narrow measurable cases;
-  when no rule matches, DeepLoop still falls back to the normal planner
-- temporary-gap telemetry now separates auto-recovered versus escalated gaps and
-  shows recurring categories
-- in managed mode, DeepLoop can stage one bounded retry, reroute, or downscope
-  step for review before you `resume`
+5. **Use the operator CLI when a run pauses**
 
-## Day-1 reality
+   ```text
+   deeploop status --mission-state MISSION_STATE_PATH
+   deeploop inbox --mission-state MISSION_STATE_PATH
+   deeploop resume --mission-state MISSION_STATE_PATH
+   ```
 
-DeepLoop is useful today when the work already fits a supported structured path:
-a project folder on disk, a clear mission, and an operator who can check
-`status` or `inbox` when asked. It is not yet the best fit for messy scratchpad
-ideation, notebook-style wandering, or "start from nothing and figure it out"
-research sessions. The scratchpad -> formalization bridge is still exploratory,
-not part of the current alpha promise.
+The installed `deeploop*` commands are the preferred first-run path; lower-level repo scripts remain available for debugging and automation.
 
-## Where DeepLoop fits today
+## Best fit today
 
-| System | Best fit today | What stands out | Honest tradeoff |
-| --- | --- | --- | --- |
-| **DeepLoop** | Operator-visible research runs from a local project folder | Explicit mission state, operator handoff surfaces, packaging/release posture, evidence-aware workflow | Supported path is still narrow today, and the product is not yet ideal for messy ideation |
-| **Ralph** | Lightweight recursive coding loops around a PRD | Fresh-context shell loop, simple external memory, very low orchestration overhead | More centered on software delivery than on evidence-heavy research programs |
-| **AutoResearch** | Repeated experiment hill-climbing on one editable surface | High automation density, metric-driven branch advancement, strong experiment cadence | Narrower single-task/single-metric shape with less operator/governance structure |
+DeepLoop is best when you already have:
 
-For the deeper reasoning behind this comparison, see
-[Ralph vs AutoResearch for DeepLoop](docs/prior-art/ralph-vs-autoresearch.md).
+- a project folder on disk
+- a clear mission or question
+- an operator who can check `status` and respond when the operator inbox opens
+- a need for bounded autonomy, durable state, and evidence-aware summaries
 
-## Current limits, proof, and deeper links
+### Current limits
 
-| Surface | Today | Where to go deeper |
-| --- | --- | --- |
-| **Supported path** | Documented Linux with Python 3.11 bootstrap lane, editable install or documented Conda path, and the documented workspace roots | [Portable bootstrap](docs/release/portable-bootstrap.md) |
-| **What backs the current claim** | `make public-bootstrap-check`, fresh-clone onboarding on the documented path, a 3-case plain-folder proof matrix, and a reviewed release promotion path | [Release posture](docs/release/README.md) |
-| **What DeepLoop is not claiming yet** | Broad installability across arbitrary environments, "fully automatic for everyone," or approval-free release promotion | [Release posture](docs/release/README.md) |
+DeepLoop is still a bounded-support public alpha. Stay on the documented Linux with Python 3.11 path if you want the experience public CI validates today.
 
-## Operator model in one screen
+Today DeepLoop is **not** claiming:
 
-- most people start with `sandboxed-yolo`
-- use `managed` when you want intervention hooks before DeepLoop continues
-- use `human-directed` when you want to approve important choices yourself
-- the normal loop is: start a mission, check `status`, open the operator inbox
-  when asked, then `resume`
-- when you record lessons, keep skills for reusable methods and domain/science
-  rules in substrate repos
-- DeepLoop may still propose additional trusted datasets when the science
-  requires them, even while the substrate stays minimal
+- broad installability across arbitrary environments
+- a fully automatic experience for everyone
+- approval-free release promotion
+- a finished scratchpad -> formalization bridge
 
-## Read next
+Messy notebook wandering and "start from nothing and figure it out" ideation are still a weak fit. The scratchpad -> formalization bridge remains exploratory, not part of the current alpha promise.
 
-### Using DeepLoop
+## Key capabilities
+
+### Operating modes
+
+- **`sandboxed-yolo`** for the fastest bounded path when you want DeepLoop to keep moving inside the supported guardrails
+- **`managed`** when you want intervention hooks before DeepLoop continues; managed mode can surface a bounded retry, reroute, or downscope step for review
+- **`human-directed`** when you want to approve important choices yourself
+
+### What you can inspect
+
+- operator-facing status surfaces runtime telemetry, inner-loop progress, ratchets, reroutes, and temporary-gap recovery hints
+- stage-kernel execution stays visible instead of disappearing behind one opaque agent loop
+- the operator inbox keeps handoffs explicit when DeepLoop reaches a real decision or support boundary
+
+### Reusable methods and governance
+
+- keep skills for reusable methods and domain/science rules in substrate repos
+- use [Release posture](docs/release/README.md) for the current claim and [Autonomy governance](docs/release/autonomy-governance.md) for current boundaries
+- review the current [multi-substrate proof](docs/release/multi-substrate-proof.md) as proof of a bounded contract, not a claim of broad portability
+
+## Documentation
 
 - [Docs home](docs/index.md)
 - [Getting started](docs/getting-started.md)
@@ -136,9 +128,11 @@ For the deeper reasoning behind this comparison, see
 - [Multi-substrate proof](docs/release/multi-substrate-proof.md)
 - [Technical reference](docs/reference/index.md)
 
-### Contributing or maintaining
+## Contributing
 
-- [Contributor and developer docs](docs/contributors/index.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security](SECURITY.md)
+Contributions, bug reports, and discussion are welcome.
+
+- [Contributing guide](CONTRIBUTING.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md)
+- [Changelog](CHANGELOG.md)

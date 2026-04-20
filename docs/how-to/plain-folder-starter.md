@@ -74,7 +74,7 @@ Once your folder exists, the supported bootstrap path is:
 
 ```text
 make public-bootstrap-check
-python scripts/mission/run_project.py --project-root <project-folder> --until-complete
+deeploop-run-project --project-root <project-folder> --until-complete
 ```
 
 `make public-bootstrap-check` proves the install, workspace setup, repo

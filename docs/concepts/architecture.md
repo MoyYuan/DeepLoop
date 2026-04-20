@@ -11,8 +11,8 @@ DeepLoop is a mission loop:
 3. choose the next action
 4. dispatch that action through a registered executor
 5. save the results durably
-6. surface operator-facing state through `manage_mission.py status` and
-   `manage_mission.py inbox`
+6. surface operator-facing state through `deeploop status` and
+   `deeploop inbox`
 
 ## The main parts
 
@@ -21,12 +21,13 @@ DeepLoop is a mission loop:
 | Mission state | Stores the durable record of what the mission knows and what it plans next |
 | Decision engine | Chooses the next action or phase transition |
 | Executors | Run stage kernels, queues, recursive agents, and other bounded work |
-| Operator management surface | `manage_mission.py` owns the canonical `start` / `status` / `inbox` / `resume` loop, plus logs, decisions, watch, triage, and stop |
+| Operator management surface | `deeploop` CLI owns the canonical `start` / `status` / `inbox` / `resume` loop, plus logs, decisions, watch, triage, and stop |
 | Ledgers | Keep durable evidence of decisions, branches, and findings |
 
 ## Canonical runtime surfaces
 
-- `scripts/mission/manage_mission.py` is the operator-facing entry point
+- `deeploop` CLI is the operator-facing entry point (`start`, `status`, `inbox`, `resume`, and more)
+- `scripts/mission/manage_mission.py` remains available as a fallback surface for debugging and automation
 - `scripts/mission/run_mission.py` is the detached mission runtime it launches
 - `scripts/mission/monitor_mission.py` and `mission_monitor.py` build the
   snapshots behind `status`
