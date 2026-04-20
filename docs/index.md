@@ -6,6 +6,12 @@ path today assumes the documented Linux + Python 3.11 environment and the
 installed `deeploop*` CLI surfaces. Deeper runtime and release pages stay
 linked below when you need them.
 
+Recent supported-path improvements now surface measurable adaptation outcomes,
+narrow deterministic reroute cues, clearer temporary-gap telemetry, and managed
+recovery cues directly in the operator flow, so most first runs can stay on the
+normal `status` / `inbox` / `resume` loop longer before you need deeper runtime
+detail.
+
 ## Who should read what
 
 | You are... | Start here | Page type | Why this page |
@@ -14,7 +20,7 @@ linked below when you need them.
 | Looking for a public-safe starter project | [Examples](how-to/examples.md) | Guide | Points to the repo-root `examples/` surface and the canonical translation onboarding example |
 | Preparing a machine for provider access | [Provider setup](reference/provider-setup.md) | Reference | Covers the machine readiness checks before mission execution |
 | Choosing provider/model intent for a mission | [Provider selection](reference/provider-selection.md) | Reference | Covers which provider/model the mission should use and how to keep secrets out of repo config |
-| Running or watching a mission | [Mission operations](guide/operator.md) | Guide | Explains the canonical `deeploop` operator commands and operator states in plain language |
+| Running or watching a mission | [Mission operations](guide/operator.md) | Guide | Explains the canonical `deeploop` operator commands, operator states, and new recovery/evidence signals in plain language |
 | Starting from a plain-folder project | [Plain-folder starter](how-to/plain-folder-starter.md) | Guide | Shows the minimum project shape for the public bootstrap path |
 | Trying to understand how DeepLoop works | [Runtime architecture](concepts/architecture.md) | Concept | Summarizes the mission loop and the canonical runtime surfaces |
 | Learning the vocabulary | [Glossary](concepts/glossary.md) | Concept | Defines terms like mission, operator state, soft gate, and bounded support |
@@ -30,7 +36,8 @@ linked below when you need them.
    for the fastest happy path.
 4. If you want the explicit operator flow, run `deeploop-init-mission`, then
    `deeploop start`.
-5. Check `deeploop status` to see the current work and operator state.
+5. Check `deeploop status` to see the current work, operator state, and any
+   surfaced ratchet or temporary-gap cues.
 6. Open `deeploop inbox` only when DeepLoop asks for a real decision; use
    `deeploop resume`, `retry`, or `reroute` after you respond.
 

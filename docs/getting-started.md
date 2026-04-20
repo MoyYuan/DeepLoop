@@ -155,6 +155,8 @@ onboarding validate today; outside it, expect gaps.
    ```
 
    Use `logs` or `decisions` only when you need more detail than `status`.
+   When measurable adaptation or recovery signals exist, `status` now surfaces
+   the ratchet, latest reroute, and temporary-gap hints directly.
 
 9. If DeepLoop asks for help, inspect the inbox:
 
@@ -163,7 +165,9 @@ onboarding validate today; outside it, expect gaps.
    ```
 
    In managed mode, run `triage` first when the blocked request exposes
-   intervention hooks for a blocked queue entry.
+   intervention hooks for a blocked queue entry. If the inbox already says
+   managed mode staged the next bounded recovery step, you can usually review
+   that note and go straight to `resume`.
 
 10. If you changed the path, record it with `retry` or `reroute`, then `resume`:
 
@@ -194,6 +198,9 @@ personal path from a machine-specific example.
 - `status` shows `operator_state: autopilot-running` or `autopilot-recovering`
 - the operator inbox is clear unless DeepLoop needs a real decision
 - DeepLoop is working on a real next action
+- when measurable adaptation or recovery signals exist, `status` surfaces the
+  ratchet, latest reroute, and temporary-gap telemetry directly instead of
+  leaving them buried in raw JSON
 
 ## When something goes wrong
 
@@ -202,6 +209,8 @@ personal path from a machine-specific example.
   `decisions` before resuming.
 - If `status` shows `autopilot-ready-to-resume`, the last run ended after a
   soft-gate recovery path and another bounded `resume` is optional.
+- In managed mode, check whether `status` or `inbox` says a retry, reroute, or
+  downscope step was already staged for you before you record one manually.
 
 ## Learn more
 

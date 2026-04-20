@@ -176,6 +176,11 @@ def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict
         if isinstance(autonomy_gap_telemetry, Mapping)
         else {}
     )
+    temporary_gap_categories = (
+        autonomy_gap_telemetry.get("temporary_gap_categories", {})
+        if isinstance(autonomy_gap_telemetry, Mapping)
+        else {}
+    )
     lines = [
         "# Mission outer runtime",
         "",
@@ -194,6 +199,16 @@ def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict
         f"- soft_gates_total: `{telemetry_counts.get('soft_gates_total', 0)}`",
         f"- bounded_recovery_outcomes: `{telemetry_counts.get('bounded_recovery_outcomes', 0)}`",
         f"- unresolved_temporary_gaps: `{telemetry_counts.get('unresolved_temporary_gaps', 0)}`",
+        f"- temporary_gap_auto_recovered: `{telemetry_counts.get('temporary_gap_auto_recovered', 0)}`",
+        f"- temporary_gap_escalated: `{telemetry_counts.get('temporary_gap_escalated', 0)}`",
+        (
+            "- temporary_gap_categories: "
+            + (
+                ", ".join(f"{key}={value}" for key, value in temporary_gap_categories.items())
+                if isinstance(temporary_gap_categories, Mapping) and temporary_gap_categories
+                else "n/a"
+            )
+        ),
         (
             "- recovery_preferences: "
             f"retry=`{recovery_preferences.get('retry', 0)}` "
@@ -210,6 +225,18 @@ def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict
         lines.append(
             "- latest_temporary_gap: "
             f"`{latest_temporary_gap.get('kind')}` {latest_temporary_gap.get('summary')}"
+        )
+    latest_temporary_gap_hint = (
+        autonomy_gap_telemetry.get("latest_temporary_gap_hint")
+        if isinstance(autonomy_gap_telemetry, Mapping)
+        else None
+    )
+    if isinstance(latest_temporary_gap_hint, Mapping):
+        lines.append(
+            "- latest_temporary_gap_hint: "
+            f"`{latest_temporary_gap_hint.get('category')}` "
+            f"-> `{latest_temporary_gap_hint.get('recommended_action') or 'n/a'}` "
+            f"[{latest_temporary_gap_hint.get('telemetry_class')}]"
         )
     if runtime_state.get("terminal_reason"):
         lines.append(f"- terminal_reason: {runtime_state['terminal_reason']}")

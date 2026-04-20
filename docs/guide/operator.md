@@ -4,6 +4,8 @@ Use this page when you are deciding what to run next while a mission is
 starting, running, blocked, or ready to continue through the installed
 `deeploop` operator CLI.
 
+Keep one contract in mind while you operate: the project folder is a minimal fact/contract substrate. DeepLoop owns generated configs, build repo code, and runtime behavior outside that substrate, and it may still propose additional trusted datasets when the science requires them.
+
 ## Your first 10 minutes
 
 1. If you just ran `deeploop-init-mission`, start the mission with
@@ -18,8 +20,10 @@ starting, running, blocked, or ready to continue through the installed
    safe fix.
 5. In managed mode, use `triage` first when `status` points you to an available
    intervention hook.
-6. If you changed the plan, record that with `retry` or `reroute`.
-7. Run `deeploop resume --mission-state <mission-state.json>` when the fix is
+6. If `status` or `inbox` says managed mode already staged the next bounded
+   recovery step, you can usually inspect briefly and go straight to `resume`.
+7. If you changed the plan yourself, record that with `retry` or `reroute`.
+8. Run `deeploop resume --mission-state <mission-state.json>` when the fix is
    in place or `status` says resume is optional.
 
 If you got here from `deeploop-run-project` after an operator stop, skip the
@@ -115,6 +119,24 @@ The related hints are:
 - `next_step_owner`: whether DeepLoop or the operator should act next
 - `resume_policy`: whether `resume` is not needed, optional, or should wait for
   a fix first
+
+## New bounded recovery signals
+
+Recent operator surfaces now show a little more structure before you decide what
+to do:
+
+- `adaptation_metric_ratchet` summarizes a measurable keep/discard/route result
+  when a bounded adaptation run produced one.
+- If your mission opted into a narrow deterministic route, `status` usually
+  pairs that ratchet with `last_reroute` so you can see why DeepLoop moved
+  without digging through config
+- `temporary_gap_auto_recovered` and `temporary_gap_escalated` show whether
+  DeepLoop already absorbed a recoverable issue or still had to escalate it.
+- `temporary_gap_categories` tells you what kind of product-gap work is
+  recurring.
+- In managed mode, the inbox may say DeepLoop already staged the next bounded
+  recovery step after a soft gate or blocked queue triage. When that happens,
+  review briefly, then `resume` unless you want to override the staged path.
 
 ## If the same fix keeps repeating
 

@@ -381,6 +381,100 @@ def _update_action_result(
     return updated
 
 
+def _stage_managed_recovery_action(
+    mission_state: dict[str, Any],
+    *,
+    source_action_payload: Mapping[str, Any] | None,
+    recommended_action: str | None,
+    reason: str,
+    source: str,
+    request_id: str | None = None,
+    recommended_resume_action: str | None = None,
+) -> dict[str, Any] | None:
+    if str(mission_state.get("mode") or DEFAULT_OPERATING_MODE) != "managed":
+        return None
+    action = str(recommended_action or "").strip()
+    if action not in {"retry", "reroute", "downscope"}:
+        return None
+    phase = str((source_action_payload or {}).get("phase") or mission_state.get("current_phase") or "").strip()
+    source_action_id = str((source_action_payload or {}).get("action_id") or "").strip()
+    if not phase:
+        return None
+    summary = (
+        f"Managed mode staged `{action}` as the next bounded recovery step for `{phase}`"
+        + (f" after {source} `{request_id}`." if request_id else f" after {source}.")
+    )
+    notes = [
+        f"managed-auto-recovery={action}",
+        f"recovery-source={source}",
+    ]
+    if reason.strip():
+        notes.append(reason.strip())
+    if recommended_resume_action and recommended_resume_action.strip():
+        notes.append(f"resume-action={recommended_resume_action.strip()}")
+    staged_action_id: str
+    if action == "retry" and source_action_id:
+        updated = _update_action_result(
+            mission_state,
+            action_id=source_action_id,
+            status="pending",
+            notes=notes,
+        )
+        if updated is None:
+            return None
+        staged_action_id = str(updated.get("action_id") or source_action_id)
+    else:
+        recovery_action = MissionPlannedAction(
+            action_id=f"{source_action_id or phase}-{action}-managed-recovery",
+            mission_id=str(mission_state.get("mission_id") or ""),
+            kind="artifact-edit",
+            role="planner",
+            task=(
+                f"{'Reroute' if action == 'reroute' else 'Downscope'} `{phase}` inside the current managed boundary. "
+                f"{reason.strip()}"
+            ).strip(),
+            phase=phase,
+            notes=tuple(notes),
+            requires_operator_approval=False,
+        )
+        staged_action_payload = _upsert_selected_action(mission_state, recovery_action, summary=summary)
+        staged_action_id = str(staged_action_payload.get("action_id") or recovery_action.action_id)
+    record = {
+        "status": "staged",
+        "source": source,
+        "request_id": request_id,
+        "action": action,
+        "phase": phase,
+        "source_action_id": source_action_id or None,
+        "staged_action_id": staged_action_id,
+        "summary": summary,
+        "reason": reason.strip() or None,
+        "recommended_resume_action": recommended_resume_action.strip() if recommended_resume_action else None,
+        "recorded_at": now_utc(),
+    }
+    mission_state["automatic_recovery"] = record
+    return record
+
+
+def _attach_managed_recovery_to_request(request: dict[str, Any], recovery_record: Mapping[str, Any]) -> dict[str, Any]:
+    updated = dict(request)
+    recommendation = dict(updated.get("recommendation")) if isinstance(updated.get("recommendation"), Mapping) else {}
+    existing_summary = str(recommendation.get("summary") or "").strip()
+    staged_summary = str(recovery_record.get("summary") or "").strip()
+    if staged_summary:
+        recommendation["summary"] = (
+            f"{staged_summary} Resume to apply the staged step."
+            + (f" {existing_summary}" if existing_summary else "")
+        ).strip()
+    updated["recommendation"] = recommendation
+    explanation = str(updated.get("explanation") or "").strip()
+    updated["explanation"] = (
+        f"{explanation} Managed mode already staged `{recovery_record.get('action')}` as the next bounded recovery step "
+        f"(`{recovery_record.get('staged_action_id')}`)."
+    ).strip()
+    return updated
+
+
 def _payload_phase_control(payload: Mapping[str, Any]) -> dict[str, Any]:
     phase_control = payload.get("phase_control")
     if isinstance(phase_control, Mapping):
@@ -1401,6 +1495,19 @@ def _sync_operator_inbox(
         request = _attach_auto_triage_to_request(request, triage_summary)
         mission_state["automatic_bounded_triage"] = _jsonify(triage_summary)
         runtime_state["automatic_bounded_triage"] = _jsonify(triage_summary)
+        triage_result = triage_summary.get("result") if isinstance(triage_summary.get("result"), Mapping) else {}
+        managed_recovery = _stage_managed_recovery_action(
+            mission_state,
+            source_action_payload=action_payload,
+            recommended_action=str(triage_result.get("recommended_operator_action") or "").strip() or None,
+            reason=str(triage_result.get("summary") or "").strip(),
+            source="bounded-triage",
+            request_id=str(request.get("request_id") or "").strip() or None,
+            recommended_resume_action=str(triage_result.get("recommended_resume_action") or "").strip() or None,
+        )
+        if managed_recovery is not None:
+            request = _attach_managed_recovery_to_request(request, managed_recovery)
+            runtime_state["automatic_recovery"] = _jsonify(managed_recovery)
     append_operator_request(
         Path(paths["operator_request_log_path"]),
         current_request_path,
@@ -1678,6 +1785,24 @@ def run_mission(
                     stage_runs = updated_state.setdefault("stage_runs", {})
                     stage_id = str(result.payload.get("stage_id") or outcome.action.action_id)
                     stage_runs[stage_id] = _jsonify(result.payload)
+                gate_event = result.payload.get("gate_event") if isinstance(result.payload.get("gate_event"), Mapping) else None
+                if (
+                    str(result.status) == "deferred"
+                    and isinstance(gate_event, Mapping)
+                    and str(gate_event.get("gate") or "") == "soft"
+                ):
+                    managed_recovery = _stage_managed_recovery_action(
+                        updated_state,
+                        source_action_payload=action_payload,
+                        recommended_action=(
+                            _normalize_strings(gate_event.get("preferred_actions"))[:1] or [None]
+                        )[0],
+                        reason=str(gate_event.get("reason") or result.summary or "").strip(),
+                        source="soft-gate",
+                        recommended_resume_action=str(gate_event.get("default_response") or "").strip() or None,
+                    )
+                    if managed_recovery is not None:
+                        runtime_state["automatic_recovery"] = _jsonify(managed_recovery)
                 bootstrap_note = None
                 try:
                     updated_state, bootstrap_note = _maybe_stage_bootstrap_followups(

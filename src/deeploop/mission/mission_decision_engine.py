@@ -55,6 +55,7 @@ _PHASE_ACTION_KIND_DEFAULTS = {
 _ACTIONABLE_STATUSES = {"pending", "in_progress"}
 _BLOCKING_STATUSES = {"blocked"}
 _DONE_STATUSES = {"completed", "cancelled"}
+_MISSING = object()
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -78,6 +79,19 @@ def _normalize_strings(raw: Any) -> tuple[str, ...]:
 def _slug(value: str, *, fallback: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or fallback
+
+
+def _path_value(payload: Mapping[str, Any], path: str) -> Any:
+    current: Any = payload
+    for part in (segment.strip() for segment in path.split(".")):
+        if not part:
+            raise ValueError(f"Deterministic route path `{path}` is invalid.")
+        if not isinstance(current, Mapping):
+            return _MISSING
+        if part not in current:
+            return _MISSING
+        current = current[part]
+    return current
 
 
 def _default_role_for_phase(phase: str) -> str:
@@ -947,6 +961,13 @@ class MissionDecisionEngine:
         transition_entries = [item for item in metadata if isinstance(item, Mapping)]
         if not transition_entries:
             return None
+        deterministic_route = self._matched_deterministic_route(
+            mission_state,
+            transition_entries=transition_entries,
+            allowed_targets=set(_normalize_strings(phase_contract.get("transitions"))),
+        )
+        if deterministic_route is not None:
+            return deterministic_route
         next_phase = str(mission_state.get("next_phase") or "").strip()
         if next_phase:
             for item in transition_entries:
@@ -968,6 +989,105 @@ class MissionDecisionEngine:
                 if str(item.get("recovery_status", "not-needed")) != "not-needed":
                     return dict(item)
         return dict(transition_entries[0])
+
+    def _matched_deterministic_route(
+        self,
+        mission_state: Mapping[str, Any],
+        *,
+        transition_entries: list[Mapping[str, Any]],
+        allowed_targets: set[str],
+    ) -> dict[str, str] | None:
+        routing_cfg = mission_state.get("deterministic_routing")
+        if not isinstance(routing_cfg, Mapping) or not bool(routing_cfg.get("enabled")):
+            return None
+        current_phase = str(mission_state.get("current_phase") or "").strip()
+        if not current_phase:
+            return None
+        raw_hints = mission_state.get("phase_execution_hints")
+        if not isinstance(raw_hints, Mapping):
+            return None
+        raw_hint = raw_hints.get(current_phase)
+        if not isinstance(raw_hint, Mapping):
+            return None
+        raw_routes = raw_hint.get("deterministic_routes")
+        if raw_routes is None:
+            return None
+        if not isinstance(raw_routes, list):
+            raise ValueError(f"Phase `{current_phase}` deterministic_routes must be a list.")
+        for index, raw_rule in enumerate(raw_routes):
+            if not isinstance(raw_rule, Mapping):
+                raise ValueError(f"Phase `{current_phase}` deterministic route #{index + 1} must be a mapping.")
+            if not self._deterministic_route_matches(raw_rule, mission_state):
+                continue
+            target = str(raw_rule.get("target") or "").strip()
+            if not target:
+                raise ValueError(f"Phase `{current_phase}` deterministic route #{index + 1} is missing a target.")
+            if allowed_targets and target not in allowed_targets:
+                raise ValueError(
+                    f"Phase `{current_phase}` deterministic route target `{target}` is not allowed by the phase contract."
+                )
+            transition = next((dict(item) for item in transition_entries if str(item.get("target")) == target), None)
+            if transition is None:
+                transition = {
+                    "target": target,
+                    "decision_type": "phase-transition",
+                    "summary": f"Continue the configured mission plan into `{target}`.",
+                    "branch_status": "active",
+                    "recovery_status": "not-needed",
+                }
+            rule_id = str(raw_rule.get("rule_id") or raw_rule.get("id") or f"{current_phase}-route-{index + 1}").strip()
+            transition["routing_rule_id"] = rule_id
+            if isinstance(raw_rule.get("decision_type"), str) and str(raw_rule.get("decision_type")).strip():
+                transition["decision_type"] = str(raw_rule.get("decision_type")).strip()
+            if isinstance(raw_rule.get("summary"), str) and str(raw_rule.get("summary")).strip():
+                transition["summary"] = str(raw_rule.get("summary")).strip()
+            if isinstance(raw_rule.get("branch_status"), str) and str(raw_rule.get("branch_status")).strip():
+                transition["branch_status"] = str(raw_rule.get("branch_status")).strip()
+            if isinstance(raw_rule.get("recovery_status"), str) and str(raw_rule.get("recovery_status")).strip():
+                transition["recovery_status"] = str(raw_rule.get("recovery_status")).strip()
+            return transition
+        return None
+
+    def _deterministic_route_matches(self, rule: Mapping[str, Any], mission_state: Mapping[str, Any]) -> bool:
+        raw_when = rule.get("when")
+        if isinstance(raw_when, Mapping):
+            clauses = [raw_when]
+        elif isinstance(raw_when, list):
+            clauses = list(raw_when)
+        else:
+            raise ValueError("Deterministic routes must declare `when` as a mapping or list of mappings.")
+        if not clauses:
+            raise ValueError("Deterministic routes must include at least one `when` clause.")
+        for index, clause in enumerate(clauses):
+            if not isinstance(clause, Mapping):
+                raise ValueError(f"Deterministic route clause #{index + 1} must be a mapping.")
+            path = str(clause.get("path") or "").strip()
+            if not path:
+                raise ValueError(f"Deterministic route clause #{index + 1} is missing `path`.")
+            value = _path_value(mission_state, path)
+            exists_expected = clause.get("exists")
+            if exists_expected is not None:
+                if bool(exists_expected) != (value is not _MISSING):
+                    return False
+            if value is _MISSING:
+                if any(key in clause for key in ("eq", "in", "gte", "lte")):
+                    return False
+                continue
+            if "eq" in clause and value != clause.get("eq"):
+                return False
+            if "in" in clause:
+                expected = clause.get("in")
+                if not isinstance(expected, (list, tuple, set)):
+                    raise ValueError(f"Deterministic route clause `{path}` must use a list/tuple/set for `in`.")
+                if value not in expected:
+                    return False
+            if "gte" in clause:
+                if float(value) < float(clause.get("gte")):
+                    return False
+            if "lte" in clause:
+                if float(value) > float(clause.get("lte")):
+                    return False
+        return True
 
     def _directive_for_transition(self, transition_meta: Mapping[str, Any]) -> MissionDecisionDirective:
         branch_status = str(transition_meta.get("branch_status", "active"))
@@ -1033,6 +1153,10 @@ class MissionDecisionEngine:
             branch_status=branch_status,
             recovery_status=recovery_status,
         )
+        decision_notes = list((f"missing_outputs={', '.join(missing_outputs)}",) if missing_outputs else ())
+        routing_rule_id = str(transition_meta.get("routing_rule_id") or "").strip()
+        if routing_rule_id:
+            decision_notes.append(f"deterministic_route_rule={routing_rule_id}")
         return MissionDecisionOutcome(
             directive=directive,
             decision=self._decision_record(
@@ -1045,7 +1169,7 @@ class MissionDecisionEngine:
                 transition=transition,
                 selected_action_ids=(action.action_id,),
                 selected_branch_ids=((resolved_branch.branch_id,) if resolved_branch is not None else ()),
-                notes=((f"missing_outputs={', '.join(missing_outputs)}",) if missing_outputs else ()),
+                notes=tuple(decision_notes),
             ),
             action=action,
             branch_record=resolved_branch,

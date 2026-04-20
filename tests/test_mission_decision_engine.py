@@ -358,6 +358,86 @@ class MissionDecisionEngineTests(unittest.TestCase):
         self.assertEqual(outcome.action.phase, "critique")
         self.assertEqual(outcome.action.kind, "phase-transition")
 
+    def test_engine_uses_deterministic_route_when_enabled(self) -> None:
+        mission_state = _base_state(current_phase="critique", next_phase="experiment-design")
+        mission_state["deterministic_routing"] = {"enabled": True}
+        mission_state["phase_execution_hints"] = {
+            "critique": {
+                "deterministic_routes": [
+                    {
+                        "rule_id": "ratchet-keep",
+                        "target": "replication",
+                        "summary": "Route directly into replication when the ratchet keeps the adapted artifact.",
+                        "when": [
+                            {"path": "adaptation_training.metric_ratchet.decision", "eq": "keep"},
+                            {"path": "adaptation_training.metric_ratchet.route_to", "eq": "replication"},
+                        ],
+                    }
+                ]
+            }
+        }
+        mission_state["adaptation_training"] = {"metric_ratchet": {"decision": "keep", "route_to": "replication"}}
+        evidence = MissionEvidence(
+            produced_outputs=("evidence assessment", "confound notes", "next-step recommendation"),
+        )
+
+        outcome = self.engine.decide(mission_state, evidence=evidence)
+
+        self.assertEqual(outcome.directive, MissionDecisionDirective.BRANCH)
+        self.assertIsNotNone(outcome.action)
+        assert outcome.action is not None
+        self.assertEqual(outcome.action.phase, "replication")
+        self.assertIn("deterministic_route_rule=ratchet-keep", outcome.decision.notes)
+
+    def test_engine_falls_back_when_deterministic_route_does_not_match(self) -> None:
+        mission_state = _base_state(current_phase="critique", next_phase="experiment-design")
+        mission_state["deterministic_routing"] = {"enabled": True}
+        mission_state["phase_execution_hints"] = {
+            "critique": {
+                "deterministic_routes": [
+                    {
+                        "rule_id": "ratchet-keep",
+                        "target": "replication",
+                        "when": [{"path": "adaptation_training.metric_ratchet.decision", "eq": "keep"}],
+                    }
+                ]
+            }
+        }
+        mission_state["adaptation_training"] = {"metric_ratchet": {"decision": "discard", "route_to": "experiment-design"}}
+        evidence = MissionEvidence(
+            produced_outputs=("evidence assessment", "confound notes", "next-step recommendation"),
+            recent_failures=("failed-1", "failed-2", "failed-3"),
+            failure_count=4,
+        )
+
+        outcome = self.engine.decide(mission_state, evidence=evidence)
+
+        self.assertEqual(outcome.directive, MissionDecisionDirective.REROUTE)
+        self.assertIsNotNone(outcome.action)
+        assert outcome.action is not None
+        self.assertEqual(outcome.action.phase, "experiment-design")
+        self.assertNotIn("deterministic_route_rule=ratchet-keep", outcome.decision.notes)
+
+    def test_engine_rejects_malformed_deterministic_route(self) -> None:
+        mission_state = _base_state(current_phase="critique", next_phase="replication")
+        mission_state["deterministic_routing"] = {"enabled": True}
+        mission_state["phase_execution_hints"] = {
+            "critique": {
+                "deterministic_routes": [
+                    {
+                        "rule_id": "broken-rule",
+                        "target": "replication",
+                    }
+                ]
+            }
+        }
+        evidence = MissionEvidence(
+            produced_outputs=("evidence assessment", "confound notes", "next-step recommendation"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "Deterministic routes must declare `when`"):
+            self.engine.decide(mission_state, evidence=evidence)
+
 
 if __name__ == "__main__":
     unittest.main()

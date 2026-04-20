@@ -368,6 +368,16 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
     promotion_reasons = promotion.get("reasons")
     if isinstance(promotion_reasons, list) and promotion_reasons:
         lines.append(f"- promotion_reasons: {'; '.join(promotion_reasons[:3])}")
+    adaptation_metric_ratchet = evidence.get("adaptation_metric_ratchet") if isinstance(evidence, Mapping) else None
+    if isinstance(adaptation_metric_ratchet, Mapping):
+        lines.append(
+            "- adaptation_metric_ratchet: "
+            f"`{adaptation_metric_ratchet.get('decision') or 'unknown'}`"
+            f" -> `{adaptation_metric_ratchet.get('route_to') or 'n/a'}`"
+            f" on `{adaptation_metric_ratchet.get('primary_metric') or 'n/a'}`"
+        )
+        if adaptation_metric_ratchet.get("summary"):
+            lines.append(f"- adaptation_metric_summary: {adaptation_metric_ratchet.get('summary')}")
 
     lines.extend(["", "## Failures and routing", ""])
     lines.extend(
@@ -388,6 +398,7 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
     if isinstance(autonomy_gap_telemetry, Mapping):
         telemetry_counts = autonomy_gap_telemetry.get("counts", {})
         recovery_preferences = autonomy_gap_telemetry.get("recovery_preferences", {})
+        temporary_gap_categories = autonomy_gap_telemetry.get("temporary_gap_categories", {})
         lines.extend(
             [
                 "",
@@ -400,6 +411,16 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
                 f"- soft_gates_total: `{telemetry_counts.get('soft_gates_total', 0)}`",
                 f"- bounded_recovery_outcomes: `{telemetry_counts.get('bounded_recovery_outcomes', 0)}`",
                 f"- unresolved_temporary_gaps: `{telemetry_counts.get('unresolved_temporary_gaps', 0)}`",
+                f"- temporary_gap_auto_recovered: `{telemetry_counts.get('temporary_gap_auto_recovered', 0)}`",
+                f"- temporary_gap_escalated: `{telemetry_counts.get('temporary_gap_escalated', 0)}`",
+                (
+                    "- temporary_gap_categories: "
+                    + (
+                        ", ".join(f"{key}={value}" for key, value in temporary_gap_categories.items())
+                        if isinstance(temporary_gap_categories, Mapping) and temporary_gap_categories
+                        else "n/a"
+                    )
+                ),
                 (
                     "- recovery_preferences: "
                     f"retry=`{recovery_preferences.get('retry', 0)}` "
@@ -413,6 +434,14 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
             lines.append(
                 "- latest_temporary_gap: "
                 f"`{latest_temporary_gap.get('kind')}` {latest_temporary_gap.get('summary')}"
+            )
+        latest_temporary_gap_hint = autonomy_gap_telemetry.get("latest_temporary_gap_hint")
+        if isinstance(latest_temporary_gap_hint, Mapping):
+            lines.append(
+                "- latest_temporary_gap_hint: "
+                f"`{latest_temporary_gap_hint.get('category')}` "
+                f"-> `{latest_temporary_gap_hint.get('recommended_action') or 'n/a'}` "
+                f"[{latest_temporary_gap_hint.get('telemetry_class')}]"
             )
         latest_soft_gate = autonomy_gap_telemetry.get("latest_soft_gate")
         if isinstance(latest_soft_gate, Mapping):

@@ -14,6 +14,11 @@ import yaml
 from deeploop.autonomy.gate_taxonomy import build_gate_event, load_gate_policy
 from deeploop.core.ledger import now_utc
 from deeploop.core.paths import REPO_ROOT
+from deeploop.runtime.metric_ratchets import (
+    MetricRatchetConfig,
+    build_metric_ratchet_decision,
+    metric_map,
+)
 
 DEFAULT_GATES_PATH = REPO_ROOT / "configs" / "autonomy" / "gates.yaml"
 _SUPPORTED_TRAINING_KINDS = {"lora", "sft-lora", "qlora"}
@@ -67,31 +72,6 @@ def _normalize_command(raw: Any) -> tuple[str, ...]:
     raise ValueError("Expected a non-empty command.")
 
 
-def _as_float(value: Any) -> float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
-
-
-def _metric_map(payload: dict[str, Any]) -> dict[str, float]:
-    metrics_payload = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else payload
-    metrics: dict[str, float] = {}
-    for key, value in metrics_payload.items():
-        resolved = _as_float(value)
-        if resolved is not None:
-            metrics[str(key)] = resolved
-    return metrics
-
-
-def _metric_higher_is_better(metric_name: str, *, default: bool) -> bool:
-    lowered = metric_name.lower()
-    if any(token in lowered for token in ("loss", "error", "latency", "perplexity")):
-        return False
-    return default
-
-
 @dataclass(frozen=True)
 class AdaptationCommand:
     command: tuple[str, ...]
@@ -123,32 +103,6 @@ class AdaptationCommand:
 
 
 @dataclass(frozen=True)
-class AdaptationComparison:
-    primary_metric: str
-    higher_is_better: bool
-    min_improvement: float
-    max_allowed_regression: float
-    guardrail_metrics: tuple[str, ...]
-    route_on_keep: str
-    route_on_discard: str
-
-    @classmethod
-    def from_mapping(cls, raw: Mapping[str, Any]) -> "AdaptationComparison":
-        primary_metric = str(raw.get("primary_metric") or "").strip()
-        if not primary_metric:
-            raise ValueError("comparison.primary_metric is required.")
-        return cls(
-            primary_metric=primary_metric,
-            higher_is_better=bool(raw.get("higher_is_better", True)),
-            min_improvement=float(raw.get("min_improvement", 0.0) or 0.0),
-            max_allowed_regression=float(raw.get("max_allowed_regression", 0.0) or 0.0),
-            guardrail_metrics=tuple(str(item) for item in raw.get("guardrail_metrics", ()) if str(item).strip()),
-            route_on_keep=str(raw.get("route_on_keep", "replication")),
-            route_on_discard=str(raw.get("route_on_discard", "experiment-design")),
-        )
-
-
-@dataclass(frozen=True)
 class AdaptationTrainingConfig:
     config_path: Path
     mission_state_path: Path | None
@@ -165,7 +119,7 @@ class AdaptationTrainingConfig:
     evaluation_metrics_path: Path
     train: AdaptationCommand
     evaluate: AdaptationCommand
-    comparison: AdaptationComparison
+    comparison: MetricRatchetConfig
 
     @classmethod
     def load(
@@ -200,9 +154,11 @@ class AdaptationTrainingConfig:
         artifacts_cfg = raw.get("artifacts")
         if not isinstance(artifacts_cfg, dict):
             raise ValueError("artifacts mapping is required.")
-        comparison_cfg = raw.get("comparison")
+        comparison_cfg = raw.get("metric_ratchet")
         if not isinstance(comparison_cfg, dict):
-            raise ValueError("comparison mapping is required.")
+            comparison_cfg = raw.get("comparison")
+        if not isinstance(comparison_cfg, dict):
+            raise ValueError("comparison or metric_ratchet mapping is required.")
         budget_seconds = max(int(max_runtime_hours * 3600), 1)
         train_cfg = raw.get("train")
         eval_cfg = raw.get("evaluate")
@@ -233,7 +189,7 @@ class AdaptationTrainingConfig:
             evaluation_metrics_path=evaluation_metrics_path,
             train=AdaptationCommand.from_mapping(train_cfg, repo_root=repo_root, default_timeout_seconds=budget_seconds),
             evaluate=AdaptationCommand.from_mapping(eval_cfg, repo_root=repo_root, default_timeout_seconds=budget_seconds),
-            comparison=AdaptationComparison.from_mapping(comparison_cfg),
+            comparison=MetricRatchetConfig.from_mapping(comparison_cfg),
         )
 
 
@@ -437,90 +393,6 @@ def _gate_event(config: AdaptationTrainingConfig, gates: dict[str, Any]) -> dict
     return None
 
 
-def _comparison_payload(
-    config: AdaptationTrainingConfig,
-    *,
-    baseline_metrics: dict[str, float],
-    intervention_metrics: dict[str, float] | None,
-    adapted_metrics: dict[str, float],
-) -> dict[str, Any]:
-    primary = config.comparison.primary_metric
-    adapted_score = adapted_metrics.get(primary)
-    baseline_score = baseline_metrics.get(primary)
-    intervention_score = intervention_metrics.get(primary) if intervention_metrics is not None else None
-    if adapted_score is None:
-        raise ValueError(f"Evaluation metrics are missing primary metric `{primary}`.")
-    if baseline_score is None:
-        raise ValueError(f"Baseline metrics are missing primary metric `{primary}`.")
-
-    candidates = [("baseline", baseline_score)]
-    if intervention_score is not None:
-        candidates.append(("intervention", intervention_score))
-    if config.comparison.higher_is_better:
-        anchor_label, anchor_score = max(candidates, key=lambda item: item[1])
-        improvement = adapted_score - anchor_score
-    else:
-        anchor_label, anchor_score = min(candidates, key=lambda item: item[1])
-        improvement = anchor_score - adapted_score
-    keep = improvement >= config.comparison.min_improvement
-
-    guardrails: dict[str, dict[str, float]] = {}
-    anchor_metrics = baseline_metrics if anchor_label == "baseline" else (intervention_metrics or baseline_metrics)
-    for metric in config.comparison.guardrail_metrics:
-        adapted_value = adapted_metrics.get(metric)
-        anchor_value = anchor_metrics.get(metric)
-        if adapted_value is None or anchor_value is None:
-            continue
-        metric_higher_is_better = _metric_higher_is_better(metric, default=config.comparison.higher_is_better)
-        regression = (
-            anchor_value - adapted_value
-            if metric_higher_is_better
-            else adapted_value - anchor_value
-        )
-        guardrails[metric] = {
-            "anchor": anchor_value,
-            "adapted": adapted_value,
-            "higher_is_better": metric_higher_is_better,
-            "regression": regression,
-        }
-        if regression > config.comparison.max_allowed_regression:
-            keep = False
-
-    decision = "keep" if keep else "discard"
-    route_to = config.comparison.route_on_keep if keep else config.comparison.route_on_discard
-    deltas = {
-        "vs_baseline": adapted_score - baseline_score,
-        "vs_intervention": (
-            adapted_score - intervention_score
-            if intervention_score is not None
-            else None
-        ),
-        "vs_anchor": improvement if config.comparison.higher_is_better else -improvement,
-    }
-    return {
-        "primary_metric": primary,
-        "higher_is_better": config.comparison.higher_is_better,
-        "anchor_label": anchor_label,
-        "decision": decision,
-        "route_to": route_to,
-        "scores": {
-            "baseline": baseline_score,
-            "intervention": intervention_score,
-            "adapted": adapted_score,
-        },
-        "deltas": deltas,
-        "guardrails": guardrails,
-        "thresholds": {
-            "min_improvement": config.comparison.min_improvement,
-            "max_allowed_regression": config.comparison.max_allowed_regression,
-        },
-        "summary": (
-            f"Adapted artifact `{decision}` against the best prior anchor `{anchor_label}` "
-            f"on `{primary}` with route `{route_to}`."
-        ),
-    }
-
-
 def _write_report(report_json_path: Path, report_markdown_path: Path, comparison_path: Path, report: dict[str, Any]) -> None:
     _write_json(report_json_path, report)
     if isinstance(report.get("comparison"), dict):
@@ -592,6 +464,7 @@ def _result_payload(
             "evaluate": eval_job,
         },
         "comparison": comparison,
+        "metric_ratchet": comparison,
         "failure_reason": failure_reason,
         "blocked_reason": blocked_reason,
         "gate_event": gate_event,
@@ -608,6 +481,7 @@ def _result_payload(
             "evaluation_metrics_path": str(config.evaluation_metrics_path),
             "decision": comparison.get("decision") if isinstance(comparison, dict) else None,
             "route_to": comparison.get("route_to") if isinstance(comparison, dict) else None,
+            "metric_ratchet": comparison,
             "gate_event": gate_event,
         }
     }
@@ -735,19 +609,21 @@ def run_adaptation_training(
             failure_reason=failure_reason,
         )
 
-    baseline_metrics = _metric_map(_load_json(config.baseline_metrics_path))
+    baseline_metrics = metric_map(_load_json(config.baseline_metrics_path))
     intervention_metrics = (
-        _metric_map(_load_json(config.intervention_metrics_path))
+        metric_map(_load_json(config.intervention_metrics_path))
         if config.intervention_metrics_path is not None
         else None
     )
-    adapted_metrics = _metric_map(_load_json(config.evaluation_metrics_path))
+    adapted_metrics = metric_map(_load_json(config.evaluation_metrics_path))
     try:
-        comparison = _comparison_payload(
-            config,
-            baseline_metrics=baseline_metrics,
-            intervention_metrics=intervention_metrics,
-            adapted_metrics=adapted_metrics,
+        comparison = build_metric_ratchet_decision(
+            config.comparison,
+            candidate_metrics=adapted_metrics,
+            anchors={
+                "baseline": baseline_metrics,
+                **({"intervention": intervention_metrics} if intervention_metrics is not None else {}),
+            },
         )
     except ValueError as exc:
         failure_reason = str(exc)

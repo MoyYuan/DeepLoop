@@ -159,6 +159,9 @@ def _phase_execution_hints(config: dict, *, context: dict[str, str]) -> dict[str
         next_phase_on_success = _resolve_templates(raw_hint.get("next_phase_on_success"), context)
         if isinstance(next_phase_on_success, str) and next_phase_on_success.strip():
             hint["next_phase_on_success"] = next_phase_on_success.strip()
+        deterministic_routes = _resolve_templates(raw_hint.get("deterministic_routes"), context)
+        if isinstance(deterministic_routes, list):
+            hint["deterministic_routes"] = [dict(item) for item in deterministic_routes if isinstance(item, dict)]
         hints[str(phase)] = hint
     return hints
 
@@ -383,6 +386,9 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         state["runtime_profiles"] = runtime_profiles
     if phase_execution_hints:
         state["phase_execution_hints"] = phase_execution_hints
+    deterministic_routing = autopilot_cfg.get("deterministic_routing")
+    if isinstance(deterministic_routing, dict):
+        state["deterministic_routing"] = _resolve_templates(deterministic_routing, template_context)
     if bootstrap:
         state["bootstrap"] = bootstrap
     runtime_launcher: dict[str, object] = {}

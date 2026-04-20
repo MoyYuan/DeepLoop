@@ -28,6 +28,9 @@ artifact_map:
     critique_reports:
       - self_correction/**/*.json
       - self_correction/**/*.md
+      - adaptation_training/**/adaptation_training_report.json
+      - adaptation_training/**/adaptation_training_report.md
+      - adaptation_training/**/adaptation_training_comparison.json
     runtime_metadata:
       - agent_handoffs/**/*.json
       - runtime/**/*.yaml

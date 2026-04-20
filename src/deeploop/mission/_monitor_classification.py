@@ -879,6 +879,28 @@ def _promotion_snapshot(mission_state: dict[str, Any], end_to_end_summary: dict[
     }
 
 
+def _adaptation_metric_ratchet_snapshot(mission_state: dict[str, Any]) -> dict[str, Any] | None:
+    adaptation = mission_state.get("adaptation_training")
+    if not isinstance(adaptation, Mapping):
+        return None
+    ratchet = adaptation.get("metric_ratchet")
+    if not isinstance(ratchet, Mapping):
+        ratchet = adaptation.get("comparison")
+    if not isinstance(ratchet, Mapping):
+        return None
+    return {
+        "status": str(adaptation.get("status") or ""),
+        "decision": ratchet.get("decision"),
+        "route_to": ratchet.get("route_to"),
+        "primary_metric": ratchet.get("primary_metric"),
+        "anchor_label": ratchet.get("anchor_label"),
+        "summary": ratchet.get("summary") or adaptation.get("summary"),
+        "promotion_guidance": ratchet.get("promotion_guidance"),
+        "report_json_path": adaptation.get("report_json_path"),
+        "comparison_path": adaptation.get("comparison_path"),
+    }
+
+
 def _failure_snapshot(
     mission_state: dict[str, Any],
     runtime: Mapping[str, Any] | None,
@@ -906,6 +928,13 @@ def _failure_snapshot(
                 action = final_decision.get("action")
                 if route_to or action:
                     last_reroute = {"entry_id": "evaluation_comparison", "status": action, "route_to": route_to}
+    if last_reroute is None:
+        ratchet = _adaptation_metric_ratchet_snapshot(mission_state)
+        if isinstance(ratchet, Mapping):
+            route_to = ratchet.get("route_to")
+            decision = ratchet.get("decision")
+            if route_to or decision:
+                last_reroute = {"entry_id": "adaptation_training", "status": decision, "route_to": route_to}
 
     completion_reason = None
     if isinstance(runtime, Mapping):
@@ -1040,4 +1069,3 @@ def _budgets_snapshot(
         "eta": eta,
         "inner_loop": inner_loop,
     }
-

@@ -9,6 +9,7 @@ from deeploop.autonomy.operator_inbox import latest_operator_request, load_curre
 from deeploop.mission._autonomy_gap_telemetry import build_autonomy_gap_telemetry
 from deeploop.mission._operator_surface import mode_summary as _mode_summary, operator_console_snapshot as _operator_console_snapshot
 from deeploop.mission._monitor_classification import (
+    _adaptation_metric_ratchet_snapshot,
     _branch_records,
     _budgets_snapshot,
     _current_action_record,
@@ -144,6 +145,7 @@ def build_mission_snapshot(
         if isinstance(mission_state.get("phase_outputs_by_phase"), Mapping)
         else {},
         "promotion": _promotion_snapshot(mission_state, end_to_end_summary),
+        "adaptation_metric_ratchet": _adaptation_metric_ratchet_snapshot(mission_state),
     }
     failures = _failure_snapshot(mission_state, runtime, runtime_report)
     autonomy_gap_telemetry = build_autonomy_gap_telemetry(

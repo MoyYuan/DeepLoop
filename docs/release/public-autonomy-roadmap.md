@@ -13,8 +13,8 @@ is still intentionally narrow:
 
 - DeepLoop is share-ready as a **bounded-support autonomous research autopilot**
   on the documented Linux + Python 3.11 path
-- the current contract still includes explicit operator, governance, and release
-  approval boundaries
+- the current contract still includes explicit operator boundaries, governance
+  boundaries, and release approval boundaries
 - outside researchers can install the repo on the documented path, run the
   bootstrap checks, and evaluate the first mission flow without hidden claim
   inflation
@@ -26,6 +26,21 @@ This bucket still does **not** justify:
 - approval-free release promotion
 - broad multi-substrate superiority claims
 
+Initial foundations from the near-term product wave now exist on the supported
+path:
+
+- measurable adaptation runs can emit and surface a deterministic
+  metric-ratchet result
+- missions can opt into deterministic routing rules for narrow measurable cases
+- operator surfaces now expose temporary-gap categories, auto-recovered versus
+  escalated counts, and managed-mode staged recovery hints
+
+Those additions improve the supported path, but they do **not** by themselves
+widen the public claim beyond bounded-support alpha.
+
+The next step is to harden and widen those foundations carefully, not pretend
+the broad autonomy problem is already solved.
+
 ## Next / near-term credibility work
 
 The near-term goal is a smaller set of stronger claims, not a bigger slogan.
@@ -34,9 +49,9 @@ evidence becomes real.
 
 | Work item | Why it sits in the near term | Honest outcome if it lands |
 | --- | --- | --- |
-| **Metric ratchets** | Public claims need release gates and proof thresholds that get harder to game, not easier to waive | Clearer pass/fail release evidence for the current claim |
-| **Deterministic routing** | Repeatable routing, recovery, and triage behavior makes public proof runs more believable than one-off operator luck | More reproducible mission behavior on the supported path |
-| **Reduced operator-gap work** | Temporary product-gap interventions should shrink into bounded retry, reroute, or replanning instead of routine operator babysitting | Fewer operator stops without hiding real safety boundaries |
+| **Harden metric ratchets** | Metric-ratchet evidence now exists on the supported path; the near-term job is to make its thresholds and release use harder to game | Clearer pass/fail release evidence for the current claim |
+| **Expand deterministic routing carefully** | Deterministic routing v1 exists for narrow measurable cases; the near-term job is to keep it opt-in, explicit, and provable as it expands | More reproducible mission behavior on the supported path without pretending the planner disappeared |
+| **Reduce operator-gap work** | Telemetry now makes temporary-gap categories and escalations visible; the near-term job is to shrink repeated operator stops into bounded retry, reroute, or replanning | Fewer operator stops without hiding real safety boundaries |
 | **Broader portability** | The current Linux-centered support contract is still too narrow for stronger public claims | A slightly wider but still explicit support matrix |
 | **Stronger multi-substrate proof** | DeepLoop should show bounded-real behavior on 2-3 materially different substrates before making stronger autonomy claims | Better evidence that the current model is not tied to one substrate shape |
 
@@ -50,9 +65,11 @@ promise surface.
 These bets may matter later, but they should remain off the immediate promise
 surface until the near-term credibility work lands first.
 
+Scratchpad -> formalization stays in this bucket on purpose.
+
 | Bet | Why it is later or exploratory |
 | --- | --- |
-| **Scratchpad -> formalization** | Worth exploring if it can turn ad-hoc lessons into reusable runtime structure, but the mechanism and evidence bar are still taking shape |
+| **Scratchpad -> formalization** | Explicitly deferred. Worth exploring if it can turn ad-hoc lessons into reusable runtime structure, but the mechanism, evidence bar, and user value are still too unsettled for the near-term promise surface |
 | **Portability beyond the next supported matrix** | Only honest after the smaller, explicit portability expansion is already working in public |
 | **Distributed execution** | Potentially valuable for scale, but not required to prove the current public-alpha claim and too easy to over-promise early |
 | **Broad superiority or "fully automatic for everyone" claims** | Off-limits until comparative evidence, portability proof, and operator-gap reduction are much stronger than they are today |

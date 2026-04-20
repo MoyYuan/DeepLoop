@@ -12,9 +12,11 @@ log, branch log, and runtime summary.
 
 ## What command should I start with?
 
-Use `python scripts/mission/manage_mission.py status --mission-state <mission_state.json>`.
-It is the canonical operator console and tells you the current state, the
-recommended next step, and the exact next commands.
+Use `deeploop status --mission-state <mission-state.json>`. It is the canonical
+operator console and tells you the current state, the recommended next step,
+and the exact next commands. The repo-level
+`python scripts/mission/manage_mission.py` surface still exists as a fallback
+for debugging and automation.
 
 ## What should I do if DeepLoop stops?
 
@@ -28,6 +30,8 @@ Open `status` first.
   recovery path and another bounded `resume` is optional.
 - In managed mode, use `triage` first when a blocked queue exposes intervention
   hooks.
+- In managed mode, `status` or `inbox` may also tell you that DeepLoop already
+  staged the next bounded retry, reroute, or downscope step.
 
 ## What is the difference between `status` and `inbox`?
 
@@ -36,10 +40,20 @@ Open `status` first.
 - `inbox` is the current operator request: blocker, recommendation,
   alternatives, and continue command.
 
+## What new evidence might show up in `status`?
+
+On measurable runs, `status` may show `adaptation_metric_ratchet` and
+`last_reroute` so you can see the bounded keep/discard/route result without
+opening raw JSON. On recovery-heavy runs, it may also show temporary-gap
+counts, categories, and whether DeepLoop auto-recovered or escalated the latest
+gap. In managed mode, it may tell you the next bounded recovery step was
+already staged.
+
 ## What does `autopilot-recovering` mean?
 
 It means DeepLoop hit a soft gate but is still running its own bounded recovery
-path. Usually you just keep watching.
+path. Usually you just keep watching. In managed mode, DeepLoop may also stage
+the next bounded recovery step for you so the next `resume` uses that path.
 
 ## What does `needs-investigation` mean?
 
@@ -49,7 +63,15 @@ Do not blindly resume; inspect the surfaced blocker first.
 ## What is a soft gate?
 
 A soft gate is a recoverable issue. DeepLoop should usually retry, reroute, or
-downscope before bothering the operator.
+downscope before bothering the operator. The operator console now also shows
+temporary-gap counts and categories so you can tell whether DeepLoop is already
+absorbing those issues or still escalating them.
+
+## What does deterministic routing v1 actually mean?
+
+It means some mission configs can predeclare a next route for narrow measurable
+cases, usually after a ratchet result. It is opt-in and narrow on purpose.
+When no rule matches, DeepLoop still falls back to its normal planning path.
 
 ## What is a hard gate?
 
@@ -61,6 +83,12 @@ stop and wait for review.
 It means the repo is currently supported on the documented Linux + Python 3.11
 path with the documented workspace roots. It is not yet a claim of broad
 portability or fully automatic operation everywhere.
+
+## Can DeepLoop start from a scratchpad and formalize it for me?
+
+Not as a shipped promise. The supported path is still a structured project
+folder, and the scratchpad-to-formalization bridge remains deferred and
+exploratory in the public roadmap.
 
 ## Do I need to read the code to use DeepLoop?
 

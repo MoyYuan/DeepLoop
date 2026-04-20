@@ -1798,9 +1798,88 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["soft_gates_total"], 1)
         self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["operator_requests_total"], 0)
         self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["recovery_preferences"]["downscope"], 1)
+        self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["temporary_gap_auto_recovered"], 1)
+        self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["temporary_gap_escalated"], 0)
+        self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["temporary_gap_categories"]["budget-overrun"], 1)
         rendered_summary = result["summary_markdown_path"].read_text(encoding="utf-8")
         self.assertIn("soft_gates_total: `1`", rendered_summary)
         self.assertIn("operator_requests_total: `0`", rendered_summary)
+        self.assertIn("temporary_gap_auto_recovered: `1`", rendered_summary)
+        self.assertIn("temporary_gap_categories: budget-overrun=1", rendered_summary)
+
+    @patch("deeploop.runtime.mission_executor_registry.run_adaptation_training")
+    def test_runtime_stages_managed_recovery_after_soft_gate_deferral(self, mock_run_adaptation_training) -> None:
+        test_root = _fresh_test_root("managed_soft_gate_recovery")
+        mission_state_path = test_root / "mission" / "mission_state.json"
+        gate_event = {
+            "gate": "soft",
+            "status": "deferred",
+            "risk_class": "budget-overrun",
+            "label": "budget / resource pressure",
+            "reason": "bounded runtime budget should be downscoped before retrying adaptation training",
+            "default_response": "downscope-reroute-retry",
+            "preferred_actions": ["downscope", "reroute", "retry"],
+            "hard_gate_profile": "minimal",
+        }
+        mission_state = _base_state(
+            mission_id="mission-runtime-managed-soft-gate",
+            current_phase="execution",
+            next_phase="critique",
+            actions=[
+                {
+                    "action_id": "adapt-model",
+                    "role": "execution-operator",
+                    "task": "Run the bounded adaptation step.",
+                    "kind": "local-training",
+                    "status": "pending",
+                    "phase": "execution",
+                    "runtime_owner": "deeploop",
+                    "requires_operator_approval": False,
+                    "executor": {
+                        "id": "adaptation-training",
+                        "params": {"training_config_path": "configs/runtime/train.yaml"},
+                    },
+                }
+            ],
+        )
+        mission_state["mode"] = "managed"
+        _write_json(mission_state_path, mission_state)
+        mock_run_adaptation_training.return_value = {
+            "status": "deferred",
+            "summary": "Adaptation training soft-gated: bounded runtime budget should be downscoped before retrying adaptation training.",
+            "runtime_root": test_root / "adaptation",
+            "train_job_path": test_root / "adaptation" / "train_job.json",
+            "eval_job_path": test_root / "adaptation" / "evaluate_job.json",
+            "report_json_path": test_root / "adaptation" / "report.json",
+            "report_markdown_path": test_root / "adaptation" / "report.md",
+            "comparison_path": test_root / "adaptation" / "comparison.json",
+            "training_log_path": test_root / "adaptation" / "train.log",
+            "evaluation_log_path": test_root / "adaptation" / "evaluate.log",
+            "adapter_artifact_path": test_root / "adaptation" / "adapter.bin",
+            "evaluation_metrics_path": test_root / "adaptation" / "eval_metrics.json",
+            "comparison": None,
+            "gate_event": gate_event,
+            "produced_outputs": [],
+            "mission_state_updates": {
+                "soft_gate_events": [gate_event],
+                "adaptation_training": {"status": "deferred", "gate_event": gate_event},
+            },
+        }
+
+        result = run_mission(mission_state_path, max_iterations=1)
+
+        self.assertEqual(result["status"], "max-iterations")
+        mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
+        self.assertEqual(mission_state["automatic_recovery"]["action"], "downscope")
+        self.assertEqual(mission_state["automatic_recovery"]["source"], "soft-gate")
+        staged_actions = {action["action_id"]: action for action in mission_state["next_actions"]["actions"]}
+        self.assertIn("adapt-model-downscope-managed-recovery", staged_actions)
+        self.assertEqual(staged_actions["adapt-model-downscope-managed-recovery"]["status"], "pending")
+        self.assertEqual(staged_actions["adapt-model-downscope-managed-recovery"]["role"], "planner")
+        self.assertEqual(
+            json.loads((mission_state_path.parent / "current_operator_request.json").read_text(encoding="utf-8")),
+            {},
+        )
 
     @patch("deeploop.runtime.mission_executor_registry.run_self_healing_queue")
     def test_runtime_surfaces_blocked_queue_entry_details_in_operator_request(self, mock_run_self_healing_queue) -> None:
@@ -1864,10 +1943,15 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["operator_requests_total"], 1)
         self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["temporary_gap_requests"], 1)
         self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["unresolved_temporary_gaps"], 1)
+        self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["temporary_gap_auto_recovered"], 0)
+        self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["counts"]["temporary_gap_escalated"], 1)
         self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["latest_temporary_gap"]["kind"], "operator-review")
+        self.assertEqual(runtime_summary["autonomy_gap_telemetry"]["temporary_gap_categories"]["blocked-queue-entry-review"], 1)
         rendered_summary = result["summary_markdown_path"].read_text(encoding="utf-8")
         self.assertIn("temporary_gap_requests: `1`", rendered_summary)
         self.assertIn("latest_temporary_gap: `operator-review`", rendered_summary)
+        self.assertIn("temporary_gap_escalated: `1`", rendered_summary)
+        self.assertIn("temporary_gap_categories: blocked-queue-entry-review=1", rendered_summary)
 
     @patch("deeploop.mission.mission_runtime.subprocess.run")
     @patch("deeploop.runtime.mission_executor_registry.run_self_healing_queue")
@@ -1944,6 +2028,8 @@ class MissionRuntimeTests(unittest.TestCase):
         operator_request = json.loads((mission_state_path.parent / "current_operator_request.json").read_text(encoding="utf-8"))
         self.assertEqual(operator_request["auto_triage"]["recommended_operator_action"], "reroute")
         self.assertIn("automatic bounded triage recommends `reroute`", operator_request["recommendation"]["summary"])
+        self.assertIn("Managed mode staged `reroute`", operator_request["recommendation"]["summary"])
+        self.assertIn("run-followup-queue-reroute-managed-recovery", operator_request["explanation"])
         self.assertIn("manage_mission.py triage", operator_request["next_steps"][0])
         self.assertEqual(operator_request["alternatives"][0]["option_id"], "bounded-triage")
         updated_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
@@ -1951,6 +2037,10 @@ class MissionRuntimeTests(unittest.TestCase):
             updated_state["automatic_bounded_triage"]["result"]["recommended_operator_action"],
             "reroute",
         )
+        self.assertEqual(updated_state["automatic_recovery"]["action"], "reroute")
+        staged_actions = {action["action_id"]: action for action in updated_state["next_actions"]["actions"]}
+        self.assertIn("run-followup-queue-reroute-managed-recovery", staged_actions)
+        self.assertEqual(staged_actions["run-followup-queue-reroute-managed-recovery"]["status"], "pending")
 
     @patch("deeploop.runtime.mission_executor_registry.run_stage_from_config")
     def test_runtime_records_executor_exceptions_as_failed(self, mock_run_stage_from_config) -> None:

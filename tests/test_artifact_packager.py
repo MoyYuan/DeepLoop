@@ -143,6 +143,14 @@ class ArtifactPackagerTests(unittest.TestCase):
             (mission_root / "ledger.jsonl").write_text("", encoding="utf-8")
             (findings_dir / "finding.md").write_text("- Runtime recovered without manifests.\n", encoding="utf-8")
             (runtime_dir / "runtime_state.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+            adaptation_dir = mission_root / "adaptation_training" / "adapt-branch"
+            adaptation_dir.mkdir(parents=True, exist_ok=True)
+            (adaptation_dir / "adaptation_training_report.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+            (adaptation_dir / "adaptation_training_report.md").write_text("# Adaptation\n", encoding="utf-8")
+            (adaptation_dir / "adaptation_training_comparison.json").write_text(
+                '{"decision":"keep","route_to":"replication"}\n',
+                encoding="utf-8",
+            )
 
             output_root = test_root / "packages"
             result = package_mission_artifacts(mission_state_path, output_root=output_root)
@@ -153,6 +161,7 @@ class ArtifactPackagerTests(unittest.TestCase):
             self.assertFalse(checks["all_required_artifacts_present"])
             self.assertEqual(checks["missing_required_artifacts"], ["category:manifests"])
             self.assertEqual(result["package"]["artifact_map"]["manifests"], [])
+            self.assertGreaterEqual(len(result["package"]["artifact_map"]["critique_reports"]), 3)
             self.assertEqual(result["package"]["replication_evidence"]["total_manifests"], 0)
             self.assertIn(
                 "Missing required mission artifacts: category:manifests",

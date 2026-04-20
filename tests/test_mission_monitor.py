@@ -568,7 +568,11 @@ class MissionMonitorTests(unittest.TestCase):
         self.assertEqual(snapshot["autonomy_gap_telemetry"]["counts"]["temporary_gap_requests"], 1)
         self.assertEqual(snapshot["autonomy_gap_telemetry"]["counts"]["permanent_boundary_requests"], 1)
         self.assertEqual(snapshot["autonomy_gap_telemetry"]["counts"]["soft_gates_total"], 1)
+        self.assertEqual(snapshot["autonomy_gap_telemetry"]["counts"]["temporary_gap_auto_recovered"], 1)
+        self.assertEqual(snapshot["autonomy_gap_telemetry"]["counts"]["temporary_gap_escalated"], 1)
         self.assertEqual(snapshot["autonomy_gap_telemetry"]["soft_gate_risk_classes"]["quality-shortfall"], 1)
+        self.assertEqual(snapshot["autonomy_gap_telemetry"]["temporary_gap_categories"]["quality-shortfall"], 1)
+        self.assertEqual(snapshot["autonomy_gap_telemetry"]["temporary_gap_categories"]["operator-review"], 1)
         self.assertEqual(snapshot["jobs"]["stage_runs"][0]["stage_id"], "baseline-evaluation")
         self.assertEqual(snapshot["jobs"]["stage_runs"][0]["telemetry"]["executed_examples"], 16)
         self.assertEqual(snapshot["operator_inbox"]["current_request"]["request_id"], "demo-operator-request")
@@ -601,7 +605,11 @@ class MissionMonitorTests(unittest.TestCase):
         self.assertIn("temporary_gap_requests: `1`", rendered)
         self.assertIn("permanent_boundary_requests: `1`", rendered)
         self.assertIn("soft_gates_total: `1`", rendered)
+        self.assertIn("temporary_gap_auto_recovered: `1`", rendered)
+        self.assertIn("temporary_gap_escalated: `1`", rendered)
+        self.assertIn("temporary_gap_categories: operator-review=1, quality-shortfall=1", rendered)
         self.assertIn("latest_temporary_gap: `operator-review` Autopilot paused for operator review", rendered)
+        self.assertIn("latest_temporary_gap_hint: `operator-review` -> `retry` [escalated]", rendered)
         self.assertIn("compute_budget_status: `tracked`", rendered)
         self.assertIn("token_budget_status: `tracked`", rendered)
         self.assertIn("cost_budget_status: `unavailable`", rendered)
@@ -678,6 +686,46 @@ class MissionMonitorTests(unittest.TestCase):
         self.assertIn("action_status: `deferred`", rendered)
         self.assertIn("soft_gate_status: autopilot kept control", rendered)
         self.assertIn("operator_inbox: clear", rendered)
+
+    def test_snapshot_surfaces_adaptation_metric_ratchet_signal(self) -> None:
+        test_root = _fresh_test_root("adaptation_metric_ratchet")
+        mission_root = test_root / "mission"
+        mission_state_path = mission_root / "mission_state.json"
+        _write_json(
+            mission_state_path,
+            {
+                "mission_id": "demo-ratchet",
+                "title": "Adaptation ratchet mission",
+                "current_phase": "execution",
+                "next_phase": "critique",
+                "status": "paused",
+                "autonomy_status": {"state": "mission-runtime-paused", "reason": "Adaptation finished and ratchet routed to replication."},
+                "adaptation_training": {
+                    "status": "completed",
+                    "summary": "Adapted artifact `keep` against the best prior anchor `intervention` on `accuracy` with route `replication`.",
+                    "report_json_path": str(mission_root / "adaptation_training" / "adapt-branch" / "adaptation_training_report.json"),
+                    "comparison_path": str(mission_root / "adaptation_training" / "adapt-branch" / "adaptation_training_comparison.json"),
+                    "metric_ratchet": {
+                        "decision": "keep",
+                        "route_to": "replication",
+                        "primary_metric": "accuracy",
+                        "anchor_label": "intervention",
+                        "summary": "Adapted artifact `keep` against the best prior anchor `intervention` on `accuracy` with route `replication`.",
+                    },
+                },
+            },
+        )
+
+        snapshot = build_mission_snapshot(mission_state_path, ledger_tail=0)
+
+        self.assertEqual(snapshot["evidence"]["adaptation_metric_ratchet"]["decision"], "keep")
+        self.assertEqual(snapshot["evidence"]["adaptation_metric_ratchet"]["route_to"], "replication")
+        self.assertEqual(snapshot["failures"]["last_reroute"]["entry_id"], "adaptation_training")
+        self.assertEqual(snapshot["failures"]["last_reroute"]["route_to"], "replication")
+
+        rendered = render_mission_snapshot(snapshot)
+        self.assertIn("adaptation_metric_ratchet: `keep` -> `replication` on `accuracy`", rendered)
+        self.assertIn("last_reroute: `adaptation_training` -> `replication`", rendered)
 
     def test_snapshot_surfaces_multi_mission_scheduler_state(self) -> None:
         test_root = _fresh_test_root("surfaces_multi_mission_scheduler_state")

@@ -21,6 +21,24 @@ That claim is backed by:
   different workflow shapes
 - a real release-candidate review and promotion path with required approvals
 - explicit governance and autonomy-boundary docs
+- user-facing operator surfaces that now expose ratchet evidence,
+  temporary-gap telemetry, and bounded managed-mode recovery hints on the
+  supported path
+
+## Recent progress on the supported path
+
+The release claim is still intentionally narrow, but the supported path is
+stronger than it was before:
+
+- measurable adaptation runs can now surface metric-ratchet evidence directly in
+  operator-facing runtime summaries
+- narrow measurable phases can opt into deterministic routing rules instead of
+  relying only on generic transition fallback
+- operator surfaces now expose clearer temporary-gap telemetry and managed-mode
+  staged recovery hints
+
+Those additions improve trust and reduce routine babysitting on the documented
+path, but they do **not** widen the public claim beyond bounded-support alpha.
 
 ## Honest non-claims
 
@@ -29,6 +47,8 @@ Do **not** describe the current release as:
 - broadly installable across arbitrary environments
 - fully automatic for everyone
 - approval-free release promotion
+- scratchpad-to-formalization automation beyond the structured project-folder
+  path
 - proof of broad multi-substrate portability beyond the current bounded-support
   contract
 
