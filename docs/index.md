@@ -1,20 +1,21 @@
 # DeepLoop docs
 
-DeepLoop is a **bounded-support autonomous research autopilot** with an
-operator management layer. The current newcomer/operator path assumes the
-documented Linux + Python 3.11 environment and the canonical
-`scripts/mission/manage_mission.py` runtime surface.
+Use these docs to get DeepLoop installed, connect a provider, start a mission
+from a project folder, and monitor what happens next. The supported beginner
+path today assumes the documented Linux + Python 3.11 environment and the
+installed `deeploop*` CLI surfaces. Deeper runtime and release pages stay
+linked below when you need them.
 
 ## Who should read what
 
 | You are... | Start here | Page type | Why this page |
 | --- | --- | --- | --- |
-| New to DeepLoop | [Getting started](getting-started.md) | Guide | Shows the shortest supported setup and first mission loop |
+| New to DeepLoop | [Getting started](getting-started.md) | Guide | Shows the shortest supported path from install to a first mission |
 | Looking for a public-safe starter project | [Examples](how-to/examples.md) | Guide | Points to the repo-root `examples/` surface and the canonical translation onboarding example |
-| Preparing a machine for provider access | [Provider setup](reference/provider-setup.md) | Reference | Defines the canonical machine-level provider setup contract and its boundary from mission-time selection |
-| Choosing provider/model intent for a mission | [Provider selection](reference/provider-selection.md) | Reference | Defines the canonical mission/runtime provider, backend, model, fallback, and override contract |
-| Running or watching a mission | [Mission operations](guide/operator.md) | Guide | Explains the canonical `manage_mission.py` commands and operator states in plain language |
-| Starting from a plain researcher folder | [Plain-folder starter](how-to/plain-folder-starter.md) | Guide | Shows the minimum project shape for the public bootstrap path |
+| Preparing a machine for provider access | [Provider setup](reference/provider-setup.md) | Reference | Covers the machine readiness checks before mission execution |
+| Choosing provider/model intent for a mission | [Provider selection](reference/provider-selection.md) | Reference | Covers which provider/model the mission should use and how to keep secrets out of repo config |
+| Running or watching a mission | [Mission operations](guide/operator.md) | Guide | Explains the canonical `deeploop` operator commands and operator states in plain language |
+| Starting from a plain-folder project | [Plain-folder starter](how-to/plain-folder-starter.md) | Guide | Shows the minimum project shape for the public bootstrap path |
 | Trying to understand how DeepLoop works | [Runtime architecture](concepts/architecture.md) | Concept | Summarizes the mission loop and the canonical runtime surfaces |
 | Learning the vocabulary | [Glossary](concepts/glossary.md) | Concept | Defines terms like mission, operator state, soft gate, and bounded support |
 | Looking for an answer to a common problem | [FAQ](guide/faq.md) | Guide | Gives short answers to the questions people ask most often |
@@ -23,18 +24,21 @@ documented Linux + Python 3.11 environment and the canonical
 
 ## One-minute model
 
-1. A **mission** is the long-running research loop.
-2. `scripts/mission/manage_mission.py` is the canonical operator CLI.
-3. DeepLoop picks the next step from durable mission state and evidence.
-4. It dispatches that step through a registered **executor**.
-5. The normal operator loop is `start` -> `status` -> `inbox` only when asked -> `resume`.
-6. `logs`, `decisions`, and `watch` add monitoring detail, and managed mode can surface `triage` before `retry`/`reroute` + `resume`.
+1. Start from the canonical public example or your own plain-folder project.
+2. Connect a provider DeepLoop can use.
+3. Use `deeploop-run-project --project-root <project-folder> --until-complete`
+   for the fastest happy path.
+4. If you want the explicit operator flow, run `deeploop-init-mission`, then
+   `deeploop start`.
+5. Check `deeploop status` to see the current work and operator state.
+6. Open `deeploop inbox` only when DeepLoop asks for a real decision; use
+   `deeploop resume`, `retry`, or `reroute` after you respond.
 
 ## If you only read three pages
 
 1. [Getting started](getting-started.md)
-2. [Mission operations](guide/operator.md)
-3. [Runtime architecture](concepts/architecture.md)
+2. [Examples](how-to/examples.md)
+3. [Mission operations](guide/operator.md)
 
 ## More for users and researchers
 
@@ -43,6 +47,13 @@ documented Linux + Python 3.11 environment and the canonical
 - [Plain-folder starter](how-to/plain-folder-starter.md)
 - [Provider setup](reference/provider-setup.md)
 - [Provider selection](reference/provider-selection.md)
+- [Technical reference](reference/index.md)
+
+## When you need more context
+
+- [Runtime architecture](concepts/architecture.md)
+- [Glossary](concepts/glossary.md)
+- [Release posture](release/README.md)
 - [Technical reference](reference/index.md)
 
 ## Contributing or maintaining

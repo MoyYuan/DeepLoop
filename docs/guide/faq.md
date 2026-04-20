@@ -79,4 +79,4 @@ and fewer temporary product-gap operator boundaries.
 - [Glossary](../concepts/glossary.md)
 - [Runtime architecture](../concepts/architecture.md)
 - [Technical reference](../reference/index.md)
-- [Public autonomy roadmap](../release/public-autonomy-roadmap.md)
+- [Release posture](../release/README.md)

@@ -2,6 +2,11 @@
 
 This note records the first explicit prior-art intake for DeepLoop.
 
+The README uses a lightweight comparison matrix for storefront positioning. This
+page is the deeper support for that matrix: it is about shape, strengths, and
+tradeoffs, not a leaderboard claim that DeepLoop has already outgrown every
+alternative.
+
 ## Artifacts inspected
 
 ### Ralph

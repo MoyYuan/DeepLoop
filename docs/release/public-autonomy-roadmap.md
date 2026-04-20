@@ -1,86 +1,67 @@
 # Public autonomy roadmap
 
-This roadmap explains how DeepLoop moves from today's bounded-support
-**public alpha** to stronger autonomy claims that external researchers can rely
-on.
+This is the single public roadmap overview for DeepLoop's release-facing
+autonomy story. Use [Release posture](README.md) for the current claim and trust
+evidence, and use
+[Public alpha foundations](public-alpha-foundations.md) for the minimum
+repo-facing floor.
 
-## Where DeepLoop is today
+## True now / current claim
 
-DeepLoop is closer to **limited public alpha** than to **fully automatic for
-everyone**.
-
-Current honest claim:
+Release posture owns the full evidence pack. In roadmap terms, what is true now
+is still intentionally narrow:
 
 - DeepLoop is share-ready as a **bounded-support autonomous research autopilot**
-  for researchers on the documented Linux path
-- the repo keeps current **operator boundaries** explicit instead of hiding them
-  behind stronger marketing language
+  on the documented Linux + Python 3.11 path
+- the current contract still includes explicit operator, governance, and release
+  approval boundaries
+- outside researchers can install the repo on the documented path, run the
+  bootstrap checks, and evaluate the first mission flow without hidden claim
+  inflation
 
-## What the current claim means
+This bucket still does **not** justify:
 
-Today, **public alpha** means outside researchers can:
-
-- install the repo on the documented support path
-- run the bootstrap checks and first mission flow
-- understand the current support contract and non-claims
-
-It does **not** yet mean:
-
-- broad OS or runner portability
-- high-autonomy operation with minimal operator intervention everywhere
+- broad OS or runner portability claims
+- minimal-operator autonomy everywhere
 - approval-free release promotion
-- a broadly proven **multi-substrate** portability story
+- broad multi-substrate superiority claims
 
-## Claim ladder
+## Next / near-term credibility work
 
-| Stage | Honest claim | What must be true |
+The near-term goal is a smaller set of stronger claims, not a bigger slogan.
+These items strengthen the current bounded-support story and widen it only where
+evidence becomes real.
+
+| Work item | Why it sits in the near term | Honest outcome if it lands |
 | --- | --- | --- |
-| **Current** | Share-ready bounded-support autonomous research autopilot | Linux bootstrap contract, fresh-clone onboarding proof, 3-case plain-folder proof matrix, release review with approvals, and explicit governance boundaries |
-| **Broader portability** | Public autonomy proof beyond one narrow machine shape | Additional supported environment axes are validated beyond the current Linux-centered contract |
-| **High-autonomy** | Minimal-operator research autopilot | Most temporary product-gap operator requests have been reduced into bounded recovery, triage, or replanning rather than routine intervention |
-| **Release-grade fully automatic** | Broad autonomous research platform with explicit safety boundaries | Cross-substrate bounded-real proofs, public governance, release gates, and truthful autonomy claims all hold together |
+| **Metric ratchets** | Public claims need release gates and proof thresholds that get harder to game, not easier to waive | Clearer pass/fail release evidence for the current claim |
+| **Deterministic routing** | Repeatable routing, recovery, and triage behavior makes public proof runs more believable than one-off operator luck | More reproducible mission behavior on the supported path |
+| **Reduced operator-gap work** | Temporary product-gap interventions should shrink into bounded retry, reroute, or replanning instead of routine operator babysitting | Fewer operator stops without hiding real safety boundaries |
+| **Broader portability** | The current Linux-centered support contract is still too narrow for stronger public claims | A slightly wider but still explicit support matrix |
+| **Stronger multi-substrate proof** | DeepLoop should show bounded-real behavior on 2-3 materially different substrates before making stronger autonomy claims | Better evidence that the current model is not tied to one substrate shape |
 
-## Roadmap themes
+Near-term work should stay honest about scope. It is meant to improve
+credibility, reduce product-gap friction, and widen proof carefully. It does
+**not** put distributed execution or broad superiority claims on the immediate
+promise surface.
 
-### 1. Broaden the supported environment contract
+## Later / exploratory bets
 
-- prove more than the current Linux + Python 3.11 path
-- keep setup machine-agnostic and parameterized
-- extend validation beyond the current bounded-support bootstrap lane
+These bets may matter later, but they should remain off the immediate promise
+surface until the near-term credibility work lands first.
 
-### 2. Reduce temporary operator product gaps
-
-- review current operator requests and separate real safety boundaries from
-  temporary product gaps
-- turn safe, repetitive operator requests into bounded recovery, retry,
-  reroute, or replanning behavior
-- keep remaining operator-only boundaries explicit when they should stay human
-  owned
-
-### 3. Strengthen multi-substrate proof
-
-- keep the DeepLoop/substrate contract explicit
-- prove behavior on 2-3 materially different substrates before stronger
-  portability claims
-- require bounded-real evidence before broader public claims
-
-### 4. Keep public trust surfaces ahead of stronger claims
-
-- keep release review artifacts honest about limits, blockers, and approvals
-- separate "public alpha ready" from "fully automatic" release language
-- keep governance, support posture, and escalation expectations current
-
-## What researchers should expect next
-
-The near-term goal is not a bigger slogan. It is a more believable one: broader
-portability on more machine shapes, fewer temporary operator stops, and more
-credible multi-substrate evidence before any stronger autonomy claim.
+| Bet | Why it is later or exploratory |
+| --- | --- |
+| **Scratchpad -> formalization** | Worth exploring if it can turn ad-hoc lessons into reusable runtime structure, but the mechanism and evidence bar are still taking shape |
+| **Portability beyond the next supported matrix** | Only honest after the smaller, explicit portability expansion is already working in public |
+| **Distributed execution** | Potentially valuable for scale, but not required to prove the current public-alpha claim and too easy to over-promise early |
+| **Broad superiority or "fully automatic for everyone" claims** | Off-limits until comparative evidence, portability proof, and operator-gap reduction are much stronger than they are today |
 
 ## Related docs
 
 - [Release posture](README.md)
-- [Portable bootstrap](portable-bootstrap.md)
 - [Public alpha foundations](public-alpha-foundations.md)
+- [Portable bootstrap](portable-bootstrap.md)
 - [Autonomy governance](autonomy-governance.md)
 - [Multi-substrate proof](multi-substrate-proof.md)
 - [Release maintenance](release-maintenance.md)

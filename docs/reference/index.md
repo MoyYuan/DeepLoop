@@ -68,7 +68,6 @@ Use these as the technical map for the current mission runtime:
 - [Research notes](../research/README.md)
 - [Release posture](../release/README.md)
 - [Release maintenance](../release/release-maintenance.md)
-- [Public autonomy roadmap](../release/public-autonomy-roadmap.md)
 - [Public alpha foundations](../release/public-alpha-foundations.md)
 - [Portable bootstrap](../release/portable-bootstrap.md)
 - [Autonomy governance](../release/autonomy-governance.md)

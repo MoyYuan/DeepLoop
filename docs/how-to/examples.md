@@ -5,7 +5,7 @@ directory.
 
 ## Canonical onboarding example
 
-The main onboarding example is `examples/translation-budget-ladder/`.
+The canonical public example is `examples/translation-budget-ladder/`.
 
 It is the same plain-folder contract described in
 [Plain-folder starter](plain-folder-starter.md), but surfaced as a first-class
@@ -20,12 +20,35 @@ examples/translation-budget-ladder/
     └── budget-and-baselines.md
 ```
 
-Use it as-is or copy it into your own researcher-owned folder before editing:
+Use it as-is or copy it into your own `<project-folder>` before editing:
 
 ```text
 cp -R examples/translation-budget-ladder <project-folder>
+deeploop-run-project --project-root <project-folder> --until-complete
+```
+
+That is the fastest happy path for trying DeepLoop on the canonical public
+example.
+
+If you want the explicit operator flow first, use the installed CLI surfaces
+directly:
+
+```text
+deeploop-init-mission --project-root <project-folder> --force
+deeploop start --mission-state <mission-state.json>
+deeploop status --mission-state <mission-state.json>
+```
+
+If `deeploop-run-project` stops for operator review instead of finishing, reuse
+the printed `<mission-state.json>` with `deeploop status`, `deeploop inbox`,
+and `deeploop resume`.
+
+Lower-level repo scripts remain available as fallback surfaces when useful:
+
+```text
 python scripts/mission/init_mission.py --project-root <project-folder> --force
 python scripts/mission/run_project.py --project-root <project-folder> --until-complete
+python scripts/mission/manage_mission.py status --mission-state <mission-state.json>
 ```
 
 ## Why this example is public-safe

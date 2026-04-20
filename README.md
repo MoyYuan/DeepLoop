@@ -1,73 +1,98 @@
 # deeploop
 
-DeepLoop is an autonomous research autopilot for local-first LLM research. It
-runs a mission, chooses the next step from evidence, and asks for help only
-when it reaches a real safety, authority, or sandbox boundary.
+DeepLoop is a local-first research autopilot for structured project folders. It
+helps a researcher or operator run a mission, keep the next step tied to what
+is already on disk, and step in only when the system reaches a real decision,
+safety, or support boundary.
 
-## Who this repo is for right now
+## Why researchers and operators care
 
-- researchers evaluating the current **public alpha** on the documented path
-- operators who want one mission runtime with `status`, an **operator inbox**,
-  **inner-loop progress**, and **runtime telemetry**
-- teams testing the DeepLoop/substrate split, where DeepLoop owns behavior,
-  build surfaces, and generated execution logic while the **substrate** stays
-  focused on minimal facts and contracts
+- **Less babysitting:** DeepLoop keeps durable mission state instead of relying
+  on one long chat thread.
+- **Visible handoffs:** `status`, `inbox`, and `resume` make operator
+  intervention explicit.
+- **Evidence-first runs:** the repo is designed to leave behind proofs,
+  artifacts, and packaging surfaces you can inspect later.
+- **Local-first control:** project folders, review, and release surfaces stay on
+  your machine and in your repo workflow.
 
-## Current release posture
+## Building toward
 
-DeepLoop should currently be described as a **bounded-support autonomous
-research autopilot**:
+DeepLoop is building toward a research autopilot that can run longer with less
+operator friction, on more machine shapes, with clearer evidence promotion and
+stronger trust surfaces. The goal is not a bigger slogan first; it is a system
+that can earn stronger autonomy claims by making its boundaries and proof more
+legible over time.
 
-- supported now: **Linux with Python 3.11**, editable install or the documented
-  Conda path, and the documented workspace roots
-- backed by: `make public-bootstrap-check`, fresh-clone onboarding on the
-  documented path, a 3-case plain-folder proof matrix, and a real release
-  review/promotion path with approvals
-- not honest to claim yet: broadly installable across arbitrary environments,
-  **fully automatic for everyone**, or approval-free release promotion
+For the release-facing claim, trust, and next-step docs, start with
+[Release posture](docs/release/README.md). It routes onward to the foundations
+and roadmap pages when you need them.
 
-For the detailed claim ladder and roadmap, start with
-[Release posture](docs/release/README.md) and the
-[Public autonomy roadmap](docs/release/public-autonomy-roadmap.md).
-
-## Fastest evaluation path
+## Fastest path to try it
 
 1. Install DeepLoop:
    - `python -m pip install -e .`
    - or `conda env create -n deeploop -f environment.yml`
-   - editable installs expose `deeploop`, `deeploop-init-mission`,
-     `deeploop-run-project`, and `deeploop-package-mission`
-2. Prepare workspace roots:
+2. Prepare the documented workspace shape and verify the supported bootstrap
+   path:
    - `make setup`
-3. Validate the supported bootstrap contract:
    - `make public-bootstrap-check`
-4. Prepare machine-level provider availability:
-   - follow [Provider setup](docs/reference/provider-setup.md)
-   - this covers tools, auth/env prerequisites, and readiness only
-5. Choose mission/runtime provider selection:
-    - follow [Provider selection](docs/reference/provider-selection.md)
-    - this chooses provider family, backend, and model intent per mission/loop/phase/role
-    - keep secrets and credential values outside repo config
-6. Start from the public example or your own plain researcher folder:
-   - canonical example:
+3. Connect a provider:
+   - [Provider setup](docs/reference/provider-setup.md)
+   - [Provider selection](docs/reference/provider-selection.md)
+4. Run the canonical example or your own plain-folder project:
+   - example project:
      [`examples/translation-budget-ladder/`](examples/translation-budget-ladder/)
    - optional copy step: `cp -R examples/translation-budget-ladder <project-folder>`
-   - `python scripts/mission/init_mission.py --project-root <project-folder> --force`
-   - `python scripts/mission/run_project.py --project-root <project-folder> --until-complete`
-   - proof fixtures remain under `tests/_proof_fixtures/plain_folder/` for validation only
-7. Monitor or intervene when needed:
-   - `python scripts/mission/manage_mission.py status --mission-state <mission-state.json>`
-   - `python scripts/mission/manage_mission.py inbox --mission-state <mission-state.json>`
+   - fastest path:
+     `deeploop-run-project --project-root examples/translation-budget-ladder --until-complete`
+   - explicit operator path:
+     `deeploop-init-mission --project-root examples/translation-budget-ladder --force`
+   - on a copied folder, substitute `<project-folder>` in the commands above
+5. When DeepLoop pauses for review, use the operator CLI:
+   - `deeploop status --mission-state <mission-state.json>`
+   - `deeploop inbox --mission-state <mission-state.json>`
+   - `deeploop resume --mission-state <mission-state.json>`
+
+The installed `deeploop*` commands above are the preferred first-run path.
+Lower-level repo scripts remain available for debugging and automation.
+
+## Day-1 reality
+
+DeepLoop is useful today when the work already fits a supported structured path:
+a project folder on disk, a clear mission, and an operator who can check
+`status` or `inbox` when asked. It is not yet the best fit for messy scratchpad
+ideation, notebook-style wandering, or "start from nothing and figure it out"
+research sessions.
+
+## Where DeepLoop fits today
+
+| System | Best fit today | What stands out | Honest tradeoff |
+| --- | --- | --- | --- |
+| **DeepLoop** | Operator-visible research runs from a local project folder | Explicit mission state, operator handoff surfaces, packaging/release posture, evidence-aware workflow | Supported path is still narrow today, and the product is not yet ideal for messy ideation |
+| **Ralph** | Lightweight recursive coding loops around a PRD | Fresh-context shell loop, simple external memory, very low orchestration overhead | More centered on software delivery than on evidence-heavy research programs |
+| **AutoResearch** | Repeated experiment hill-climbing on one editable surface | High automation density, metric-driven branch advancement, strong experiment cadence | Narrower single-task/single-metric shape with less operator/governance structure |
+
+For the deeper reasoning behind this comparison, see
+[Ralph vs AutoResearch for DeepLoop](docs/prior-art/ralph-vs-autoresearch.md).
+
+## Current limits, proof, and deeper links
+
+| Surface | Today | Where to go deeper |
+| --- | --- | --- |
+| **Supported path** | Documented Linux + Python 3.11 bootstrap lane, editable install or documented Conda path, and the documented workspace roots | [Portable bootstrap](docs/release/portable-bootstrap.md) |
+| **What backs the current claim** | `make public-bootstrap-check`, fresh-clone onboarding on the documented path, a 3-case plain-folder proof matrix, and a reviewed release promotion path | [Release posture](docs/release/README.md) |
+| **What DeepLoop is not claiming yet** | Broad installability across arbitrary environments, "fully automatic for everyone," or approval-free release promotion | [Release posture](docs/release/README.md) |
 
 ## Operator model in one screen
 
-- default mode: `sandboxed-yolo`
-- expert intervention mode: `managed`
-- keep the human in the loop on important choices: `human-directed`
-- DeepLoop routes work through registered `stage-kernel` executors and stops
-  only when it needs a real operator decision
-- when you record lessons, keep DeepLoop for runtime/product invariants,
-  **skills for reusable methods**, and substrate repos for domain/science rules
+- most people start with `sandboxed-yolo`
+- use `managed` when you want intervention hooks before DeepLoop continues
+- use `human-directed` when you want to approve important choices yourself
+- the normal loop is: start a mission, check `status`, open `inbox` when asked,
+  then `resume`
+- when you record lessons, keep reusable methods in **skills** and
+  domain/science rules in substrate repos
 
 ## Read next
 
@@ -78,7 +103,6 @@ For the detailed claim ladder and roadmap, start with
 - [Examples](docs/how-to/examples.md)
 - [Plain-folder starter](docs/how-to/plain-folder-starter.md)
 - [Release posture](docs/release/README.md)
-- [Public autonomy roadmap](docs/release/public-autonomy-roadmap.md)
 - [Portable bootstrap](docs/release/portable-bootstrap.md)
 - [Provider setup](docs/reference/provider-setup.md)
 - [Provider selection](docs/reference/provider-selection.md)

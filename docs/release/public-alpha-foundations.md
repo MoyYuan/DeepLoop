@@ -1,7 +1,10 @@
 # Public alpha foundations
 
 This page defines the minimum repo foundations DeepLoop should satisfy to be
-marketed as a public alpha.
+marketed as a public alpha. It owns the public-alpha floor and checklist, not
+the roadmap. Use [Release posture](README.md) for the current release claim and
+[Public autonomy roadmap](public-autonomy-roadmap.md) for next-versus-later
+staging.
 
 ## Why this is separate
 
@@ -46,7 +49,8 @@ see, install, run, and trust.
   paths
 - state what DeepLoop currently supports
 - state what still requires expert operator involvement
-- link the release posture ladder and roadmap directly
+- link the release posture hub directly so future-stage work routes through the
+  roadmap from there
 
 ### 5. Release operations
 
@@ -85,8 +89,10 @@ Public alpha at this stage does **not** mean:
 
 ## Promotion rule
 
-Do not claim more than this limited public-alpha bar until stronger portability,
-bounded-real evidence, and autonomy reduction work is complete.
+Do not claim more than this limited public-alpha bar from this checklist alone.
+The current release claim lives in [Release posture](README.md), and any
+stronger staged work lives in
+[Public autonomy roadmap](public-autonomy-roadmap.md).
 
 ## Related docs
 

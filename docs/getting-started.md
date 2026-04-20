@@ -1,7 +1,7 @@
 # Getting started
 
-This is the shortest path to using DeepLoop without needing to understand every
-runtime detail first.
+This is the shortest supported path from clone to a first running mission. You
+do not need to understand every runtime detail before you start.
 
 ## What you need
 
@@ -11,13 +11,13 @@ runtime detail first.
 - a terminal
 - a supported environment (today: Linux with Python 3.11 and the documented
   workspace roots)
-- machine-level access to one of the documented provider families before you
-  start mission execution
+- access to one documented provider family so DeepLoop can run the mission once
+  setup is complete
 
-DeepLoop is currently a **bounded-support autonomous research autopilot**:
-Linux with Python 3.11, editable install or the documented Conda path, and the
-documented workspace roots. It should not yet be described as broadly
-installable everywhere or fully automatic for everyone.
+Stay on the documented path for the smoothest first run: Linux with Python
+3.11, the editable-install or documented Conda path, the documented workspace
+roots, and one configured provider. That is the path public CI and fresh-clone
+onboarding validate today; outside it, expect gaps.
 
 ## First useful path
 
@@ -26,6 +26,12 @@ installable everywhere or fully automatic for everyone.
    ```text
    python -m pip install -e .
    ```
+
+   Editable installs expose the main operator-facing commands:
+
+   - `deeploop`
+   - `deeploop-init-mission`
+   - `deeploop-run-project`
 
    The Conda path remains supported too:
 
@@ -53,60 +59,69 @@ installable everywhere or fully automatic for everyone.
 
    This is the clean-room validation contract used by public CI.
 
-4. Prepare machine-level provider availability:
+4. Prepare machine-level provider availability with
+   [Provider setup](reference/provider-setup.md).
+
+   This setup contract is intentionally limited to machine readiness:
+
+   - which tools must exist on the machine
+   - which env vars/auth prerequisites are expected
+   - which readiness checks should pass before mission execution
+
+   It does **not** choose the provider or model for a specific mission. That
+   mission/runtime selection contract now lives in
+   [Provider selection](reference/provider-selection.md).
+
+   If you only need local inference backends, the separate runtime env remains:
 
    ```text
-   see docs/reference/provider-setup.md
+   conda env create -n llm -f environment.llm.yml
    ```
 
-    This setup contract is intentionally limited to machine readiness:
+5. Declare mission/runtime provider selection with
+   [Provider selection](reference/provider-selection.md).
 
-    - which tools must exist on the machine
-    - which env vars/auth prerequisites are expected
-    - which readiness checks should pass before mission execution
+   This selection contract is intentionally separate from machine setup:
 
-    It does **not** choose the provider or model for a specific mission. That
-    mission/runtime selection contract now lives in
-    [Provider selection](reference/provider-selection.md).
+   - choose provider family per mission, loop, role, or phase
+   - choose backend and model alias/identifier
+   - define allowed fallbacks and override points
+   - keep secrets and credential values outside repo config
 
-    If you only need local inference backends, the separate runtime env remains:
-
-    ```text
-    conda env create -n llm -f environment.llm.yml
-    ```
-
-5. Declare mission/runtime provider selection:
-
-    ```text
-    see docs/reference/provider-selection.md
-    ```
-
-    This selection contract is intentionally separate from machine setup:
-
-    - choose provider family per mission, loop, role, or phase
-    - choose backend and model alias/identifier
-    - define allowed fallbacks and override points
-    - keep secrets and credential values outside repo config
-
-6. Start from the canonical public example or your own plain-folder project,
-   then materialize a mission state from the project folder itself:
+6. Start from the canonical public example or your own plain-folder project:
 
     ```text
     cp -R examples/translation-budget-ladder <project-folder>
     ```
 
-    `examples/translation-budget-ladder/` is the main onboarding example. The
+    `examples/translation-budget-ladder/` is the canonical public example. The
     proof-matrix fixture under `tests/_proof_fixtures/plain_folder/` remains
     validation-only. See [Examples](how-to/examples.md) and
     [Plain-folder starter](how-to/plain-folder-starter.md) for the public-safe
-    folder contract.
+    plain-folder contract.
 
-    ```text
-    python scripts/mission/init_mission.py --project-root <project-folder> --force
-    ```
+   Fastest happy path:
+
+   ```text
+   deeploop-run-project --project-root <project-folder> --until-complete
+   ```
+
+    This is the shortest "use DeepLoop on a real project folder" path. It
+    bootstraps the mission from the folder itself, then keeps running until
+    completion, a true operator boundary, or total-iteration exhaustion.
+    If it stops for operator review, use the returned `<mission-state.json>`
+    with the `deeploop` commands below.
+
+    If you want the explicit operator flow instead, materialize a mission state
+    first:
+
+   ```text
+   deeploop-init-mission --project-root <project-folder> --force
+   ```
 
    DeepLoop will synthesize the mission config into the mission runtime and keep
-   the project folder as the only required project-side input.
+   the project folder as the only required project-side input. `deeploop-init-mission`
+   prints the `<mission-state.json>` path you will use with `deeploop`.
 
    For the stricter substrate boundary, `<project-folder>` can now be just plain
    researcher-provided artifacts such as a `project-facts.yaml`, brief docs,
@@ -118,25 +133,25 @@ installable everywhere or fully automatic for everyone.
    If you already have an explicit mission config, the config path still works:
 
    ```text
-   python scripts/mission/init_mission.py --config <mission-config.yaml> --force
+   deeploop-init-mission --config <mission-config.yaml> --force
    ```
 
-7. Start the mission with the canonical operator CLI:
+7. If you initialized a mission state, start it with the canonical operator CLI:
 
    ```text
-   python scripts/mission/manage_mission.py start --mission-state <mission_state.json>
+   deeploop start --mission-state <mission-state.json>
    ```
 
 8. Check the operator console:
 
    ```text
-   python scripts/mission/manage_mission.py status --mission-state <mission_state.json>
+   deeploop status --mission-state <mission-state.json>
    ```
 
    If you want repeated polls, use:
 
    ```text
-   python scripts/mission/manage_mission.py watch --mission-state <mission_state.json>
+   deeploop watch --mission-state <mission-state.json>
    ```
 
    Use `logs` or `decisions` only when you need more detail than `status`.
@@ -144,32 +159,34 @@ installable everywhere or fully automatic for everyone.
 9. If DeepLoop asks for help, inspect the inbox:
 
    ```text
-   python scripts/mission/manage_mission.py inbox --mission-state <mission_state.json>
+   deeploop inbox --mission-state <mission-state.json>
    ```
 
    In managed mode, run `triage` first when the blocked request exposes
    intervention hooks for a blocked queue entry.
 
-10. If you changed the path, record it, then resume:
+10. If you changed the path, record it with `retry` or `reroute`, then `resume`:
 
-   ```text
-   python scripts/mission/manage_mission.py retry --mission-state <mission_state.json> --note "<what changed>"
-   python scripts/mission/manage_mission.py reroute --mission-state <mission_state.json> --note "<new plan>"
-   python scripts/mission/manage_mission.py resume --mission-state <mission_state.json>
-   ```
+    ```text
+    deeploop retry --mission-state <mission-state.json> --note "<what changed>"
+    deeploop reroute --mission-state <mission-state.json> --note "<new plan>"
+    deeploop resume --mission-state <mission-state.json>
+    ```
 
-Optional higher-level launcher:
+Advanced/fallback repo-level surfaces:
 
 ```text
 python scripts/mission/run_project.py --project-root <project-folder> --until-complete
+python scripts/mission/init_mission.py --project-root <project-folder> --force
+python scripts/mission/manage_mission.py status --mission-state <mission-state.json>
 ```
 
-This extends the bounded mission-runtime budget until completion, a true
-operator-required boundary, or total-iteration exhaustion. After launch, the
-operator contract is still `manage_mission.py status` / `inbox` / `resume`.
+Keep these lower-level script surfaces for debugging, automation, or environments
+where you intentionally want the repo-internal entry points. The installed
+`deeploop*` commands above are the preferred first-run path.
 
 Use placeholders such as `<project-folder>`, `<mission-config.yaml>`, and
-`<mission_state.json>` in your own setup rather than copying any hardcoded
+`<mission-state.json>` in your own setup rather than copying any hardcoded
 personal path from a machine-specific example.
 
 ## What success looks like
@@ -196,4 +213,4 @@ personal path from a machine-specific example.
 - [FAQ](guide/faq.md)
 - [Plain-folder starter](how-to/plain-folder-starter.md)
 - [Portable bootstrap](release/portable-bootstrap.md)
-- [Public autonomy roadmap](release/public-autonomy-roadmap.md)
+- [Release posture](release/README.md)
