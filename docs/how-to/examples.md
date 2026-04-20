@@ -24,7 +24,7 @@ Use it as-is or copy it into your own `<project-folder>` before editing:
 
 ```text
 cp -R examples/translation-budget-ladder <project-folder>
-deeploop-run-project --project-root <project-folder> --until-complete
+deeploop run --project-root <project-folder> --until-complete
 ```
 
 That is the fastest happy path for trying DeepLoop on the canonical public
@@ -34,12 +34,12 @@ If you want the explicit operator flow first, use the installed CLI surfaces
 directly:
 
 ```text
-deeploop-init-mission --project-root <project-folder> --force
+deeploop init --project-root <project-folder> --force
 deeploop start --mission-state <mission-state.json>
 deeploop status --mission-state <mission-state.json>
 ```
 
-If `deeploop-run-project` stops for operator review instead of finishing, reuse
+If `deeploop run` stops for operator review instead of finishing, reuse
 the printed `<mission-state.json>` with `deeploop status`, `deeploop inbox`,
 and `deeploop resume`.
 

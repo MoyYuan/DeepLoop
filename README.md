@@ -51,13 +51,13 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
    - fastest path:
 
      ```text
-     deeploop-run-project --project-root examples/translation-budget-ladder --until-complete
+     deeploop run --project-root examples/translation-budget-ladder --until-complete
      ```
 
    - explicit operator path:
 
      ```text
-     deeploop-init-mission --project-root examples/translation-budget-ladder --force
+     deeploop init --project-root examples/translation-budget-ladder --force
      ```
 
    On a copied folder, substitute `PROJECT_FOLDER` in the commands above.
@@ -70,7 +70,7 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
    deeploop resume --mission-state MISSION_STATE_PATH
    ```
 
-The installed `deeploop*` commands are the preferred first-run path; lower-level repo scripts remain available for debugging and automation.
+The `deeploop` CLI is the single entry point — `run`, `init`, `status`, `inbox`, `resume`, and more are all subcommands.
 
 ## Best fit today
 
@@ -81,18 +81,7 @@ DeepLoop is best when you already have:
 - an operator who can check `status` and respond when the operator inbox opens
 - a need for bounded autonomy, durable state, and evidence-aware summaries
 
-### Current limits
-
-DeepLoop is still a bounded-support public alpha. Stay on the documented Linux with Python 3.11 path if you want the experience public CI validates today.
-
-Today DeepLoop is **not** claiming:
-
-- broad installability across arbitrary environments
-- a fully automatic experience for everyone
-- approval-free release promotion
-- a finished scratchpad -> formalization bridge
-
-Messy notebook wandering and "start from nothing and figure it out" ideation are still a weak fit. The scratchpad -> formalization bridge remains exploratory, not part of the current alpha promise.
+> **Public alpha** — best on Linux with Python 3.11; not claiming a fully automatic experience for everyone. See the [roadmap](docs/release/public-autonomy-roadmap.md) for current scope.
 
 ## Key capabilities
 

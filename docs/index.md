@@ -3,7 +3,7 @@
 Use these docs to get DeepLoop installed, connect a provider, start a mission
 from a project folder, and monitor what happens next. The supported beginner
 path today assumes the documented Linux + Python 3.11 environment and the
-installed `deeploop*` CLI surfaces. Deeper runtime and release pages stay
+installed `deeploop` CLI. Deeper runtime and release pages stay
 linked below when you need them.
 
 Recent supported-path improvements now surface measurable adaptation outcomes,
@@ -32,9 +32,9 @@ detail.
 
 1. Start from the canonical public example or your own plain-folder project.
 2. Connect a provider DeepLoop can use.
-3. Use `deeploop-run-project --project-root <project-folder> --until-complete`
+3. Use `deeploop run --project-root <project-folder> --until-complete`
    for the fastest happy path.
-4. If you want the explicit operator flow, run `deeploop-init-mission`, then
+4. If you want the explicit operator flow, run `deeploop init`, then
    `deeploop start`.
 5. Check `deeploop status` to see the current work, operator state, and any
    surfaced ratchet or temporary-gap cues.

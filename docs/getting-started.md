@@ -27,11 +27,8 @@ onboarding validate today; outside it, expect gaps.
    python -m pip install -e .
    ```
 
-   Editable installs expose the main operator-facing commands:
-
-   - `deeploop`
-   - `deeploop-init-mission`
-   - `deeploop-run-project`
+   Editable installs expose the `deeploop` CLI with all subcommands:
+   `run`, `init`, `start`, `status`, `inbox`, `resume`, `package`, and more.
 
    The Conda path remains supported too:
 
@@ -103,7 +100,7 @@ onboarding validate today; outside it, expect gaps.
    Fastest happy path:
 
    ```text
-   deeploop-run-project --project-root <project-folder> --until-complete
+   deeploop run --project-root <project-folder> --until-complete
    ```
 
     This is the shortest "use DeepLoop on a real project folder" path. It
@@ -116,11 +113,11 @@ onboarding validate today; outside it, expect gaps.
     first:
 
    ```text
-   deeploop-init-mission --project-root <project-folder> --force
+   deeploop init --project-root <project-folder> --force
    ```
 
    DeepLoop will synthesize the mission config into the mission runtime and keep
-   the project folder as the only required project-side input. `deeploop-init-mission`
+   the project folder as the only required project-side input. `deeploop init`
    prints the `<mission-state.json>` path you will use with `deeploop`.
 
    For the stricter substrate boundary, `<project-folder>` can now be just plain
@@ -133,7 +130,7 @@ onboarding validate today; outside it, expect gaps.
    If you already have an explicit mission config, the config path still works:
 
    ```text
-   deeploop-init-mission --config <mission-config.yaml> --force
+   deeploop init --config <mission-config.yaml> --force
    ```
 
 7. If you initialized a mission state, start it with the canonical operator CLI:
@@ -186,8 +183,8 @@ python scripts/mission/manage_mission.py status --mission-state <mission-state.j
 ```
 
 Keep these lower-level script surfaces for debugging, automation, or environments
-where you intentionally want the repo-internal entry points. The installed
-`deeploop*` commands above are the preferred first-run path.
+where you intentionally want the repo-internal entry points. The `deeploop` CLI
+above is the preferred first-run path.
 
 Use placeholders such as `<project-folder>`, `<mission-config.yaml>`, and
 `<mission-state.json>` in your own setup rather than copying any hardcoded

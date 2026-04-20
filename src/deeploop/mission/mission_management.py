@@ -17,6 +17,9 @@ from deeploop.core.paths import REPO_ROOT
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object
 from deeploop.mission.mission_monitor import build_mission_snapshot, render_mission_snapshot
 from deeploop.mission.mission_state import load_mission_state
+from deeploop.cli.run_project import _add_run_args, _run_project
+from deeploop.cli.init_mission import _add_init_args, _init_mission
+from deeploop.cli.package_mission import _add_package_args, _package_mission
 
 _RUN_MISSION_SCRIPT = REPO_ROOT / "scripts" / "mission" / "run_mission.py"
 _MANAGE_MISSION_SCRIPT = REPO_ROOT / "scripts" / "mission" / "manage_mission.py"
@@ -1089,6 +1092,18 @@ def _handle_operator_feedback(args: argparse.Namespace) -> int:
     return 0
 
 
+def _handle_run(args: argparse.Namespace) -> int:
+    return _run_project(args)
+
+
+def _handle_init(args: argparse.Namespace) -> int:
+    return _init_mission(args)
+
+
+def _handle_package(args: argparse.Namespace) -> int:
+    return _package_mission(args)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Operate DeepLoop autopilot for a mission from one management CLI.",
@@ -1235,6 +1250,33 @@ def build_parser() -> argparse.ArgumentParser:
         feedback.add_argument("--launch-metadata", help="Optional override for the detached launch metadata JSON.")
         feedback.add_argument("--json", action="store_true", help="Emit the updated current operator request as JSON.")
         feedback.set_defaults(handler=_handle_operator_feedback)
+
+    run_p = subparsers.add_parser(
+        "run",
+        help="Run a plain project folder through DeepLoop until completion or an operator boundary.",
+        description="Run a plain researcher project folder through DeepLoop until completion or a true operator boundary.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_run_args(run_p)
+    run_p.set_defaults(handler=_handle_run)
+
+    init_p = subparsers.add_parser(
+        "init",
+        help="Initialise a DeepLoop mission from a project folder or explicit config.",
+        description="Bootstrap a mission state from a plain-folder project or an explicit mission config.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_init_args(init_p)
+    init_p.set_defaults(handler=_handle_init)
+
+    package_p = subparsers.add_parser(
+        "package",
+        help="Package mission artifacts according to the artifact-package contract.",
+        description="Package mission artifacts for the given mission state.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_package_args(package_p)
+    package_p.set_defaults(handler=_handle_package)
 
     return parser
 

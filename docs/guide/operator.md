@@ -8,7 +8,7 @@ Keep one contract in mind while you operate: the project folder is a minimal fac
 
 ## Your first 10 minutes
 
-1. If you just ran `deeploop-init-mission`, start the mission with
+1. If you just ran `deeploop init`, start the mission with
    `deeploop start --mission-state <mission-state.json>`.
 2. Run `deeploop status --mission-state <mission-state.json>` right after it so
    you can see whether DeepLoop is still driving or needs you.
@@ -26,7 +26,7 @@ Keep one contract in mind while you operate: the project folder is a minimal fac
 8. Run `deeploop resume --mission-state <mission-state.json>` when the fix is
    in place or `status` says resume is optional.
 
-If you got here from `deeploop-run-project` after an operator stop, skip the
+If you got here from `deeploop run` after an operator stop, skip the
 `start` step and go straight to `status` or `inbox` with the returned
 `<mission-state.json>`.
 

@@ -74,7 +74,7 @@ Once your folder exists, the supported bootstrap path is:
 
 ```text
 make public-bootstrap-check
-deeploop-run-project --project-root <project-folder> --until-complete
+deeploop run --project-root <project-folder> --until-complete
 ```
 
 `make public-bootstrap-check` proves the install, workspace setup, repo
