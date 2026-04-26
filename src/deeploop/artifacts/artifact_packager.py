@@ -503,6 +503,7 @@ def package_mission_artifacts(
     artifact_registry: dict[Path, dict[str, Any]] = {}
     category_membership: dict[str, set[str]] = {category: set() for category in DEFAULT_CATEGORIES}
     pending_links: set[tuple[Path, Path, str]] = set()
+    pending_artifact_ids: set[str] = set()
 
     def register_artifact(
         path: Path,
@@ -511,9 +512,11 @@ def package_mission_artifacts(
         claim_state: str | None = None,
         status: str | None = None,
         metadata: dict[str, Any] | None = None,
+        lazy: bool = False,
     ) -> str:
         resolved = path.expanduser().resolve()
-        if not resolved.exists() or not resolved.is_file():
+        file_missing = not resolved.exists() or not resolved.is_file()
+        if file_missing and not lazy:
             raise FileNotFoundError(resolved)
         artifact_id = _artifact_id_for_path(resolved)
         record = artifact_registry.get(resolved)
@@ -524,7 +527,7 @@ def package_mission_artifacts(
                 "label": _artifact_label(resolved, category),
                 "source_path": str(resolved),
                 "package_path": None,
-                "status": status,
+                "status": "pending" if file_missing else status,
                 "claim_state": claim_state,
                 "size_bytes": 0,
                 "metadata": dict(metadata or {}),
@@ -533,11 +536,14 @@ def package_mission_artifacts(
         else:
             if claim_state and not record.get("claim_state"):
                 record["claim_state"] = claim_state
-            if status and not record.get("status"):
+            if status and not record.get("status") and not file_missing:
                 record["status"] = status
             if metadata:
                 record["metadata"].update(metadata)
-        category_membership.setdefault(category, set()).add(artifact_id)
+        if file_missing:
+            pending_artifact_ids.add(artifact_id)
+        else:
+            category_membership.setdefault(category, set()).add(artifact_id)
         return artifact_id
 
     def maybe_register(path: str | Path, *, category: str, metadata: dict[str, Any] | None = None) -> str | None:
@@ -589,14 +595,13 @@ def package_mission_artifacts(
         )
 
         for referenced_path in _reference_paths_from_manifest(manifest_path, manifest):
-            if referenced_path.exists() and referenced_path.is_file():
-                reference_category = (
-                    "manifests"
-                    if referenced_path.name in {"run_manifest.json", "study_manifest.json"}
-                    else "mission_configs"
-                )
-                register_artifact(referenced_path, category=reference_category)
-                pending_links.add((manifest_path, referenced_path, "depends-on"))
+            reference_category = (
+                "manifests"
+                if referenced_path.name in {"run_manifest.json", "study_manifest.json"}
+                else "mission_configs"
+            )
+            register_artifact(referenced_path, category=reference_category, lazy=True)
+            pending_links.add((manifest_path, referenced_path, "depends-on"))
 
         kernel_paths, critique_paths = _bundle_related_paths(manifest_path, manifest, contract)
         bundle_artifact_ids = [manifest_artifact_id]
@@ -682,7 +687,8 @@ def package_mission_artifacts(
     disappeared_paths = [
         path
         for path in artifact_registry
-        if not path.exists() or not path.is_file()
+        if (not path.exists() or not path.is_file())
+        and artifact_registry[path]["artifact_id"] not in pending_artifact_ids
     ]
     for path in disappeared_paths:
         artifact_id = artifact_registry[path]["artifact_id"]
@@ -709,6 +715,8 @@ def package_mission_artifacts(
 
     digest = hashlib.sha256()
     for source_path in sorted(artifact_registry):
+        if artifact_registry[source_path]["artifact_id"] in pending_artifact_ids:
+            continue
         digest.update(str(source_path).encode("utf-8"))
         digest.update(b"\0")
         digest.update(source_path.read_bytes())
@@ -716,6 +724,8 @@ def package_mission_artifacts(
     package_digest = digest.hexdigest()
 
     for source_path in sorted(artifact_registry):
+        if artifact_registry[source_path]["artifact_id"] in pending_artifact_ids:
+            continue
         package_path, size_bytes = _copy_artifact(source_path, package_root, copied_root_name)
         artifact_registry[source_path]["package_path"] = str(package_path.relative_to(package_root))
         artifact_registry[source_path]["size_bytes"] = size_bytes
@@ -734,7 +744,14 @@ def package_mission_artifacts(
                 }
             )
 
-    artifacts = sorted(artifact_registry.values(), key=lambda item: item["source_path"])
+    artifacts = sorted(
+        (record for record in artifact_registry.values() if record["artifact_id"] not in pending_artifact_ids),
+        key=lambda item: item["source_path"],
+    )
+    pending_artifacts = sorted(
+        (record for record in artifact_registry.values() if record["artifact_id"] in pending_artifact_ids),
+        key=lambda item: item["source_path"],
+    )
     artifact_map = {
         category: sorted(category_membership.get(category, set()))
         for category in DEFAULT_CATEGORIES
@@ -949,6 +966,7 @@ def package_mission_artifacts(
                 category: len(ids)
                 for category, ids in artifact_map.items()
             },
+            "pending_downstream_artifacts": [record["source_path"] for record in pending_artifacts],
         },
     }
 
