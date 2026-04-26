@@ -14,7 +14,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from deeploop.mission.project_runner import initialize_mission_from_project_root, run_project_until_complete
+from deeploop.mission.project_runner import _find_explicit_mission_configs, initialize_mission_from_project_root, run_project_until_complete
 
 
 class ProjectRunnerTests(unittest.TestCase):
@@ -392,5 +392,148 @@ class ProjectRunnerTests(unittest.TestCase):
         self.assertFalse((project_root / ".deeploop").exists())
 
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_find_explicit_mission_configs_returns_empty_when_no_deeploop_dir(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "no-deeploop"
+        shutil.rmtree(test_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        test_root.mkdir(parents=True, exist_ok=True)
+
+        result = _find_explicit_mission_configs(test_root)
+
+        self.assertEqual(result, [])
+
+    def test_find_explicit_mission_configs_returns_yaml_files_from_missions_dir(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "explicit-configs"
+        shutil.rmtree(test_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        missions_dir = test_root / ".deeploop" / "missions"
+        missions_dir.mkdir(parents=True, exist_ok=True)
+        (missions_dir / "alpha-run.yaml").write_text("mission:\n  id: alpha\n", encoding="utf-8")
+        (missions_dir / "beta-run.yml").write_text("mission:\n  id: beta\n", encoding="utf-8")
+
+        result = _find_explicit_mission_configs(test_root)
+
+        names = [p.name for p in result]
+        self.assertIn("alpha-run.yaml", names)
+        self.assertIn("beta-run.yml", names)
+
+    def test_initialize_mission_from_project_root_uses_explicit_config_when_present(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "explicit-config-init"
+        shutil.rmtree(test_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        missions_dir = test_root / ".deeploop" / "missions"
+        missions_dir.mkdir(parents=True, exist_ok=True)
+        explicit_config_path = missions_dir / "custom-mission.yaml"
+        explicit_config_path.write_text("mission:\n  id: custom-explicit-mission\n", encoding="utf-8")
+        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "custom-explicit-mission"
+        shutil.rmtree(mission_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
+
+        sentinel_result = {
+            "mission_root": mission_root,
+            "state_path": mission_root / "mission_state.json",
+            "summary_path": mission_root / "mission_summary.md",
+            "ledger_path": mission_root / "ledger.jsonl",
+        }
+        with (
+            patch("deeploop.mission.project_runner.initialize_mission") as mock_init_mission,
+            patch("deeploop.mission.project_bootstrap.build_mission_config_from_project_root") as mock_build_config,
+        ):
+            mock_init_mission.return_value = sentinel_result
+
+            result = initialize_mission_from_project_root(test_root, force=False)
+
+        mock_init_mission.assert_called_once_with(explicit_config_path, force=False)
+        mock_build_config.assert_not_called()
+        self.assertEqual(result, sentinel_result)
+
+    def test_initialize_mission_from_project_root_bootstraps_when_no_explicit_config(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "no-explicit-config-init"
+        shutil.rmtree(test_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        test_root.mkdir(parents=True, exist_ok=True)
+        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "bootstrap-only-mission"
+        shutil.rmtree(mission_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
+        mission_root.mkdir(parents=True, exist_ok=True)
+
+        sentinel_result = {
+            "mission_root": mission_root,
+            "state_path": mission_root / "mission_state.json",
+            "summary_path": mission_root / "mission_summary.md",
+            "ledger_path": mission_root / "ledger.jsonl",
+        }
+        with (
+            patch("deeploop.mission.project_runner.initialize_mission") as mock_init_mission,
+            patch("deeploop.mission.project_bootstrap.build_mission_config_from_project_root") as mock_build_config,
+        ):
+            mock_build_config.return_value = {"mission": {"id": "bootstrap-only-mission"}}
+            mock_init_mission.return_value = sentinel_result
+            result = initialize_mission_from_project_root(test_root, force=False)
+
+        mock_build_config.assert_called_once()
+        self.assertIn("generated_config_path", result)
+
+    def test_initialize_mission_from_project_root_prints_notice_for_explicit_config(self) -> None:
+        import io
+        import contextlib
+
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "explicit-config-notice"
+        shutil.rmtree(test_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        missions_dir = test_root / ".deeploop" / "missions"
+        missions_dir.mkdir(parents=True, exist_ok=True)
+        (missions_dir / "my-mission.yaml").write_text("mission:\n  id: notice-mission\n", encoding="utf-8")
+        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "notice-mission"
+        shutil.rmtree(mission_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
+
+        sentinel_result = {
+            "mission_root": mission_root,
+            "state_path": mission_root / "mission_state.json",
+            "summary_path": mission_root / "mission_summary.md",
+            "ledger_path": mission_root / "ledger.jsonl",
+        }
+        buf = io.StringIO()
+        with (
+            patch("deeploop.mission.project_runner.initialize_mission") as mock_init_mission,
+            contextlib.redirect_stdout(buf),
+        ):
+            mock_init_mission.return_value = sentinel_result
+            initialize_mission_from_project_root(test_root, force=False)
+
+        output = buf.getvalue()
+        self.assertIn("detected explicit mission config", output)
+        self.assertIn("my-mission.yaml", output)
+
+    def test_initialize_mission_from_project_root_warns_when_mission_id_overridden_by_explicit_config(self) -> None:
+        import io
+        import contextlib
+
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "explicit-config-mission-id-warn"
+        shutil.rmtree(test_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        missions_dir = test_root / ".deeploop" / "missions"
+        missions_dir.mkdir(parents=True, exist_ok=True)
+        (missions_dir / "explicit.yaml").write_text("mission:\n  id: explicit-id\n", encoding="utf-8")
+        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "explicit-id"
+        shutil.rmtree(mission_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
+
+        sentinel_result = {
+            "mission_root": mission_root,
+            "state_path": mission_root / "mission_state.json",
+            "summary_path": mission_root / "mission_summary.md",
+            "ledger_path": mission_root / "ledger.jsonl",
+        }
+        buf = io.StringIO()
+        with (
+            patch("deeploop.mission.project_runner.initialize_mission") as mock_init_mission,
+            contextlib.redirect_stdout(buf),
+        ):
+            mock_init_mission.return_value = sentinel_result
+            initialize_mission_from_project_root(test_root, mission_id="my-override-id", force=False)
+
+        output = buf.getvalue()
+        self.assertIn("--mission-id", output)
+        self.assertIn("takes precedence", output)

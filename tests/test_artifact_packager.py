@@ -487,6 +487,5 @@ class ArtifactPackagerTests(unittest.TestCase):
 
             self.assertTrue(result["manifest_path"].exists())
             self.assertTrue(result["summary_path"].exists())
-
 if __name__ == "__main__":
     unittest.main()
