@@ -21,16 +21,51 @@ onboarding validate today; outside it, expect gaps.
 
 ## First useful path
 
-1. Install DeepLoop:
+1. Install DeepLoop — choose the path that matches your use case:
 
-   ```text
-   python -m pip install -e .
-   ```
+   - **Standard user** — install from PyPI (no local checkout required):
 
-   Editable installs expose the `deeploop` CLI with all subcommands:
-   `run`, `init`, `start`, `status`, `inbox`, `resume`, `package`, and more.
+     ```text
+     pip install deeploop
+     ```
 
-   The Conda path remains supported too:
+     For the latest unreleased commit without a local checkout:
+
+     ```text
+     pip install git+https://github.com/tnetal/DeepLoop.git
+     ```
+
+     Both paths copy the library into `site-packages`, isolating live missions
+     from any local source changes.
+
+   - **Contributor** — clone the repo and install in editable mode with dev
+     extras:
+
+     ```text
+     git clone https://github.com/tnetal/DeepLoop.git
+     cd DeepLoop
+     pip install -e ".[dev]"
+     ```
+
+     > **Warning:** Editable installs tie every spawned Python subprocess
+     > directly to the live source tree. `deeploop start` automatically
+     > snapshots the package into `~/.deeploop/runtime_cache/` before launching
+     > the daemon, insulating the background mission from subsequent source
+     > edits. It also warns if the working tree is dirty at launch time. Even
+     > so, avoid switching Git branches or introducing syntax errors during a
+     > live mission run.
+
+   - **Hybrid user** (running long missions *and* developing features
+     simultaneously): maintain **two separate clones** — one stable clone
+     installed with `pip install git+…` or `pip install .` for running
+     missions, and one development clone with `pip install -e ".[dev]"` for
+     writing PRs. Never run a background mission from the development clone.
+
+   All install paths expose the `deeploop` CLI with all subcommands: `run`,
+   `init`, `start`, `status`, `inbox`, `resume`, `package`, and more.
+
+   The Conda path remains supported too (installs in non-editable mode by
+   default):
 
    ```text
    conda env create -n deeploop -f environment.yml

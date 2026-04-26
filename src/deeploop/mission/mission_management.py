@@ -162,12 +162,24 @@ def _start_launch(
     resolved_log_path.parent.mkdir(parents=True, exist_ok=True)
     launch_root.mkdir(parents=True, exist_ok=True)
     launched_at = now_utc()
+
+    # For editable installs, snapshot the source package into a stable cache
+    # directory so the background daemon is immune to subsequent live edits.
+    mission_id = str(mission_state.get("mission_id") or "mission")
+    cache_src = _snapshot_src_for_mission(mission_id, launched_at)
+    launch_env = dict(os.environ)
+    if cache_src is not None:
+        launch_env["DEEPLOOP_RUNTIME_CACHE_SRC"] = str(cache_src)
+
     with resolved_log_path.open("a", encoding="utf-8") as log_handle:
         log_handle.write(f"[{launched_at}] deeploop {launch_reason} {shlex.join(command)}\n")
+        if cache_src is not None:
+            log_handle.write(f"[{launched_at}] runtime_cache={cache_src}\n")
         log_handle.flush()
         process = subprocess.Popen(
             command,
             cwd=REPO_ROOT,
+            env=launch_env,
             stdout=log_handle,
             stderr=subprocess.STDOUT,
             start_new_session=True,
@@ -189,6 +201,7 @@ def _start_launch(
         "launch_root": str(launch_root),
         "cwd": str(REPO_ROOT),
         "command": command,
+        "runtime_cache_src": str(cache_src) if cache_src is not None else None,
         "status_command": _management_command("status", mission_state_path),
         "logs_command": _management_command("logs", mission_state_path),
         "decisions_command": _management_command("decisions", mission_state_path),
@@ -836,7 +849,104 @@ def _resolve_snapshot(args: argparse.Namespace, *, log_tail_lines: int, ledger_t
     )
 
 
+_RUNTIME_CACHE_ROOT = Path.home() / ".deeploop" / "runtime_cache"
+
+
+def _is_editable_install() -> bool:
+    """Return True if the deeploop package is installed in editable mode."""
+    import importlib.metadata as _meta
+
+    try:
+        dist = _meta.Distribution.from_name("deeploop")
+        raw = dist.read_text("direct_url.json")
+    except Exception:
+        return False
+
+    if raw is None:
+        return False
+
+    try:
+        direct_url = json.loads(raw)
+    except Exception:
+        return False
+
+    return bool((direct_url.get("dir_info") or {}).get("editable"))
+
+
+def _snapshot_src_for_mission(mission_id: str, launched_at: str) -> Path | None:
+    """Snapshot src/deeploop into ~/.deeploop/runtime_cache/<mission_id>/<ts>/src/.
+
+    Returns the cache src root (parent of the deeploop package directory) so
+    that prepending it to PYTHONPATH — and setting DEEPLOOP_RUNTIME_CACHE_SRC —
+    makes the background daemon load modules from the static snapshot instead of
+    the live source tree.
+
+    Returns None when the install is not editable or when the copy fails.
+    This function is best-effort: it silently returns None on any error so it
+    never blocks a legitimate launch.
+    """
+    import shutil
+
+    if not _is_editable_install():
+        return None
+
+    pkg_src = REPO_ROOT / "src" / "deeploop"
+    if not pkg_src.is_dir():
+        return None
+
+    safe_ts = launched_at.replace(":", "-").replace(" ", "_")[:19]
+    cache_src = _RUNTIME_CACHE_ROOT / str(mission_id) / safe_ts / "src"
+    cache_pkg = cache_src / "deeploop"
+
+    try:
+        if cache_pkg.exists():
+            shutil.rmtree(cache_pkg)
+        cache_src.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(pkg_src, cache_pkg)
+    except Exception:
+        return None
+
+    return cache_src
+
+
+def _check_editable_install_and_warn() -> None:
+    """Warn to stderr if deeploop is editable-installed and the working tree is dirty.
+
+    An editable install ties every spawned subprocess to the live source tree,
+    so an uncommitted change or branch switch during a long-running mission will
+    crash the next stage kernel.  This function is best-effort: it silently
+    returns on any detection error so it never blocks a legitimate launch.
+    """
+    if not _is_editable_install():
+        return
+
+    # Editable install confirmed — check for a dirty git working tree.
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return
+
+    print(
+        "\nWARNING: deeploop is installed in editable mode and the working tree\n"
+        "is dirty. The background daemon will be launched from a static snapshot\n"
+        "in ~/.deeploop/runtime_cache/ to insulate it from live source changes,\n"
+        "but committing or stashing changes before launching is still recommended.\n"
+        "To permanently avoid this risk, install a stable snapshot with:\n"
+        "    pip install git+https://github.com/tnetal/DeepLoop.git\n",
+        file=sys.stderr,
+    )
+
+
 def _handle_start(args: argparse.Namespace) -> int:
+    _check_editable_install_and_warn()
     mission_state_path = _resolve_existing_path(args.mission_state)
     resume_context = None
     if args.command == "resume":

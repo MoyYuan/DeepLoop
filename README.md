@@ -19,11 +19,48 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
 
 1. **Install DeepLoop**
 
-   ```text
-   python -m pip install -e .
-   ```
+   Choose the installation path that matches your use case:
 
-   Or use the documented Conda path:
+   - **Standard user** — install from PyPI (no local checkout required):
+
+     ```text
+     pip install deeploop
+     ```
+
+     For the latest unreleased commit without a local checkout, use the
+     GitHub URL directly:
+
+     ```text
+     pip install git+https://github.com/tnetal/DeepLoop.git
+     ```
+
+     Both paths copy the library into `site-packages`, fully isolating running
+     missions from any local source changes.
+
+   - **Contributor** — clone the repo and install in editable mode with dev
+     extras:
+
+     ```text
+     git clone https://github.com/tnetal/DeepLoop.git
+     cd DeepLoop
+     pip install -e ".[dev]"
+     ```
+
+     > **Warning:** Editable installs tie every spawned Python subprocess
+     > directly to the live source tree. `deeploop start` automatically
+     > snapshots the package into `~/.deeploop/runtime_cache/` before launching
+     > the daemon, insulating the background mission from subsequent source
+     > edits. It also warns if the working tree is dirty at launch time. Even
+     > so, avoid switching Git branches or introducing syntax errors during a
+     > live mission run.
+
+   - **Hybrid user** (running long missions *and* developing features
+     simultaneously): maintain **two separate clones** — one stable clone
+     installed with `pip install git+…` or `pip install .` for running missions,
+     and one development clone with `pip install -e ".[dev]"` for writing PRs.
+     Never run a background mission from the development clone.
+
+   Or use the documented Conda path (installs in non-editable mode by default):
 
    ```text
    conda env create -n deeploop -f environment.yml

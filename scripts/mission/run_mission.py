@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = REPO_ROOT / "src"
+# If an editable-install snapshot was created by `deeploop start`, use it so
+# the background daemon is immune to live source changes.
+_cache_src = os.environ.get("DEEPLOOP_RUNTIME_CACHE_SRC", "").strip()
+SRC_ROOT = Path(_cache_src) if _cache_src and Path(_cache_src).is_dir() else REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
