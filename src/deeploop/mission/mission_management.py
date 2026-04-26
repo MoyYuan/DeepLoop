@@ -21,6 +21,7 @@ from deeploop.cli.run_project import _add_run_args, _run_project
 from deeploop.cli.init_mission import _add_init_args, _init_mission
 from deeploop.cli.package_mission import _add_package_args, _package_mission
 from deeploop.cli.analyze import _add_analyze_args, _analyze
+from deeploop.runtime.recursive_agent_runtime import analyze_budget
 
 _RUN_MISSION_SCRIPT = REPO_ROOT / "scripts" / "mission" / "run_mission.py"
 _MANAGE_MISSION_SCRIPT = REPO_ROOT / "scripts" / "mission" / "manage_mission.py"
@@ -1109,6 +1110,32 @@ def _handle_analyze(args: argparse.Namespace) -> int:
     return _analyze(args)
 
 
+def _handle_analyze_budget(args: argparse.Namespace) -> int:
+    mission_state_path = Path(args.mission_state).expanduser().resolve() if args.mission_state else None
+    config_path = Path(args.config).expanduser().resolve() if getattr(args, "config", None) else None
+    report = analyze_budget(
+        config_path=config_path,
+        mission_state_path=mission_state_path,
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(report, indent=2))
+        return 0
+
+    lines = [
+        f"- max_iterations: `{report['max_iterations']}`",
+        f"- pending_actions: `{report['pending_actions']}`",
+        f"- iterations_completed: `{report['iterations_completed']}`",
+        f"- iterations_remaining: `{report['iterations_remaining']}`",
+        f"- projected_total: `{report['projected_total']}`",
+        f"- utilization_ratio: `{report['utilization_ratio']:.0%}`",
+        f"- status: `{report['status']}`",
+    ]
+    for warning in report["warnings"]:
+        lines.append(f"- WARNING: {warning}")
+    print("\n".join(lines))
+    return 1 if report["status"] == "over-budget" else 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Operate DeepLoop autopilot for a mission from one management CLI.",
@@ -1296,6 +1323,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_analyze_args(analyze_p)
     analyze_p.set_defaults(handler=_handle_analyze)
+
+    analyze_budget_p = subparsers.add_parser(
+        "analyze-budget",
+        help="Predict whether the pending queue will exceed the recursive-agent iteration budget.",
+        description=(
+            "Analyse the configured max_iterations ceiling against the current pending action queue size "
+            "and emit an early warning if the queue is dangerously close to or exceeds the budget."
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    analyze_budget_p.add_argument("--mission-state", required=True, help="Path to mission_state.json.")
+    analyze_budget_p.add_argument(
+        "--config",
+        help="Path to a recursive-agent loop config YAML. "
+        "If omitted, the default recursive-agent-runtime policy values are used.",
+    )
+    analyze_budget_p.add_argument("--json", action="store_true", help="Emit the budget report as JSON.")
+    analyze_budget_p.set_defaults(handler=_handle_analyze_budget)
 
     return parser
 

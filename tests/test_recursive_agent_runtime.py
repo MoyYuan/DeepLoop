@@ -25,6 +25,7 @@ from deeploop.runtime.recursive_agent_runtime import (
     _should_yield_to_outer_runtime,
     _timeout_seconds_for_action,
     _validate_result,
+    analyze_budget,
     run_recursive_agent_loop,
 )
 from runtime_artifact_helpers import fresh_test_root
@@ -1023,6 +1024,119 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual(resolved, "literature-review")
+
+
+class AnalyzeBudgetTests(unittest.TestCase):
+    def test_analyze_budget_returns_ok_for_small_queue(self) -> None:
+        test_root = _fresh_test_root("analyze-budget-ok")
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state = {
+            "mission_id": "budget-test-ok",
+            "status": "running",
+            "current_phase": "execution",
+            "next_actions": {
+                "summary": "Two pending jobs.",
+                "actions": [
+                    {"action_id": "job-1", "role": "execution-operator", "status": "pending"},
+                    {"action_id": "job-2", "role": "execution-operator", "status": "pending"},
+                ],
+            },
+        }
+        mission_state_path.write_text(
+            __import__("json").dumps(mission_state), encoding="utf-8"
+        )
+
+        report = analyze_budget(mission_state_path=mission_state_path)
+
+        self.assertEqual(report["pending_actions"], 2)
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["warnings"], [])
+        self.assertGreater(report["max_iterations"], 0)
+
+    def test_analyze_budget_returns_over_budget_for_large_queue(self) -> None:
+        test_root = _fresh_test_root("analyze-budget-over")
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        many_actions = [
+            {"action_id": f"job-{i:03d}", "role": "execution-operator", "status": "pending"}
+            for i in range(72)
+        ]
+        mission_state = {
+            "mission_id": "budget-test-over",
+            "status": "running",
+            "current_phase": "execution",
+            "next_actions": {"summary": "Massive baseline queue.", "actions": many_actions},
+        }
+        mission_state_path.write_text(
+            __import__("json").dumps(mission_state), encoding="utf-8"
+        )
+
+        report = analyze_budget(mission_state_path=mission_state_path)
+
+        self.assertEqual(report["pending_actions"], 72)
+        self.assertEqual(report["status"], "over-budget")
+        self.assertTrue(len(report["warnings"]) > 0)
+        self.assertGreater(report["projected_total"], report["max_iterations"])
+
+    def test_analyze_budget_excludes_done_actions_from_pending_count(self) -> None:
+        test_root = _fresh_test_root("analyze-budget-done")
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state = {
+            "mission_id": "budget-test-done",
+            "status": "running",
+            "current_phase": "execution",
+            "next_actions": {
+                "summary": "Mix of done and pending.",
+                "actions": [
+                    {"action_id": "job-1", "role": "execution-operator", "status": "done"},
+                    {"action_id": "job-2", "role": "execution-operator", "status": "completed"},
+                    {"action_id": "job-3", "role": "execution-operator", "status": "pending"},
+                ],
+            },
+        }
+        mission_state_path.write_text(
+            __import__("json").dumps(mission_state), encoding="utf-8"
+        )
+
+        report = analyze_budget(mission_state_path=mission_state_path)
+
+        self.assertEqual(report["pending_actions"], 1)
+
+    def test_analyze_budget_returns_warning_for_near_ceiling_queue(self) -> None:
+        test_root = _fresh_test_root("analyze-budget-warn")
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        config_path = test_root / "loop_config.yaml"
+        config_path.write_text(
+            "max_iterations: 10\nmission_state: placeholder\n", encoding="utf-8"
+        )
+        # 9 out of 10 => 90% utilization => warning
+        actions = [
+            {"action_id": f"job-{i}", "role": "execution-operator", "status": "pending"}
+            for i in range(9)
+        ]
+        mission_state = {
+            "mission_id": "budget-test-warn",
+            "status": "running",
+            "current_phase": "execution",
+            "next_actions": {"summary": "Near-ceiling queue.", "actions": actions},
+        }
+        mission_state_path.write_text(
+            __import__("json").dumps(mission_state), encoding="utf-8"
+        )
+
+        report = analyze_budget(config_path=config_path, mission_state_path=mission_state_path)
+
+        self.assertEqual(report["max_iterations"], 10)
+        self.assertEqual(report["pending_actions"], 9)
+        self.assertIn(report["status"], {"warning", "over-budget"})
+        self.assertTrue(len(report["warnings"]) > 0)
 
 
 if __name__ == "__main__":

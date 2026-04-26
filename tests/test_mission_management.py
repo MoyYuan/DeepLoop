@@ -473,6 +473,8 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIn("reroute", completed.stdout)
         self.assertIn("triage", completed.stdout)
         self.assertIn("watch", completed.stdout)
+        self.assertIn("analyze", completed.stdout)
+        self.assertIn("analyze-budget", completed.stdout)
 
     def test_retry_records_operator_feedback_and_guides_resume(self) -> None:
         test_root = _fresh_test_root("retry_records_feedback")
@@ -684,6 +686,74 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIn("INFO poll=1", output)
         self.assertIn("ALARM poll=2", output)
         self.assertIn("demo-managed-triage-request", output)
+
+    def test_analyze_budget_reports_ok_for_small_queue(self) -> None:
+        test_root = _fresh_test_root("analyze_budget_ok")
+        mission_root = test_root / "mission"
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state = _base_state(mission_id="demo-analyze-budget-ok")
+        _write_json(mission_state_path, mission_state)
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            result = manage_mission_main(
+                ["analyze-budget", "--mission-state", str(mission_state_path)]
+            )
+
+        self.assertEqual(result, 0)
+        output = stdout.getvalue()
+        self.assertIn("max_iterations", output)
+        self.assertIn("pending_actions", output)
+        self.assertIn("status: `ok`", output)
+
+    def test_analyze_budget_reports_over_budget_for_large_queue(self) -> None:
+        test_root = _fresh_test_root("analyze_budget_over")
+        mission_root = test_root / "mission"
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state = _base_state(mission_id="demo-analyze-budget-over")
+        many_actions = [
+            {
+                "action_id": f"job-{i:03d}",
+                "role": "execution-operator",
+                "task": f"Run baseline job {i}.",
+                "status": "pending",
+                "phase": "execution",
+            }
+            for i in range(72)
+        ]
+        mission_state["next_actions"] = {"summary": "Large baseline queue.", "actions": many_actions}
+        _write_json(mission_state_path, mission_state)
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            result = manage_mission_main(
+                ["analyze-budget", "--mission-state", str(mission_state_path)]
+            )
+
+        self.assertEqual(result, 1)
+        output = stdout.getvalue()
+        self.assertIn("over-budget", output)
+        self.assertIn("WARNING", output)
+
+    def test_analyze_budget_json_flag_emits_structured_report(self) -> None:
+        test_root = _fresh_test_root("analyze_budget_json")
+        mission_root = test_root / "mission"
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state = _base_state(mission_id="demo-analyze-budget-json")
+        _write_json(mission_state_path, mission_state)
+
+        stdout = io.StringIO()
+        with redirect_stdout(stdout), redirect_stderr(io.StringIO()):
+            manage_mission_main(
+                ["analyze-budget", "--mission-state", str(mission_state_path), "--json"]
+            )
+
+        report = json.loads(stdout.getvalue())
+        self.assertIn("max_iterations", report)
+        self.assertIn("pending_actions", report)
+        self.assertIn("status", report)
+        self.assertIn("warnings", report)
+        self.assertIsInstance(report["warnings"], list)
 
 
 if __name__ == "__main__":

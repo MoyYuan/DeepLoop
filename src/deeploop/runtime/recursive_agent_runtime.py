@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -1067,6 +1068,14 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         state["latest_iteration_path"] = str(iteration_root)
         state["latest_result_path"] = str(summary_json_path)
         latest_outcome = normalized_outcome
+        remaining_iterations = max_iterations - iteration_number
+        if remaining_iterations <= max(1, round(max_iterations * 0.20)) and remaining_iterations > 0:
+            print(
+                f"[deeploop] WARNING: iteration budget nearly exhausted for loop '{loop_name}': "
+                f"{iteration_number}/{max_iterations} iterations consumed, {remaining_iterations} remaining. "
+                "Consider increasing max_iterations in your recursive agent config.",
+                file=sys.stderr,
+            )
         iterations.append(
             {
                 "iteration": iteration_number,
@@ -1210,4 +1219,102 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         "latest_iteration_path": Path(state["latest_iteration_path"]) if state.get("latest_iteration_path") else None,
         "latest_result_path": Path(state["latest_result_path"]) if state.get("latest_result_path") else None,
         "latest_outcome": _effective_outcome(latest_outcome, status),
+    }
+
+
+_BUDGET_WARN_THRESHOLD = 0.80
+
+
+def analyze_budget(
+    *,
+    config_path: Path | None = None,
+    mission_state_path: Path | None = None,
+    policy_path: Path | None = None,
+) -> dict[str, Any]:
+    """Predict whether the pending action queue will exceed the configured iteration budget.
+
+    Returns a structured report with fields:
+      - max_iterations: the effective cap
+      - pending_actions: count of actions waiting in the mission state
+      - iterations_completed: iterations already consumed in the current loop state (0 if loop not started)
+      - iterations_remaining: max_iterations - iterations_completed
+      - utilization_ratio: (pending_actions + iterations_completed) / max_iterations
+      - status: "ok" | "warning" | "over-budget"
+      - warnings: list of human-readable warning strings
+    """
+    resolved_policy_path = Path(policy_path or DEFAULT_POLICY_PATH).expanduser().resolve()
+    policy: dict[str, Any] = {}
+    if resolved_policy_path.exists():
+        policy = _load_yaml(resolved_policy_path)
+
+    config: dict[str, Any] = {}
+    if config_path is not None:
+        config = _load_yaml(Path(config_path).expanduser().resolve())
+        if policy_path is None:
+            raw_policy = config.get("policy_path")
+            if raw_policy:
+                alt_policy = Path(raw_policy).expanduser().resolve()
+                if alt_policy.exists():
+                    policy = _load_yaml(alt_policy)
+
+    max_iterations = int(config.get("max_iterations", policy.get("max_iterations", 8)))
+
+    pending_actions = 0
+    iterations_completed = 0
+    mission_state: dict[str, Any] = {}
+
+    if mission_state_path is not None:
+        resolved_ms = Path(mission_state_path).expanduser().resolve()
+        if resolved_ms.exists():
+            mission_state = load_mission_state(resolved_ms)
+            next_actions = mission_state.get("next_actions")
+            if isinstance(next_actions, dict):
+                actions_list = next_actions.get("actions")
+                if isinstance(actions_list, list):
+                    pending_actions = sum(
+                        1
+                        for a in actions_list
+                        if isinstance(a, dict) and str(a.get("status", "pending")) not in {"done", "completed", "skipped"}
+                    )
+
+        if config_path is not None:
+            loop_name = str(config.get("loop_name", "recursive-agent-loop"))
+            artifact_dir_name = str(policy.get("artifact_dir_name", "recursive_agent_runtime"))
+            resolved_ms = Path(mission_state_path).expanduser().resolve()
+            runtime_root = _runtime_root(resolved_ms, artifact_dir_name, loop_name)
+            state_path = _state_path(runtime_root)
+            if state_path.exists():
+                loop_state = _load_json(state_path)
+                iterations_completed = int(loop_state.get("iterations_completed", 0))
+
+    iterations_remaining = max(0, max_iterations - iterations_completed)
+    projected_total = iterations_completed + pending_actions
+    utilization_ratio = round(projected_total / max_iterations, 4) if max_iterations > 0 else 1.0
+
+    warnings: list[str] = []
+    status = "ok"
+
+    if projected_total > max_iterations:
+        status = "over-budget"
+        warnings.append(
+            f"Projected total ({projected_total}) exceeds max_iterations ({max_iterations}). "
+            "The loop will halt mid-queue. Increase max_iterations in your recursive agent config."
+        )
+    elif utilization_ratio >= _BUDGET_WARN_THRESHOLD:
+        status = "warning"
+        warnings.append(
+            f"Projected utilization is {utilization_ratio:.0%} of max_iterations ({max_iterations}). "
+            "Queue size is dangerously close to the iteration ceiling. "
+            "Consider increasing max_iterations before submitting this queue."
+        )
+
+    return {
+        "max_iterations": max_iterations,
+        "pending_actions": pending_actions,
+        "iterations_completed": iterations_completed,
+        "iterations_remaining": iterations_remaining,
+        "projected_total": projected_total,
+        "utilization_ratio": utilization_ratio,
+        "status": status,
+        "warnings": warnings,
     }
