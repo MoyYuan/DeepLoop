@@ -109,6 +109,17 @@ onboarding validate today; outside it, expect gaps.
     If it stops for operator review, use the returned `<mission-state.json>`
     with the `deeploop` commands below.
 
+    > **Important:** `deeploop run` automatically detects explicit mission
+    > configs in `<project-folder>/.deeploop/missions/*.yaml`. If one or more
+    > YAML files are found there, `deeploop run` uses the first config instead
+    > of bootstrapping a blank mission. If no explicit config exists, it
+    > bootstraps from the folder's plain facts (e.g. `project-facts.yaml`).
+    >
+    > If you have multiple explicit configs or need to target a specific one,
+    > use `deeploop init --config <mission-config.yaml>` followed by
+    > `deeploop start --mission-state <mission-state.json>` instead of
+    > `deeploop run`.
+
     If you want the explicit operator flow instead, materialize a mission state
     first:
 

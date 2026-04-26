@@ -127,6 +127,14 @@ def run_project_until_complete(
     }
 
 
+def _find_explicit_mission_configs(project_root: Path) -> list[Path]:
+    """Return any YAML config files found in <project_root>/.deeploop/missions/."""
+    missions_dir = project_root / ".deeploop" / "missions"
+    if not missions_dir.is_dir():
+        return []
+    return sorted(missions_dir.glob("*.yaml")) + sorted(missions_dir.glob("*.yml"))
+
+
 def initialize_mission_from_project_root(
     project_root: Path,
     *,
@@ -138,6 +146,31 @@ def initialize_mission_from_project_root(
     import yaml
 
     resolved_project_root = project_root.expanduser().resolve()
+
+    explicit_configs = _find_explicit_mission_configs(resolved_project_root)
+    if explicit_configs:
+        selected_config = explicit_configs[0]
+        print(
+            f"run: detected explicit mission config in "
+            f"{resolved_project_root / '.deeploop' / 'missions'} — "
+            f"using {selected_config.name} instead of bootstrapping a blank mission.",
+            flush=True,
+        )
+        if len(explicit_configs) > 1:
+            others = [p.name for p in explicit_configs[1:]]
+            print(
+                f"run: ignoring additional config(s): {', '.join(others)}. "
+                "Use `deeploop init --config <path>` to initialize a specific config.",
+                flush=True,
+            )
+        if mission_id is not None:
+            print(
+                f"run: --mission-id={mission_id!r} was supplied but an explicit config "
+                "was found; the explicit config's mission id takes precedence.",
+                flush=True,
+            )
+        return initialize_mission(selected_config, force=force)
+
     generated_config = build_mission_config_from_project_root(resolved_project_root, mission_id=mission_id)
     resolved_mission_id = str(generated_config["mission"]["id"])
     mission_root = MISSIONS_DIR / resolved_mission_id
@@ -169,6 +202,7 @@ def initialize_mission_from_project_root(
 
 
 __all__ = [
+    "_find_explicit_mission_configs",
     "initialize_mission_from_project_root",
     "run_project_until_complete",
     "_jsonify",
