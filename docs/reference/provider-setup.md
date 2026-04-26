@@ -79,6 +79,42 @@ This family is wired into the current runtime through
 `src/deeploop/runtime/copilot_adapter.py`, and
 `scripts/runtime/invoke_provider_prompt.py`.
 
+#### Custom script data routing
+
+> **Warning**: Never pass mission state, ledger contents, or other large
+> payloads as inline strings to a provider CLI flag (e.g.
+> `copilot -p "$STATE_TEXT"`). Once mission files grow beyond a few kilobytes
+> the OS rejects the call with `[Errno 7] Argument list too long`.
+
+Custom scripts that bridge DeepLoop state to a provider **must** use one of
+these safe patterns instead:
+
+1. **`deeploop analyze` (recommended)** – the built-in command that builds
+   and routes the analysis prompt from the mission state file without ever
+   expanding it into a shell argument:
+
+   ```bash
+   deeploop analyze --mission-state path/to/mission_state.json
+   ```
+
+   Pass `--prompt-file` to supply a fully custom prompt file, or `--task` to
+   override only the analysis task description.
+
+2. **`invoke_provider_prompt.py --prompt-file`** – write the prompt to a
+   file first, then pass the file path:
+
+   ```bash
+   python scripts/runtime/invoke_provider_prompt.py \
+       --prompt-file /tmp/my_prompt.md \
+       --result-json-path /tmp/result.json
+   ```
+
+3. **stdin piping** – pipe the prompt into a provider tool that reads from
+   stdin rather than a positional string argument.
+
+DeepLoop's own orchestrator always writes prompts to files and passes them by
+path. Custom scripts must follow the same rule.
+
 ### OpenAI-compatible API providers
 
 - required tools:
