@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,17 @@ DEFAULT_CATEGORIES = (
     "critique_reports",
     "runtime_metadata",
 )
+
+
+def _remove_tree(path: Path) -> None:
+    for attempt in range(3):
+        shutil.rmtree(path, ignore_errors=True)
+        if not path.exists():
+            return
+        if attempt < 2:
+            time.sleep(0.1)
+    if path.exists():
+        raise OSError(f"Unable to remove existing package directory: {path}")
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -496,7 +508,7 @@ def package_mission_artifacts(
     _validate_output_root(resolved_output_root, mission_state)
     package_root = resolved_output_root / mission_id
     if package_root.exists():
-        shutil.rmtree(package_root)
+        _remove_tree(package_root)
     package_root.mkdir(parents=True, exist_ok=True)
 
     copied_root_name = str(contract.get("outputs", {}).get("copied_artifact_root", "artifacts"))
