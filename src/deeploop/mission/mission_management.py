@@ -894,7 +894,7 @@ def _snapshot_src_for_mission(mission_id: str, launched_at: str) -> Path | None:
     if not pkg_src.is_dir():
         return None
 
-    safe_ts = launched_at.replace(":", "-").replace(" ", "_")[:19]
+    safe_ts = launched_at.replace(":", "-").replace(" ", "_").replace("+", "_")
     cache_src = _RUNTIME_CACHE_ROOT / str(mission_id) / safe_ts / "src"
     cache_pkg = cache_src / "deeploop"
 

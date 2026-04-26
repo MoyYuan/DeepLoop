@@ -318,6 +318,28 @@ class MissionManagementTests(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_snapshot_src_uses_unique_paths_within_same_second(self) -> None:
+        from deeploop.mission.mission_management import _snapshot_src_for_mission
+
+        test_root = _fresh_test_root("start_runtime_cache_unique_paths")
+        fake_repo_root = test_root / "repo"
+        fake_pkg_src = fake_repo_root / "src" / "deeploop"
+        fake_pkg_src.mkdir(parents=True, exist_ok=True)
+        (fake_pkg_src / "__init__.py").write_text("__version__ = '0.1.0'\n", encoding="utf-8")
+        runtime_cache_root = test_root / "runtime_cache"
+
+        with patch("deeploop.mission.mission_management._is_editable_install", return_value=True):
+            with patch("deeploop.mission.mission_management.REPO_ROOT", fake_repo_root):
+                with patch("deeploop.mission.mission_management._RUNTIME_CACHE_ROOT", runtime_cache_root):
+                    first = _snapshot_src_for_mission("demo-cache", "2026-04-26T18:00:00.123456+00:00")
+                    second = _snapshot_src_for_mission("demo-cache", "2026-04-26T18:00:00.654321+00:00")
+
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertNotEqual(first, second)
+        self.assertTrue((first / "deeploop" / "__init__.py").exists())
+        self.assertTrue((second / "deeploop" / "__init__.py").exists())
+
     def test_status_logs_and_decisions_surface_operator_views(self) -> None:
         test_root = _fresh_test_root("status_logs_decisions")
         mission_root = test_root / "mission"
