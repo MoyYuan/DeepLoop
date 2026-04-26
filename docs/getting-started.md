@@ -21,16 +21,41 @@ onboarding validate today; outside it, expect gaps.
 
 ## First useful path
 
-1. Install DeepLoop:
+1. Install DeepLoop — choose the mode that matches your use case:
 
-   ```text
-   python -m pip install -e .
-   ```
+   - **Standard user** (running missions, not modifying DeepLoop source):
 
-   Editable installs expose the `deeploop` CLI with all subcommands:
-   `run`, `init`, `start`, `status`, `inbox`, `resume`, `package`, and more.
+     ```text
+     python -m pip install .
+     ```
 
-   The Conda path remains supported too:
+     This copies the library into `site-packages`, isolating live missions from
+     any future changes to the source directory.
+
+   - **Contributor** (developing DeepLoop features):
+
+     ```text
+     python -m pip install -e .
+     ```
+
+     > **Warning:** Editable installs tie every Python subprocess directly to
+     > the live source tree. Do **not** modify source files, switch Git
+     > branches, or introduce syntax errors while a mission is actively running
+     > in the background — doing so will crash the next stage kernel that spins
+     > up.
+
+   - **Hybrid user** (running long missions *and* developing features
+     simultaneously): maintain **two separate clones** — one stable clone for
+     running missions (`pip install .`) and one development clone for writing
+     PRs (`pip install -e .`). Never run a background mission from the
+     development clone.
+
+   Both editable and non-editable installs expose the `deeploop` CLI with all
+   subcommands: `run`, `init`, `start`, `status`, `inbox`, `resume`, `package`,
+   and more.
+
+   The Conda path remains supported too (installs in non-editable mode by
+   default):
 
    ```text
    conda env create -n deeploop -f environment.yml

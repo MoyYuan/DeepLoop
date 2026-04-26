@@ -70,8 +70,15 @@ instead of hardcoded personal paths as the only visible examples.
 
 The current intended path is:
 
-1. install the environment described by the repo
-   - `python -m pip install -e .`
+1. install the environment described by the repo — choose the mode that matches
+   your use case:
+   - **Standard user** (running missions, not modifying DeepLoop source):
+     `python -m pip install .`
+   - **Contributor** (developing DeepLoop features):
+     `python -m pip install -e .` — do **not** modify source, switch branches,
+     or introduce syntax errors while a mission is running in the background
+   - **Hybrid user** (missions + development simultaneously): use two separate
+     clones; run missions only from the non-editable clone
    - or `conda env create -n deeploop -f environment.yml`
 2. run `make setup`
 3. run:
