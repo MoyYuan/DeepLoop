@@ -175,22 +175,24 @@ class MissionManagementTests(unittest.TestCase):
         log_path = test_root / "launch" / "launch.log"
         _write_json(mission_state_path, _base_state(mission_id="demo-start"))
 
+        _clean_git = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
         stdout = io.StringIO()
-        with patch("deeploop.mission.mission_management.subprocess.Popen", side_effect=_FakePopen) as mock_popen:
-            with redirect_stdout(stdout):
-                result = manage_mission_main(
-                    [
-                        "start",
-                        "--mission-state",
-                        str(mission_state_path),
-                        "--launch-metadata",
-                        str(launch_metadata_path),
-                        "--log-path",
-                        str(log_path),
-                        "--max-iterations",
-                        "7",
-                    ]
-                )
+        with patch("deeploop.mission.mission_management.subprocess.run", return_value=_clean_git):
+            with patch("deeploop.mission.mission_management.subprocess.Popen", side_effect=_FakePopen) as mock_popen:
+                with redirect_stdout(stdout):
+                    result = manage_mission_main(
+                        [
+                            "start",
+                            "--mission-state",
+                            str(mission_state_path),
+                            "--launch-metadata",
+                            str(launch_metadata_path),
+                            "--log-path",
+                            str(log_path),
+                            "--max-iterations",
+                            "7",
+                        ]
+                    )
 
         self.assertEqual(result, 0)
         self.assertEqual(mock_popen.call_count, 1)
@@ -213,18 +215,20 @@ class MissionManagementTests(unittest.TestCase):
         mission_state["runtime_launcher"] = {"env_name": "llm"}
         _write_json(mission_state_path, mission_state)
 
-        with patch("deeploop.mission.mission_management.subprocess.Popen", side_effect=_FakePopen) as mock_popen:
-            result = manage_mission_main(
-                [
-                    "start",
-                    "--mission-state",
-                    str(mission_state_path),
-                    "--launch-metadata",
-                    str(launch_metadata_path),
-                    "--log-path",
-                    str(log_path),
-                ]
-            )
+        _clean_git = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch("deeploop.mission.mission_management.subprocess.run", return_value=_clean_git):
+            with patch("deeploop.mission.mission_management.subprocess.Popen", side_effect=_FakePopen) as mock_popen:
+                result = manage_mission_main(
+                    [
+                        "start",
+                        "--mission-state",
+                        str(mission_state_path),
+                        "--launch-metadata",
+                        str(launch_metadata_path),
+                        "--log-path",
+                        str(log_path),
+                    ]
+                )
 
         self.assertEqual(result, 0)
         self.assertEqual(mock_popen.call_count, 1)
@@ -241,24 +245,78 @@ class MissionManagementTests(unittest.TestCase):
         mission_state["runtime_launcher"] = {"env_name": "llm", "max_iterations": 33}
         _write_json(mission_state_path, mission_state)
 
-        with patch("deeploop.mission.mission_management.subprocess.Popen", side_effect=_FakePopen) as mock_popen:
-            result = manage_mission_main(
-                [
-                    "start",
-                    "--mission-state",
-                    str(mission_state_path),
-                    "--launch-metadata",
-                    str(launch_metadata_path),
-                    "--log-path",
-                    str(log_path),
-                ]
-            )
+        _clean_git = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch("deeploop.mission.mission_management.subprocess.run", return_value=_clean_git):
+            with patch("deeploop.mission.mission_management.subprocess.Popen", side_effect=_FakePopen) as mock_popen:
+                result = manage_mission_main(
+                    [
+                        "start",
+                        "--mission-state",
+                        str(mission_state_path),
+                        "--launch-metadata",
+                        str(launch_metadata_path),
+                        "--log-path",
+                        str(log_path),
+                    ]
+                )
 
         self.assertEqual(result, 0)
         command = mock_popen.call_args.args[0]
         self.assertEqual(command[-1], "33")
         metadata = json.loads(launch_metadata_path.read_text(encoding="utf-8"))
         self.assertEqual(metadata["max_iterations"], 33)
+
+    def test_start_injects_runtime_cache_env_for_editable_install(self) -> None:
+        """When the package is editable, start should snapshot src and set DEEPLOOP_RUNTIME_CACHE_SRC."""
+        import importlib.metadata as _meta
+        from deeploop.mission.mission_management import _snapshot_src_for_mission
+
+        test_root = _fresh_test_root("start_runtime_cache")
+        mission_state_path = test_root / "mission" / "mission_state.json"
+        launch_metadata_path = test_root / "launch" / "launch.json"
+        log_path = test_root / "launch" / "launch.log"
+        _write_json(mission_state_path, _base_state(mission_id="demo-cache"))
+
+        cache_src = test_root / "fake_cache" / "src"
+        cache_pkg = cache_src / "deeploop"
+        cache_pkg.mkdir(parents=True, exist_ok=True)
+        (cache_pkg / "__init__.py").write_text("")
+
+        _clean_git = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch("deeploop.mission.mission_management.subprocess.run", return_value=_clean_git):
+            with patch(
+                "deeploop.mission.mission_management._snapshot_src_for_mission",
+                return_value=cache_src,
+            ):
+                with patch("deeploop.mission.mission_management.subprocess.Popen", side_effect=_FakePopen) as mock_popen:
+                    result = manage_mission_main(
+                        [
+                            "start",
+                            "--mission-state",
+                            str(mission_state_path),
+                            "--launch-metadata",
+                            str(launch_metadata_path),
+                            "--log-path",
+                            str(log_path),
+                        ]
+                    )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(mock_popen.call_count, 1)
+        popen_kwargs = mock_popen.call_args.kwargs
+        self.assertIn("env", popen_kwargs)
+        self.assertEqual(popen_kwargs["env"].get("DEEPLOOP_RUNTIME_CACHE_SRC"), str(cache_src))
+        metadata = json.loads(launch_metadata_path.read_text(encoding="utf-8"))
+        self.assertEqual(metadata["runtime_cache_src"], str(cache_src))
+
+    def test_snapshot_src_returns_none_for_non_editable_install(self) -> None:
+        """_snapshot_src_for_mission should return None for a non-editable install."""
+        from deeploop.mission.mission_management import _snapshot_src_for_mission
+
+        with patch("deeploop.mission.mission_management._is_editable_install", return_value=False):
+            result = _snapshot_src_for_mission("test-mission", "2026-04-26T18:00:00Z")
+
+        self.assertIsNone(result)
 
     def test_status_logs_and_decisions_surface_operator_views(self) -> None:
         test_root = _fresh_test_root("status_logs_decisions")

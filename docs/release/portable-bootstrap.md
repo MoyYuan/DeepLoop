@@ -24,7 +24,7 @@ DeepLoop should describe support as explicit tiers instead of vague
 
 | Tier | Meaning |
 | --- | --- |
-| **Supported now** | Linux with Python 3.11, editable install or the documented Conda path, and the documented workspace/output roots |
+| **Supported now** | Linux with Python 3.11, `pip install deeploop` (PyPI), `pip install git+…`, editable contributor install, or the documented Conda path, and the documented workspace/output roots |
 | **Near-term target** | Linux CPU-only and Linux GPU setups with the same bootstrap flow |
 | **Later target** | Bounded cloud and runner environments with the same validation contract |
 
@@ -72,13 +72,14 @@ The current intended path is:
 
 1. install the environment described by the repo — choose the path that matches
    your use case:
-   - **Standard user** — `pip install deeploop` (PyPI, once published) or
-     `pip install git+https://github.com/tnetal/DeepLoop.git` (static snapshot,
-     no local checkout required)
+   - **Standard user** — `pip install deeploop` (PyPI) or
+     `pip install git+https://github.com/tnetal/DeepLoop.git` (latest unreleased
+     commit, static snapshot, no local checkout required)
    - **Contributor** — clone the repo, then
-     `pip install -e ".[dev]"` — do **not** modify source, switch branches, or
-     introduce syntax errors while a mission is running; `deeploop start` warns
-     on a dirty working tree
+     `pip install -e ".[dev]"` — `deeploop start` automatically snapshots the
+     package into `~/.deeploop/runtime_cache/` before launching and warns on a
+     dirty working tree; avoid switching branches or introducing syntax errors
+     during a live mission run
    - **Hybrid user** — two separate clones; run missions only from the
      non-editable clone
    - or `conda env create -n deeploop -f environment.yml`

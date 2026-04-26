@@ -21,14 +21,14 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
 
    Choose the installation path that matches your use case:
 
-   - **Standard user** — install from PyPI *(once published)*:
+   - **Standard user** — install from PyPI (no local checkout required):
 
      ```text
      pip install deeploop
      ```
 
-     Until DeepLoop is available on PyPI, install a static snapshot directly
-     from GitHub (no local checkout required):
+     For the latest unreleased commit without a local checkout, use the
+     GitHub URL directly:
 
      ```text
      pip install git+https://github.com/tnetal/DeepLoop.git
@@ -47,11 +47,12 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
      ```
 
      > **Warning:** Editable installs tie every spawned Python subprocess
-     > directly to the live source tree. Do **not** modify source files, switch
-     > Git branches, or introduce syntax errors while a mission is actively
-     > running in the background — doing so will crash the next stage kernel
-     > that spins up. `deeploop start` will warn you if it detects a dirty
-     > working tree at launch time.
+     > directly to the live source tree. `deeploop start` automatically
+     > snapshots the package into `~/.deeploop/runtime_cache/` before launching
+     > the daemon, insulating the background mission from subsequent source
+     > edits. It also warns if the working tree is dirty at launch time. Even
+     > so, avoid switching Git branches or introducing syntax errors during a
+     > live mission run.
 
    - **Hybrid user** (running long missions *and* developing features
      simultaneously): maintain **two separate clones** — one stable clone
