@@ -537,6 +537,3 @@ class ProjectRunnerTests(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn("--mission-id", output)
         self.assertIn("takes precedence", output)
-
-
-

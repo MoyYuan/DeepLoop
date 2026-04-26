@@ -202,7 +202,6 @@ def initialize_mission_from_project_root(
 
 
 __all__ = [
-    "_find_explicit_mission_configs",
     "initialize_mission_from_project_root",
     "run_project_until_complete",
     "_jsonify",
