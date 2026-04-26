@@ -346,6 +346,87 @@ class ArtifactPackagerTests(unittest.TestCase):
             self.assertEqual(result["package"]["claim_summary"]["paper_candidate_blockers"], ["human approval"])
             self.assertEqual(validate_package_manifest(result["package"]), [])
 
+    def test_packager_marks_pending_downstream_references_without_crashing(self) -> None:
+        runs_root = WORKSPACE_ROOT / "runs"
+        runs_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=runs_root) as tmpdir:
+            test_root = Path(tmpdir)
+            mission_root = test_root / "mission"
+            mission_root.mkdir(parents=True, exist_ok=True)
+            target_repo = test_root / "plain-project"
+            target_repo.mkdir(parents=True, exist_ok=True)
+            findings_dir = mission_root / "findings"
+            findings_dir.mkdir(parents=True, exist_ok=True)
+            runtime_dir = mission_root / "runtime" / "mission_outer_runtime"
+            runtime_dir.mkdir(parents=True, exist_ok=True)
+            runs_dir = mission_root / "runtime" / "plain_folder_followups" / "runs"
+            baseline_dir = runs_dir / "baseline-run"
+            baseline_dir.mkdir(parents=True, exist_ok=True)
+
+            mission_state_path = mission_root / "mission_state.json"
+            mission_state = {
+                "mission_id": "pending-downstream-mission",
+                "title": "Pending downstream test",
+                "objective": "Ensure evaluation-comparison references to future phases are marked pending.",
+                "current_phase": "causal-intervention",
+                "status": "in-progress",
+                "target_repo": str(target_repo),
+                "roles": ["execution-operator"],
+                "artifacts": {"docs": [], "configs": []},
+                "next_actions": {"actions": [], "generated_configs": []},
+            }
+            mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+            (mission_root / "mission_summary.md").write_text("# Summary\n", encoding="utf-8")
+            (mission_root / "mission_decisions.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_branches.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_memory.json").write_text("{}\n", encoding="utf-8")
+            (mission_root / "mission_experiments.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "ledger.jsonl").write_text("", encoding="utf-8")
+            (findings_dir / "finding.md").write_text("- Causal intervention queued.\n", encoding="utf-8")
+            (runtime_dir / "runtime_state.json").write_text('{"status":"in-progress"}\n', encoding="utf-8")
+
+            # Phase 1 (baseline) manifest references a Phase 3 (intervention) manifest that doesn't
+            # exist yet.  The downstream path simulates a queued evaluation-comparison handoff.
+            future_intervention_dir = runs_dir / "intervention-run"
+            future_manifest_path = future_intervention_dir / "study_manifest.json"
+
+            baseline_manifest = {
+                "mission_id": "pending-downstream-mission",
+                "loop_id": "baseline-run",
+                "claim_state": "exploratory",
+                "run": {"status": "completed"},
+                "metrics": {"accuracy": 0.75},
+                "artifacts": {
+                    "output_dir": str(baseline_dir),
+                    "report_paths": [],
+                },
+                "evaluation": {
+                    "compare_against": str(future_manifest_path),
+                },
+                "notes": ["Baseline completed; causal intervention pending."],
+            }
+            (baseline_dir / "run_manifest.json").write_text(
+                json.dumps(baseline_manifest, indent=2) + "\n", encoding="utf-8"
+            )
+
+            output_root = test_root / "packages"
+            # Must not raise FileNotFoundError despite the future path not existing.
+            result = package_mission_artifacts(mission_state_path, output_root=output_root)
+
+            self.assertTrue(result["manifest_path"].exists())
+            checks = result["package"]["checks"]
+            # The future manifest path should be tracked as a pending downstream artifact.
+            self.assertIn("pending_downstream_artifacts", checks)
+            self.assertTrue(
+                any(str(future_manifest_path) in path for path in checks["pending_downstream_artifacts"])
+            )
+            # The pending artifact must not appear in the main artifacts list.
+            present_paths = {a["source_path"] for a in result["package"]["artifacts"]}
+            self.assertNotIn(str(future_manifest_path.resolve()), present_paths)
+            # Package digest and copy must succeed (baseline manifest present).
+            self.assertGreater(len(result["package"]["artifacts"]), 0)
+            self.assertEqual(validate_package_manifest(result["package"]), [])
+
     def test_packager_overwrites_existing_package_directory_without_crashing(self) -> None:
         runs_root = WORKSPACE_ROOT / "runs"
         runs_root.mkdir(parents=True, exist_ok=True)
@@ -406,7 +487,6 @@ class ArtifactPackagerTests(unittest.TestCase):
 
             self.assertTrue(result["manifest_path"].exists())
             self.assertTrue(result["summary_path"].exists())
-
 
 if __name__ == "__main__":
     unittest.main()

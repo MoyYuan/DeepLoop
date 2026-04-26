@@ -83,6 +83,7 @@ class PackageStructureTests(unittest.TestCase):
             "deeploop-init-mission": "deeploop.cli.init_mission:main",
             "deeploop-run-project": "deeploop.cli.run_project:main",
             "deeploop-package-mission": "deeploop.cli.package_mission:main",
+            "deeploop-analyze": "deeploop.cli.analyze:main",
         }
         self.assertEqual(scripts, expected_scripts)
 

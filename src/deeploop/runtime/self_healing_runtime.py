@@ -406,7 +406,15 @@ def _queue_summary_markdown(report: dict[str, Any]) -> list[str]:
         f"- recovered_jobs: `{report['counts']['recovered_jobs']}`",
         f"- rerouted_jobs: `{report['counts']['rerouted_jobs']}`",
         f"- resumed_jobs: `{report['counts']['resumed_jobs']}`",
+        f"- truncated_jobs: `{report['counts']['truncated_jobs']}`",
         "",
+    ]
+    if report.get("truncation_warning"):
+        lines += [
+            f"**WARNING:** {report['truncation_warning']}",
+            "",
+        ]
+    lines += [
         "## Entries",
         "",
     ]
@@ -429,6 +437,7 @@ def _update_mission_state(
     counts: dict[str, int],
     entry_summaries: list[dict[str, Any]],
     policy_path: Path,
+    truncated_jobs: int = 0,
 ) -> None:
     runtime_entries = {
         entry["entry_id"]: {
@@ -470,6 +479,9 @@ def _update_mission_state(
     elif counts["recovered_jobs"] > 0:
         state = "runtime-self-healed"
         reason = f"{counts['recovered_jobs']} queue job(s) recovered after retry/reroute/resume."
+    elif truncated_jobs > 0:
+        state = "completed-truncated"
+        reason = f"Queue capped by max_jobs; {truncated_jobs} job(s) were not executed."
     else:
         state = "runtime-completed"
         reason = "Queue completed without needing recovery."
@@ -712,10 +724,31 @@ def run_self_healing_queue(config_path: Path, *, policy_path: Path | None = None
         "recovered_jobs": 0,
         "rerouted_jobs": 0,
         "resumed_jobs": 0,
+        "truncated_jobs": 0,
     }
     entry_summaries: list[dict[str, Any]] = []
     entries = config.get("entries", [])
     max_jobs = int(config.get("max_jobs", 0) or len(entries))
+    truncated_jobs = max(0, len(entries) - max_jobs)
+    counts["truncated_jobs"] = truncated_jobs
+    truncation_warning: str | None = None
+    if truncated_jobs > 0:
+        truncation_warning = (
+            f"WARNING: queue-runtime: max_jobs={max_jobs} cap truncated {truncated_jobs} job(s) "
+            f"({len(entries)} total entries). Only the first {max_jobs} job(s) were executed."
+        )
+        print(truncation_warning, file=sys.stderr)
+        append_jsonl(
+            ledger_path,
+            make_ledger_entry(
+                kind="autonomy-gate-warning",
+                mission_id=str(mission_state.get("mission_id", "")),
+                summary=truncation_warning,
+                status="truncated",
+                related_paths=[],
+                metadata={"max_jobs": max_jobs, "total_entries": len(entries), "truncated_jobs": truncated_jobs},
+            ),
+        )
     for entry in entries[:max_jobs]:
         summary = _run_entry(
             config=config,
@@ -788,6 +821,7 @@ def run_self_healing_queue(config_path: Path, *, policy_path: Path | None = None
         "policy_path": str(resolved_policy_path),
         "queue_config_path": str(Path(config_path).resolve()),
         "counts": counts,
+        "truncation_warning": truncation_warning,
         "entries": [
             {
                 "entry_id": entry["entry_id"],
@@ -813,6 +847,7 @@ def run_self_healing_queue(config_path: Path, *, policy_path: Path | None = None
         counts=counts,
         entry_summaries=entry_summaries,
         policy_path=resolved_policy_path,
+        truncated_jobs=truncated_jobs,
     )
     append_jsonl(
         ledger_path,
@@ -828,6 +863,7 @@ def run_self_healing_queue(config_path: Path, *, policy_path: Path | None = None
     return {
         **counts,
         "queue_name": queue_name,
+        "truncation_warning": truncation_warning,
         "blocked_entries": blocked_entries,
         "ledger_path": ledger_path,
         "runtime_report_path": report_json_path,
