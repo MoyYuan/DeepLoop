@@ -176,6 +176,25 @@ class SelfHealingRuntimeTests(unittest.TestCase):
         )
         return config_path
 
+    def _write_queue_config_with_max_jobs(self, *, name: str, entries: list, max_jobs: int) -> Path:
+        config_path = self.fixture_root / f"{name}.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "version": 1,
+                    "queue_name": name,
+                    "mission_state": str(self.mission_state_path),
+                    "runtime_policy": str(REPO_ROOT / "configs" / "runtime" / "self-healing-runtime.yaml"),
+                    "rerun_existing": True,
+                    "max_jobs": max_jobs,
+                    "entries": entries,
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        return config_path
+
     def test_cli_smoke_reroutes_import_failure_into_stage_kernel(self) -> None:
         output_dir = self.run_root / "import-reroute"
         baseline_config = self._write_baseline_config(
@@ -371,6 +390,91 @@ class SelfHealingRuntimeTests(unittest.TestCase):
         self.assertEqual(entry_summary["final_decision"]["action"], "stop")
         mission_state = json.loads(self.mission_state_path.read_text(encoding="utf-8"))
         self.assertEqual(mission_state["autonomy_status"]["state"], "runtime-failed")
+
+    def test_truncation_warning_emitted_when_max_jobs_caps_queue(self) -> None:
+        output_dir_a = self.run_root / "trunc-job-a"
+        output_dir_b = self.run_root / "trunc-job-b"
+        baseline_config_a = self._write_baseline_config(
+            name="trunc-baseline-a", output_dir=output_dir_a, backend="mock-entailment"
+        )
+        baseline_config_b = self._write_baseline_config(
+            name="trunc-baseline-b", output_dir=output_dir_b, backend="mock-entailment"
+        )
+        entries = [
+            {
+                "id": "trunc-job-a",
+                "repo": str(self.fixture_root),
+                "command": [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "runtime" / "run_stage_kernel.py"),
+                    "--stage",
+                    "baseline-evaluation",
+                    "--config",
+                    str(baseline_config_a),
+                    "--adapter",
+                    "runtime_fixtures:build_demo_adapter",
+                    "--pythonpath",
+                    str(TESTS_ROOT),
+                ],
+                "expected_manifest": str(output_dir_a / "run_manifest.json"),
+            },
+            {
+                "id": "trunc-job-b",
+                "repo": str(self.fixture_root),
+                "command": [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "runtime" / "run_stage_kernel.py"),
+                    "--stage",
+                    "baseline-evaluation",
+                    "--config",
+                    str(baseline_config_b),
+                    "--adapter",
+                    "runtime_fixtures:build_demo_adapter",
+                    "--pythonpath",
+                    str(TESTS_ROOT),
+                ],
+                "expected_manifest": str(output_dir_b / "run_manifest.json"),
+            },
+        ]
+        queue_config = self._write_queue_config_with_max_jobs(
+            name="trunc-queue",
+            entries=entries,
+            max_jobs=1,
+        )
+
+        result = run_self_healing_queue(queue_config)
+
+        # Only 1 job should have been executed and 1 truncated
+        self.assertEqual(result["completed_jobs"], 1)
+        self.assertEqual(result["truncated_jobs"], 1)
+        self.assertIsNotNone(result["truncation_warning"])
+        self.assertIn("max_jobs=1", result["truncation_warning"])
+        self.assertIn("1 job(s)", result["truncation_warning"])
+
+        # Queue report JSON must record truncation
+        report = json.loads(
+            (
+                self.mission_state_path.parent
+                / "runtime"
+                / "self_healing_runtime"
+                / "trunc-queue"
+                / "queue_summary.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(report["counts"]["truncated_jobs"], 1)
+        self.assertIsNotNone(report["truncation_warning"])
+
+        # Mission state autonomy_status must reflect completed-truncated
+        mission_state = json.loads(self.mission_state_path.read_text(encoding="utf-8"))
+        self.assertEqual(mission_state["autonomy_status"]["state"], "completed-truncated")
+
+        # Ledger must contain an autonomy-gate-warning entry
+        ledger_path = self.mission_state_path.parent / "ledger.jsonl"
+        ledger_entries = [json.loads(line) for line in ledger_path.read_text(encoding="utf-8").splitlines()]
+        gate_warnings = [e for e in ledger_entries if e.get("kind") == "autonomy-gate-warning"]
+        self.assertTrue(gate_warnings, "Expected at least one autonomy-gate-warning ledger entry")
+        self.assertEqual(gate_warnings[0]["metadata"]["truncated_jobs"], 1)
+        self.assertEqual(gate_warnings[0]["status"], "truncated")
 
 
 if __name__ == "__main__":
