@@ -31,10 +31,10 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://deeplooplabs.com/"
-Documentation = "https://github.com/deeplooplabs/deeploop/tree/main/docs"
-Issues = "https://github.com/deeplooplabs/deeploop/issues"
-Source = "https://github.com/deeplooplabs/deeploop"
-Changelog = "https://github.com/deeplooplabs/deeploop/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/tnetal/DeepLoop/tree/main/docs"
+Issues = "https://github.com/tnetal/DeepLoop/issues"
+Source = "https://github.com/tnetal/DeepLoop"
+Changelog = "https://github.com/tnetal/DeepLoop/blob/main/CHANGELOG.md"
 
 [project.scripts]
 deeploop = "deeploop.mission.mission_management:main"
