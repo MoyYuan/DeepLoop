@@ -54,6 +54,13 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
      deeploop run --project-root examples/translation-budget-ladder --until-complete
      ```
 
+     > **Note:** If `<project-folder>/.deeploop/missions/*.yaml` files exist, `deeploop run`
+     > automatically uses the first one instead of bootstrapping a blank mission.
+     > For a plain folder with no existing config, it bootstraps from the folder's facts.
+     > To target a specific explicit config directly, use
+     > `deeploop init --config <mission-config.yaml>` followed by
+     > `deeploop start --mission-state <mission-state.json>`.
+
    - explicit operator path:
 
      ```text
