@@ -755,5 +755,5 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIsInstance(report["warnings"], list)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
