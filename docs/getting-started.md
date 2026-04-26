@@ -21,38 +21,48 @@ onboarding validate today; outside it, expect gaps.
 
 ## First useful path
 
-1. Install DeepLoop — choose the mode that matches your use case:
+1. Install DeepLoop — choose the path that matches your use case:
 
-   - **Standard user** (running missions, not modifying DeepLoop source):
-
-     ```text
-     python -m pip install .
-     ```
-
-     This copies the library into `site-packages`, isolating live missions from
-     any future changes to the source directory.
-
-   - **Contributor** (developing DeepLoop features):
+   - **Standard user** — install from PyPI *(once published)*:
 
      ```text
-     python -m pip install -e .
+     pip install deeploop
      ```
 
-     > **Warning:** Editable installs tie every Python subprocess directly to
-     > the live source tree. Do **not** modify source files, switch Git
-     > branches, or introduce syntax errors while a mission is actively running
-     > in the background — doing so will crash the next stage kernel that spins
-     > up.
+     Until DeepLoop is on PyPI, install a static snapshot from GitHub (no
+     local checkout required):
+
+     ```text
+     pip install git+https://github.com/tnetal/DeepLoop.git
+     ```
+
+     Both paths copy the library into `site-packages`, isolating live missions
+     from any local source changes.
+
+   - **Contributor** — clone the repo and install in editable mode with dev
+     extras:
+
+     ```text
+     git clone https://github.com/tnetal/DeepLoop.git
+     cd DeepLoop
+     pip install -e ".[dev]"
+     ```
+
+     > **Warning:** Editable installs tie every spawned Python subprocess
+     > directly to the live source tree. Do **not** modify source files, switch
+     > Git branches, or introduce syntax errors while a mission is actively
+     > running in the background — doing so will crash the next stage kernel
+     > that spins up. `deeploop start` will warn you if it detects a dirty
+     > working tree at launch time.
 
    - **Hybrid user** (running long missions *and* developing features
-     simultaneously): maintain **two separate clones** — one stable clone for
-     running missions (`pip install .`) and one development clone for writing
-     PRs (`pip install -e .`). Never run a background mission from the
-     development clone.
+     simultaneously): maintain **two separate clones** — one stable clone
+     installed with `pip install git+…` or `pip install .` for running
+     missions, and one development clone with `pip install -e ".[dev]"` for
+     writing PRs. Never run a background mission from the development clone.
 
-   Both editable and non-editable installs expose the `deeploop` CLI with all
-   subcommands: `run`, `init`, `start`, `status`, `inbox`, `resume`, `package`,
-   and more.
+   All install paths expose the `deeploop` CLI with all subcommands: `run`,
+   `init`, `start`, `status`, `inbox`, `resume`, `package`, and more.
 
    The Conda path remains supported too (installs in non-editable mode by
    default):

@@ -836,7 +836,63 @@ def _resolve_snapshot(args: argparse.Namespace, *, log_tail_lines: int, ledger_t
     )
 
 
+def _check_editable_install_and_warn() -> None:
+    """Warn to stderr if deeploop is editable-installed and the working tree is dirty.
+
+    An editable install ties every spawned subprocess to the live source tree,
+    so an uncommitted change or branch switch during a long-running mission will
+    crash the next stage kernel.  This function is best-effort: it silently
+    returns on any detection error so it never blocks a legitimate launch.
+    """
+    import importlib.metadata as _meta
+
+    try:
+        dist = _meta.Distribution.from_name("deeploop")
+        raw = dist.read_text("direct_url.json")
+    except Exception:
+        return
+
+    if raw is None:
+        return
+
+    try:
+        direct_url = json.loads(raw)
+    except Exception:
+        return
+
+    dir_info = direct_url.get("dir_info") or {}
+    if not dir_info.get("editable"):
+        return
+
+    # Editable install confirmed — check for a dirty git working tree.
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return
+
+    print(
+        "\nWARNING: deeploop is installed in editable mode and the working tree\n"
+        "is dirty. Every stage kernel subprocess loads modules directly from\n"
+        "the live source directory, so uncommitted edits or a branch switch\n"
+        "will crash the running mission the next time a kernel spins up.\n"
+        "To protect a long-running mission, either:\n"
+        "  • commit or stash all pending changes before launching, or\n"
+        "  • install a stable snapshot with:\n"
+        "      pip install git+https://github.com/tnetal/DeepLoop.git\n",
+        file=sys.stderr,
+    )
+
+
 def _handle_start(args: argparse.Namespace) -> int:
+    _check_editable_install_and_warn()
     mission_state_path = _resolve_existing_path(args.mission_state)
     resume_context = None
     if args.command == "resume":
