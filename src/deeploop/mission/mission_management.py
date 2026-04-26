@@ -20,6 +20,7 @@ from deeploop.mission.mission_state import load_mission_state
 from deeploop.cli.run_project import _add_run_args, _run_project
 from deeploop.cli.init_mission import _add_init_args, _init_mission
 from deeploop.cli.package_mission import _add_package_args, _package_mission
+from deeploop.cli.analyze import _add_analyze_args, _analyze
 from deeploop.runtime.recursive_agent_runtime import analyze_budget
 
 _RUN_MISSION_SCRIPT = REPO_ROOT / "scripts" / "mission" / "run_mission.py"
@@ -1105,6 +1106,10 @@ def _handle_package(args: argparse.Namespace) -> int:
     return _package_mission(args)
 
 
+def _handle_analyze(args: argparse.Namespace) -> int:
+    return _analyze(args)
+
+
 def _handle_analyze_budget(args: argparse.Namespace) -> int:
     mission_state_path = Path(args.mission_state).expanduser().resolve() if args.mission_state else None
     config_path = Path(args.config).expanduser().resolve() if getattr(args, "config", None) else None
@@ -1304,6 +1309,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_package_args(package_p)
     package_p.set_defaults(handler=_handle_package)
+
+    analyze_p = subparsers.add_parser(
+        "analyze",
+        help="Analyze the current mission state by routing a prompt to the configured provider.",
+        description=(
+            "Route a mission analysis prompt to the configured provider.  "
+            "The prompt is always written to a file first — never passed as an inline CLI string — "
+            "so this command is safe for large mission states that would otherwise trigger "
+            "[Errno 7] Argument list too long."
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_analyze_args(analyze_p)
+    analyze_p.set_defaults(handler=_handle_analyze)
 
     analyze_budget_p = subparsers.add_parser(
         "analyze-budget",

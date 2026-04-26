@@ -473,6 +473,7 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIn("reroute", completed.stdout)
         self.assertIn("triage", completed.stdout)
         self.assertIn("watch", completed.stdout)
+        self.assertIn("analyze", completed.stdout)
         self.assertIn("analyze-budget", completed.stdout)
 
     def test_retry_records_operator_feedback_and_guides_resume(self) -> None:

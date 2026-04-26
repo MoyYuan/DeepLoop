@@ -186,6 +186,10 @@
         "artifact_count_by_category": {
           "type": "object",
           "additionalProperties": { "type": "integer" }
+        },
+        "pending_downstream_artifacts": {
+          "type": "array",
+          "items": { "type": "string" }
         }
       }
     },
