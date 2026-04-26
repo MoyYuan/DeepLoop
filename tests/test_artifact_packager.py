@@ -427,5 +427,65 @@ class ArtifactPackagerTests(unittest.TestCase):
             self.assertGreater(len(result["package"]["artifacts"]), 0)
             self.assertEqual(validate_package_manifest(result["package"]), [])
 
+    def test_packager_overwrites_existing_package_directory_without_crashing(self) -> None:
+        runs_root = WORKSPACE_ROOT / "runs"
+        runs_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=runs_root) as tmpdir:
+            test_root = Path(tmpdir)
+            mission_root = test_root / "mission"
+            mission_root.mkdir(parents=True, exist_ok=True)
+            target_repo = test_root / "plain-project"
+            target_repo.mkdir(parents=True, exist_ok=True)
+            findings_dir = mission_root / "findings"
+            findings_dir.mkdir(parents=True, exist_ok=True)
+            runtime_dir = mission_root / "runtime" / "mission_outer_runtime"
+            runtime_dir.mkdir(parents=True, exist_ok=True)
+
+            mission_state_path = mission_root / "mission_state.json"
+            mission_state = {
+                "mission_id": "rerun-package-mission",
+                "title": "Re-run package test",
+                "objective": "Packaging must succeed even when output directory already exists.",
+                "current_phase": "final-report",
+                "status": "completed",
+                "target_repo": str(target_repo),
+                "roles": ["report-synthesizer"],
+                "artifacts": {"docs": [], "configs": []},
+                "next_actions": {"actions": [], "generated_configs": []},
+            }
+            mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+            (mission_root / "mission_summary.md").write_text("# Summary\n", encoding="utf-8")
+            (mission_root / "mission_decisions.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_branches.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_memory.json").write_text("{}\n", encoding="utf-8")
+            (mission_root / "mission_experiments.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "ledger.jsonl").write_text("", encoding="utf-8")
+            (findings_dir / "finding.md").write_text("- Finding.\n", encoding="utf-8")
+            (runtime_dir / "runtime_state.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+            adaptation_dir = mission_root / "adaptation_training" / "adapt-branch"
+            adaptation_dir.mkdir(parents=True, exist_ok=True)
+            (adaptation_dir / "adaptation_training_report.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+            (adaptation_dir / "adaptation_training_report.md").write_text("# Adaptation\n", encoding="utf-8")
+            (adaptation_dir / "adaptation_training_comparison.json").write_text(
+                '{"decision":"keep","route_to":"replication"}\n',
+                encoding="utf-8",
+            )
+
+            output_root = test_root / "packages"
+
+            # First run: create the package directory.
+            package_mission_artifacts(mission_state_path, output_root=output_root)
+
+            # Simulate a locked/non-empty sub-tree left over from the first run (e.g.
+            # research_memory JSON ledger) by writing a nested file after packaging.
+            stale_dir = output_root / "rerun-package-mission" / "research_memory"
+            stale_dir.mkdir(parents=True, exist_ok=True)
+            (stale_dir / "ledger.json").write_text('{"stale": true}\n', encoding="utf-8")
+
+            # Second run must not crash with [Errno 39] Directory not empty.
+            result = package_mission_artifacts(mission_state_path, output_root=output_root)
+
+            self.assertTrue(result["manifest_path"].exists())
+            self.assertTrue(result["summary_path"].exists())
 if __name__ == "__main__":
     unittest.main()
