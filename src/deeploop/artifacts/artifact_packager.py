@@ -515,8 +515,8 @@ def package_mission_artifacts(
         lazy: bool = False,
     ) -> str:
         resolved = path.expanduser().resolve()
-        file_missing = not resolved.exists() or not resolved.is_file()
-        if file_missing and not lazy:
+        is_file_missing = not resolved.exists() or not resolved.is_file()
+        if is_file_missing and not lazy:
             raise FileNotFoundError(resolved)
         artifact_id = _artifact_id_for_path(resolved)
         record = artifact_registry.get(resolved)
@@ -527,7 +527,7 @@ def package_mission_artifacts(
                 "label": _artifact_label(resolved, category),
                 "source_path": str(resolved),
                 "package_path": None,
-                "status": "pending" if file_missing else status,
+                "status": "pending" if is_file_missing else status,
                 "claim_state": claim_state,
                 "size_bytes": 0,
                 "metadata": dict(metadata or {}),
@@ -536,11 +536,11 @@ def package_mission_artifacts(
         else:
             if claim_state and not record.get("claim_state"):
                 record["claim_state"] = claim_state
-            if status and not record.get("status") and not file_missing:
+            if status and not record.get("status") and not is_file_missing:
                 record["status"] = status
             if metadata:
                 record["metadata"].update(metadata)
-        if file_missing:
+        if is_file_missing:
             pending_artifact_ids.add(artifact_id)
         else:
             category_membership.setdefault(category, set()).add(artifact_id)
