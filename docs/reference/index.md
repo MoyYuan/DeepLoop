@@ -18,19 +18,31 @@ Use these surfaces intentionally so the docs stay organized:
 | `docs/concepts/` | Plain-language mental models | File-by-file runtime details |
 | `docs/reference/` | Supported technical contracts and advanced runtime references | Duplicating beginner guides or maintainer-only notes |
 | `docs/contributors/` | Maintainer/developer entry points | Competing “start here” pages for users |
-| `docs/design/` | Implementation notes and design detail | The primary docs path for new readers |
-| `docs/wiki/` | Companion deep dives and historical context | The default user journey |
+| `docs/design/` | Implementation notes and design detail | Using it as the primary docs path for new users or operators |
+| `docs/wiki/` | Secondary companion deep dives and historical context | The default user journey |
 | `docs/research/` / `docs/release/` | Research and release notes | Generic docs navigation |
+
+## Operator quick reference
+
+If you are operating DeepLoop rather than changing the repo itself, start with:
+
+- [Mission operations](../guide/operator.md)
+- [Provider setup](provider-setup.md)
+- [Provider selection](provider-selection.md)
+- [Getting started](../getting-started.md)
 
 ## Canonical runtime surfaces
 
 Use these as the technical map for the current mission runtime:
 
-- `scripts/mission/manage_mission.py` — canonical operator CLI for `start`,
-  `resume`, `status`, `inbox`, `logs`, `decisions`, `watch`, `triage`,
-  `retry`, `reroute`, and `stop`
+- `deeploop` — canonical installed operator CLI for `run`, `start`, `resume`,
+  `status`, `inbox`, `logs`, `decisions`, `watch`, `triage`, `retry`,
+  `reroute`, `stop`, `analyze`, and `analyze-budget`
 - `src/deeploop/mission/mission_management.py` — command parser, detached launch
   control, and the rendered operator surfaces
+- `scripts/mission/manage_mission.py` — repo-level fallback surface for
+  debugging and automation when you intentionally want the internal script entry
+  point instead of the installed CLI
 - `src/deeploop/mission/_operator_surface.py` — shared operator-state
   vocabulary (`lifecycle_state`, `operator_state`, `attention_level`,
   `next_step_owner`, `resume_policy`)

@@ -11,6 +11,31 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.1
+
+Patch release focused on release hardening, operator safety, and clearer
+public-facing guidance.
+
+### Changed
+
+- PyPI publish now triggers from the published GitHub Release event only, and
+  validates that the release tag matches `project.version` before building
+- the plain-folder proof-matrix harness now emits per-case progress, enforces a
+  per-case timeout, and terminates the full subprocess group on timeout instead
+  of leaving descendant provider processes behind
+- bounded triage now rejects a non-zero subprocess exit even if a result JSON
+  was written, preventing success-shaped CLI behavior on failed subprocess runs
+- public docs now reduce install duplication, document `deeploop analyze-budget`
+  more clearly, and make the installed `deeploop` CLI the canonical operator
+  entry surface
+
+### Fixed
+
+- proof-matrix timeouts now fail cleanly with structured remediation output
+  rather than hanging silently
+- release maintenance guidance now matches the real GitHub Release -> PyPI
+  publish flow
+
 ## 0.1.0
 
 Initial public-alpha share-readiness baseline.

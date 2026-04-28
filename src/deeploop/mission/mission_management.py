@@ -1075,6 +1075,11 @@ def _handle_triage(args: argparse.Namespace) -> int:
     )
     completed_at = now_utc()
     log_path.write_text((completed.stdout or "") + (completed.stderr or ""), encoding="utf-8")
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"Bounded triage subprocess exited {completed.returncode}. "
+            f"Inspect `{log_path}` and `{result_json_path}`."
+        )
     if not result_json_path.exists():
         raise RuntimeError(f"Bounded triage did not produce `{result_json_path}`. Inspect `{log_path}`.")
     triage_result = _normalized_triage_result(_load_json(result_json_path))

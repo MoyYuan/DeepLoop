@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -80,7 +83,42 @@ def _threshold_enabled(case: PlainFolderProofCase, name: str, *, default: bool =
     return bool(value)
 
 
-def _run_case(case: PlainFolderProofCase, case_root: Path, python_bin: str) -> dict:
+def _run_case_command(command: list[str], *, case_timeout_seconds: float) -> tuple[subprocess.CompletedProcess[str], str | None]:
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    timeout_message: str | None = None
+    try:
+        stdout, stderr = process.communicate(timeout=case_timeout_seconds)
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr), None
+    except subprocess.TimeoutExpired as exc:
+        timeout_message = f"run_project.py timed out after {case_timeout_seconds:g} seconds"
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            killed_stdout, killed_stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            killed_stdout, killed_stderr = process.communicate()
+        if isinstance(killed_stdout, str):
+            stdout = killed_stdout
+        if isinstance(killed_stderr, str):
+            stderr = killed_stderr
+        return subprocess.CompletedProcess(command, 124, stdout, stderr), timeout_message
+
+
+def _run_case(case: PlainFolderProofCase, case_root: Path, python_bin: str, *, case_timeout_seconds: float) -> dict:
     project_root = _materialize_case_project(case, case_root)
     before_paths = snapshot_project_tree(project_root)
 
@@ -92,7 +130,9 @@ def _run_case(case: PlainFolderProofCase, case_root: Path, python_bin: str) -> d
         "--until-complete",
         "--force",
     ]
-    completed = subprocess.run(command, capture_output=True, text=True)
+    completed, timeout_message = _run_case_command(command, case_timeout_seconds=case_timeout_seconds)
+    if timeout_message is not None:
+        timeout_message = f"{timeout_message} for proof case `{case.case_id}`"
 
     stdout_path = case_root / "run_project.stdout.txt"
     stderr_path = case_root / "run_project.stderr.txt"
@@ -130,6 +170,9 @@ def _run_case(case: PlainFolderProofCase, case_root: Path, python_bin: str) -> d
     operator_inbox = mission_state.get("operator_inbox") if isinstance(mission_state.get("operator_inbox"), dict) else {}
     status = "passed"
     failures: list[str] = []
+    if timeout_message is not None:
+        status = "failed"
+        failures.append(timeout_message)
     if completed.returncode != 0:
         status = "failed"
         failures.append(f"run_project.py exited {completed.returncode}")
@@ -180,6 +223,7 @@ def _run_case(case: PlainFolderProofCase, case_root: Path, python_bin: str) -> d
         },
         "operator_request": current_operator_request,
         "boundary_check": boundary,
+        "case_timeout_seconds": case_timeout_seconds,
     }
     write_json_object(case_root / "proof_summary.json", summary)
     write_markdown(
@@ -225,6 +269,12 @@ def main() -> int:
     parser.add_argument("--campaign-root", type=Path, default=DEFAULT_CAMPAIGNS_ROOT, help="Where campaign outputs are written.")
     parser.add_argument("--campaign-id", help="Optional explicit campaign id.")
     parser.add_argument("--python-bin", default=sys.executable, help="Python executable to use for run_project.py.")
+    parser.add_argument(
+        "--case-timeout-seconds",
+        type=float,
+        default=600.0,
+        help="Fail an individual proof case if run_project.py exceeds this timeout.",
+    )
     parser.add_argument("--stop-on-failure", action="store_true", help="Stop after the first failing case.")
     args = parser.parse_args()
 
@@ -251,12 +301,25 @@ def main() -> int:
     campaign_id = _campaign_id(args.campaign_id)
     campaign_root = args.campaign_root.expanduser().resolve() / campaign_id
     campaign_root.mkdir(parents=True, exist_ok=True)
+    print(
+        f"[plain-folder-proof-matrix] campaign={campaign_id} "
+        f"cases={len(selected_cases)} timeout={args.case_timeout_seconds:g}s",
+        flush=True,
+    )
 
     case_summaries: list[dict] = []
     for case in selected_cases:
         case_root = campaign_root / case.case_id
         case_root.mkdir(parents=True, exist_ok=True)
-        summary = _run_case(case, case_root, args.python_bin)
+        started_at = time.perf_counter()
+        print(f"[plain-folder-proof-matrix] starting case={case.case_id}", flush=True)
+        summary = _run_case(case, case_root, args.python_bin, case_timeout_seconds=args.case_timeout_seconds)
+        elapsed_seconds = time.perf_counter() - started_at
+        print(
+            f"[plain-folder-proof-matrix] finished case={case.case_id} "
+            f"status={summary['status']} elapsed={elapsed_seconds:.1f}s",
+            flush=True,
+        )
         case_summaries.append(summary)
         if args.stop_on_failure and summary["status"] != "passed":
             break
@@ -267,6 +330,7 @@ def main() -> int:
         "fixtures_root": str(args.fixtures_root.expanduser().resolve()),
         "campaign_root": str(campaign_root),
         "python_bin": args.python_bin,
+        "case_timeout_seconds": args.case_timeout_seconds,
         "status": "failed" if failed_case_ids else "passed",
         "cases_run": [summary["case_id"] for summary in case_summaries],
         "failed_case_ids": failed_case_ids,

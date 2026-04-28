@@ -6,6 +6,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -716,6 +717,56 @@ class MissionManagementTests(unittest.TestCase):
             inbox_result = manage_mission_main(["inbox", "--mission-state", str(mission_state_path)])
         self.assertEqual(inbox_result, 0)
         self.assertIn("manage_mission.py triage", inbox_stdout.getvalue())
+
+    def test_triage_rejects_non_zero_subprocess_even_with_result_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mission_root = Path(tmpdir)
+            mission_state_path = mission_root / "mission_state.json"
+            decision_log_path = mission_root / "decisions.jsonl"
+            branch_log_path = mission_root / "branches.jsonl"
+            operator_request_log_path = mission_root / "operator_requests.jsonl"
+            current_operator_request_path = mission_root / "current_operator_request.json"
+            mission_state = _base_state(mission_id="demo-managed-triage-failure")
+            mission_state["mode"] = "managed"
+            mission_state["target_repo"] = str(REPO_ROOT)
+            mission_state["status"] = "blocked"
+            mission_state["autonomy_status"] = {"state": "mission-runtime-blocked", "reason": "Awaiting operator review."}
+            mission_state["outer_loop"] = {
+                "hard_gate_profile": "minimal",
+                "decision_log_path": str(decision_log_path),
+                "branch_log_path": str(branch_log_path),
+                "operator_request_log_path": str(operator_request_log_path),
+                "current_operator_request_path": str(current_operator_request_path),
+                "intervention_profile": "hook-enabled",
+            }
+            _write_json(mission_state_path, mission_state)
+            _write_jsonl(decision_log_path, [])
+            _write_jsonl(branch_log_path, [])
+            operator_request = _managed_blocked_request(
+                mission_state_path,
+                mission_id="demo-managed-triage-failure",
+            )
+            _write_jsonl(operator_request_log_path, [operator_request])
+            _write_json(current_operator_request_path, operator_request)
+
+            def _fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+                result_path = Path(command[command.index("--result-json-path") + 1])
+                _write_json(
+                    result_path,
+                    {
+                        "status": "completed",
+                        "summary": "This should not be accepted because the subprocess failed.",
+                    },
+                )
+                return subprocess.CompletedProcess(command, 2, "", "triage failed\n")
+
+            stderr = io.StringIO()
+            with patch("deeploop.mission.mission_management.subprocess.run", side_effect=_fake_run):
+                with redirect_stderr(stderr):
+                    result = manage_mission_main(["triage", "--mission-state", str(mission_state_path)])
+
+        self.assertEqual(result, 1)
+        self.assertIn("Bounded triage subprocess exited 2", stderr.getvalue())
 
     def test_watch_surfaces_alarm_when_state_changes(self) -> None:
         mission_state_path = Path("/tmp/demo-watch-mission-state.json")
