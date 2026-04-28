@@ -47,6 +47,7 @@ down.
 | `start` | Launch the detached mission runtime |
 | `status` | See whether DeepLoop is still driving, whether it needs you, and what command to run next |
 | `inbox` | Read the current operator request and the recommended fix |
+| `analyze-budget` | Check whether the current pending queue is close to exceeding the recursive-agent iteration budget |
 | `resume` | Continue after a stop, block, or completed operator fix |
 | `logs` | Inspect the detached process log tail when `status` is not enough |
 | `decisions` | Inspect recent mission decisions without reading raw JSONL |

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import importlib.util
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
@@ -17,6 +20,12 @@ from deeploop.testing.plain_folder_proof_matrix import (
     snapshot_project_tree,
     summarize_boundary_check,
 )
+
+SCRIPT_PATH = REPO_ROOT / "scripts" / "testing" / "run_plain_folder_proof_matrix.py"
+_SCRIPT_SPEC = importlib.util.spec_from_file_location("run_plain_folder_proof_matrix_script", SCRIPT_PATH)
+assert _SCRIPT_SPEC is not None and _SCRIPT_SPEC.loader is not None
+run_plain_folder_proof_matrix = importlib.util.module_from_spec(_SCRIPT_SPEC)
+_SCRIPT_SPEC.loader.exec_module(run_plain_folder_proof_matrix)
 
 
 class PlainFolderProofMatrixTests(unittest.TestCase):
@@ -81,6 +90,75 @@ class PlainFolderProofMatrixTests(unittest.TestCase):
         self.assertFalse(boundary["project_tree_unchanged"])
         self.assertIn("runtime/", boundary["added_paths"])
         self.assertIn("runtime/state.json", boundary["added_paths"])
+
+    def test_run_case_marks_timeout_as_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
+            fixture_root = tmp_path / "fixture"
+            (fixture_root / "docs").mkdir(parents=True, exist_ok=True)
+            (fixture_root / "project-facts.yaml").write_text("project:\n  name: demo\n", encoding="utf-8")
+            case_root = tmp_path / "campaign" / "demo-case"
+            case_root.mkdir(parents=True, exist_ok=True)
+            case = PlainFolderProofCase(
+                case_id="demo-case",
+                fixture_root=fixture_root,
+                title="Demo case",
+                summary="Demo summary",
+                workflow_shape="literature-heavy",
+                expected_focus="prior-art synthesis",
+                autonomy_claims=(),
+            )
+            with patch.object(
+                run_plain_folder_proof_matrix,
+                "_run_case_command",
+                return_value=(
+                    subprocess.CompletedProcess(
+                        [sys.executable, "scripts/mission/run_project.py"],
+                        124,
+                        "partial stdout",
+                        "partial stderr",
+                    ),
+                    "run_project.py timed out after 12 seconds",
+                ),
+            ):
+                summary = run_plain_folder_proof_matrix._run_case(
+                    case,
+                    case_root,
+                    sys.executable,
+                    case_timeout_seconds=12,
+                )
+
+        self.assertEqual(summary["status"], "failed")
+        self.assertIn("timed out after 12 seconds", "\n".join(summary["failures"]))
+        self.assertEqual(summary["case_timeout_seconds"], 12)
+        self.assertIn("run_project.py exited 124", summary["failures"])
+
+    def test_run_case_command_kills_process_group_on_timeout(self) -> None:
+        process = Mock()
+        process.pid = 4242
+        process.returncode = None
+        process.communicate.side_effect = [
+            subprocess.TimeoutExpired(
+                cmd=["python", "scripts/mission/run_project.py"],
+                timeout=5,
+                output="partial stdout",
+                stderr="partial stderr",
+            ),
+            ("partial stdout", "partial stderr"),
+        ]
+
+        with patch.object(run_plain_folder_proof_matrix.subprocess, "Popen", return_value=process):
+            with patch.object(run_plain_folder_proof_matrix.os, "killpg") as killpg:
+                completed, timeout_message = run_plain_folder_proof_matrix._run_case_command(
+                    [sys.executable, "scripts/mission/run_project.py"],
+                    case_timeout_seconds=5,
+                )
+
+        self.assertEqual(completed.returncode, 124)
+        self.assertEqual(completed.stdout, "partial stdout")
+        self.assertEqual(completed.stderr, "partial stderr")
+        self.assertEqual(timeout_message, "run_project.py timed out after 5 seconds")
+        killpg.assert_called_once_with(4242, run_plain_folder_proof_matrix.signal.SIGTERM)
 
 
 if __name__ == "__main__":

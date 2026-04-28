@@ -62,7 +62,8 @@ onboarding validate today; outside it, expect gaps.
      writing PRs. Never run a background mission from the development clone.
 
    All install paths expose the `deeploop` CLI with all subcommands: `run`,
-   `init`, `start`, `status`, `inbox`, `resume`, `package`, and more.
+   `init`, `start`, `status`, `inbox`, `analyze`, `analyze-budget`, `resume`,
+   `package`, and more.
 
    The Conda path remains supported too (installs in non-editable mode by
    default):
@@ -103,12 +104,6 @@ onboarding validate today; outside it, expect gaps.
    It does **not** choose the provider or model for a specific mission. That
    mission/runtime selection contract now lives in
    [Provider selection](reference/provider-selection.md).
-
-   If you only need local inference backends, the separate runtime env remains:
-
-   ```text
-   conda env create -n llm -f environment.llm.yml
-   ```
 
 5. Declare mission/runtime provider selection with
    [Provider selection](reference/provider-selection.md).
@@ -220,18 +215,6 @@ onboarding validate today; outside it, expect gaps.
     deeploop resume --mission-state <mission-state.json>
     ```
 
-Advanced/fallback repo-level surfaces:
-
-```text
-python scripts/mission/run_project.py --project-root <project-folder> --until-complete
-python scripts/mission/init_mission.py --project-root <project-folder> --force
-python scripts/mission/manage_mission.py status --mission-state <mission-state.json>
-```
-
-Keep these lower-level script surfaces for debugging, automation, or environments
-where you intentionally want the repo-internal entry points. The `deeploop` CLI
-above is the preferred first-run path.
-
 Use placeholders such as `<project-folder>`, `<mission-config.yaml>`, and
 `<mission-state.json>` in your own setup rather than copying any hardcoded
 personal path from a machine-specific example.
@@ -254,6 +237,20 @@ personal path from a machine-specific example.
   soft-gate recovery path and another bounded `resume` is optional.
 - In managed mode, check whether `status` or `inbox` says a retry, reroute, or
   downscope step was already staged for you before you record one manually.
+
+## Advanced / repo-level fallback surfaces
+
+> **Warning:** The canonical operator surface is the installed `deeploop` CLI.
+> Use the repo-level scripts below only when you are intentionally debugging the
+> DeepLoop runtime itself or running automation that targets repo internals.
+> For normal first runs and day-to-day operation, stay on the `deeploop`
+> commands above and see [Mission operations](guide/operator.md).
+
+```text
+python scripts/mission/run_project.py --project-root <project-folder> --until-complete
+python scripts/mission/init_mission.py --project-root <project-folder> --force
+python scripts/mission/manage_mission.py status --mission-state <mission-state.json>
+```
 
 ## Learn more
 

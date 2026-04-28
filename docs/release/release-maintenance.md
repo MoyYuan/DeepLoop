@@ -41,10 +41,12 @@ Mission/package promotion is still separate from repo/public release posture:
 8. verify README and release docs still match the real proof level
 9. verify operator-only boundaries, provenance, licensing, and approval
    requirements are still documented honestly
-10. publish release notes that call out:
-    - install / bootstrap changes
-    - runtime / operator changes
-    - package / release-review changes
+10. publish the GitHub Release for the tagged version; the PyPI publish workflow
+    is triggered from the published release event, not from a bare tag push
+11. publish release notes that call out:
+     - install / bootstrap changes
+     - runtime / operator changes
+     - package / release-review changes
     - proof / CI changes
     - governance / trust-surface changes
 
