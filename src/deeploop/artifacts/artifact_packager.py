@@ -31,6 +31,8 @@ CLAIM_ORDER = {
     "paper-candidate": 2,
     "release-candidate": 3,
 }
+METHOD_STATUS_VALUES = {"proposed", "implemented", "evaluated", "failed", "skipped", "blocked"}
+EVALUATED_METHOD_STATUSES = {"evaluated"}
 DEFAULT_CATEGORIES = (
     "mission_specs",
     "mission_configs",
@@ -194,6 +196,193 @@ def _build_replication_evidence(run_bundles: list[dict[str, Any]]) -> dict[str, 
         "total_manifests": len([bundle for bundle in run_bundles if bundle.get("manifest_artifact_id")]),
         "independent_runs": len(manifest_groups),
         "manifest_groups": manifest_groups,
+    }
+
+
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def _truthy_budget_flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value > 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "requested", "expected", "available"}
+    return False
+
+
+def _coverage_artifact_display(value: Any) -> str:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, list):
+        artifacts = [str(item).strip() for item in value if str(item).strip()]
+        if artifacts:
+            return ", ".join(artifacts[:3])
+    return "n/a"
+
+
+def _coverage_category_key(value: Any) -> str:
+    text = str(value or "Uncategorized").strip()
+    return text or "Uncategorized"
+
+
+def _build_experiment_coverage(
+    mission_state: dict[str, Any],
+    run_bundles: list[dict[str, Any]],
+    package_claim_state: str,
+    replication_evidence: dict[str, Any],
+) -> dict[str, Any]:
+    raw_coverage = mission_state.get("experiment_coverage")
+    if not isinstance(raw_coverage, dict):
+        raw_coverage = {}
+    methods = raw_coverage.get("methods")
+    method_entries = [dict(method) for method in methods if isinstance(method, dict)] if isinstance(methods, list) else []
+    rows_by_category: dict[str, dict[str, Any]] = {}
+
+    def row_for(category: str) -> dict[str, Any]:
+        return rows_by_category.setdefault(
+            category,
+            {
+                "category": category,
+                "requested": 0,
+                "executed": 0,
+                "artifact": "n/a",
+                "status": "not-requested",
+            },
+        )
+
+    explicit_categories = raw_coverage.get("categories")
+    if isinstance(explicit_categories, list):
+        for item in explicit_categories:
+            if not isinstance(item, dict):
+                continue
+            category = _coverage_category_key(item.get("category") or item.get("name"))
+            row = row_for(category)
+            requested = _coerce_int(item.get("requested"))
+            executed = _coerce_int(item.get("executed"))
+            if requested is not None:
+                row["requested"] = max(row["requested"], requested)
+            if executed is not None:
+                row["executed"] = max(row["executed"], executed)
+            artifact = _coverage_artifact_display(item.get("artifact") or item.get("artifact_path"))
+            if artifact != "n/a":
+                row["artifact"] = artifact
+
+    non_evaluated_methods: list[dict[str, str]] = []
+    for method in method_entries:
+        category = _coverage_category_key(method.get("category"))
+        status = str(method.get("status") or "proposed").strip().lower()
+        if status not in METHOD_STATUS_VALUES:
+            status = "proposed"
+        row = row_for(category)
+        row["requested"] += 1
+        if status in EVALUATED_METHOD_STATUSES:
+            row["executed"] += 1
+            artifact = _coverage_artifact_display(method.get("artifact") or method.get("artifact_path"))
+            if artifact != "n/a":
+                row["artifact"] = artifact
+        else:
+            non_evaluated_methods.append(
+                {
+                    "category": category,
+                    "method": str(method.get("name") or method.get("method") or "unnamed method"),
+                    "status": status,
+                    "reason": str(method.get("reason") or method.get("skip_reason") or "reason not recorded"),
+                    "artifact": _coverage_artifact_display(method.get("artifact") or method.get("artifact_path")),
+                }
+            )
+
+    if not rows_by_category and run_bundles:
+        evaluated = sum(1 for bundle in run_bundles if str(bundle.get("status", "")).lower() == "completed")
+        row = row_for("Numeric baselines")
+        row["requested"] = evaluated
+        row["executed"] = evaluated
+        row["artifact"] = "run manifests"
+
+    for row in rows_by_category.values():
+        requested = int(row["requested"])
+        executed = int(row["executed"])
+        if requested <= 0:
+            row["status"] = "not-requested"
+        elif executed >= requested:
+            row["status"] = "complete"
+        elif executed == 0:
+            row["status"] = "missing"
+        else:
+            row["status"] = "partial"
+
+    budget_source = raw_coverage.get("budget") if isinstance(raw_coverage.get("budget"), dict) else {}
+    runtime_launcher = mission_state.get("runtime_launcher") if isinstance(mission_state.get("runtime_launcher"), dict) else {}
+    mission_runtime = mission_state.get("mission_runtime") if isinstance(mission_state.get("mission_runtime"), dict) else {}
+    budget = dict(budget_source)
+    if "iterations_requested" not in budget and runtime_launcher.get("max_iterations") is not None:
+        budget["iterations_requested"] = runtime_launcher.get("max_iterations")
+    if "iterations_used" not in budget and mission_runtime.get("iterations_completed") is not None:
+        budget["iterations_used"] = mission_runtime.get("iterations_completed")
+
+    unused_budget: list[str] = []
+    iterations_requested = _coerce_int(budget.get("iterations_requested"))
+    iterations_used = _coerce_int(budget.get("iterations_used"))
+    if iterations_requested is not None and iterations_used is not None and iterations_used < iterations_requested:
+        unused_budget.append(f"iterations unused: {iterations_requested - iterations_used}/{iterations_requested}")
+    gpu_requested = _truthy_budget_flag(budget.get("gpu_requested") or budget.get("gpu_available") or budget.get("gpu_expected"))
+    gpu_used = _truthy_budget_flag(budget.get("gpu_used"))
+    if gpu_requested and not gpu_used:
+        unused_budget.append("GPU requested or available but not used")
+    wall_time_requested = budget.get("wall_time_requested") or budget.get("wall_time_budget")
+    wall_time_used = budget.get("wall_time_used")
+    if wall_time_requested is not None and wall_time_used is not None and str(wall_time_requested) != str(wall_time_used):
+        unused_budget.append(f"wall-time budget: requested {wall_time_requested}, used {wall_time_used}")
+
+    rows = sorted(rows_by_category.values(), key=lambda item: item["category"])
+    requested_total = sum(int(row["requested"]) for row in rows)
+    executed_total = sum(int(row["executed"]) for row in rows)
+    incomplete_rows = [row for row in rows if row["status"] in {"missing", "partial"}]
+    baseline_only = bool(rows) and all(
+        any(token in row["category"].lower() for token in ("baseline", "numeric")) or int(row["requested"]) == 0
+        for row in rows
+    )
+    if (
+        requested_total > 0
+        and executed_total >= requested_total
+        and not unused_budget
+        and package_claim_state in {"replicated", "paper-candidate", "release-candidate"}
+        and replication_evidence.get("total_manifests", 0) >= 2
+    ):
+        classification = "complete research package"
+    elif baseline_only and executed_total > 0:
+        classification = "baseline pass"
+    elif requested_total <= 1 and executed_total <= 1:
+        classification = "smoke pass"
+    else:
+        classification = "exploratory campaign"
+    explicit_classification = str(raw_coverage.get("classification") or "").strip()
+    if explicit_classification:
+        classification = explicit_classification
+
+    unexplored_space = [f"{row['category']}: {row['executed']}/{row['requested']} executed" for row in incomplete_rows]
+    unexplored_space.extend(unused_budget)
+    if not raw_coverage:
+        unexplored_space.append("mission state did not declare planned experiment coverage")
+
+    return {
+        "classification": classification,
+        "coverage_table": rows,
+        "budget": budget,
+        "unused_budget": unused_budget,
+        "unexplored_space": unexplored_space,
+        "non_evaluated_methods": non_evaluated_methods,
+        "status_values": sorted(METHOD_STATUS_VALUES),
     }
 
 
@@ -1052,6 +1241,12 @@ def package_mission_artifacts(
         key=lambda state: CLAIM_ORDER.get(state, CLAIM_ORDER["exploratory"]),
     )
     replication_evidence = _build_replication_evidence(run_bundles)
+    experiment_coverage = _build_experiment_coverage(
+        mission_state,
+        run_bundles,
+        package_claim_state,
+        replication_evidence,
+    )
     next_state = _next_claim_state(package_claim_state)
     critique_reasons: list[str] = []
     critique_warnings: list[str] = []
@@ -1155,6 +1350,7 @@ def package_mission_artifacts(
     paper_bullets.extend(critique_reasons[:3])
 
     release_bullets = [f"Package claim state: {package_claim_state}.", f"Critique ceiling: {critique_ceiling}."]
+    release_bullets.append(f"Experiment coverage classification: {experiment_coverage['classification']}.")
     release_bullets.append(
         "Replication evidence: "
         f"{replication_evidence['total_manifests']} manifests across "
@@ -1241,6 +1437,7 @@ def package_mission_artifacts(
         "artifacts": artifacts,
         "artifact_map": artifact_map,
         "replication_evidence": replication_evidence,
+        "experiment_coverage": experiment_coverage,
         "run_bundles": sorted(run_bundles, key=lambda item: item["loop_id"]),
         "cross_links": cross_links,
         "summary": {
@@ -1330,6 +1527,34 @@ def package_mission_artifacts(
     markdown_lines.extend(f"- {line}" for line in paper_bullets)
     markdown_lines.extend(["", "## Release review", ""])
     markdown_lines.extend(f"- {line}" for line in release_bullets)
+    markdown_lines.extend(
+        [
+            "",
+            "## Experiment coverage",
+            "",
+            f"- classification: `{experiment_coverage['classification']}`",
+            "",
+            "| Category | Requested | Executed | Artifact | Status |",
+            "|---|---:|---:|---|---|",
+        ]
+    )
+    for row in experiment_coverage["coverage_table"]:
+        markdown_lines.append(
+            f"| {row['category']} | {row['requested']} | {row['executed']} | {row['artifact']} | {row['status']} |"
+        )
+    if not experiment_coverage["coverage_table"]:
+        markdown_lines.append("| Untracked | 0 | 0 | n/a | not-requested |")
+    if experiment_coverage["non_evaluated_methods"]:
+        markdown_lines.extend(["", "### Non-evaluated planned methods", ""])
+        for method in experiment_coverage["non_evaluated_methods"]:
+            markdown_lines.append(
+                "- "
+                f"{method['category']} / {method['method']}: {method['status']}; "
+                f"reason: {method['reason']}; artifact: `{method['artifact']}`"
+            )
+    if experiment_coverage["unexplored_space"]:
+        markdown_lines.extend(["", "### Unused budget / unexplored space", ""])
+        markdown_lines.extend(f"- {item}" for item in experiment_coverage["unexplored_space"])
     if operator_key_ids:
         markdown_lines.extend(["", "## Key artifact ids", ""])
         markdown_lines.extend(f"- `{artifact_id}`" for artifact_id in operator_key_ids)

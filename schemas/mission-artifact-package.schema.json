@@ -149,6 +149,74 @@
         }
       }
     },
+    "experiment_coverage": {
+      "type": "object",
+      "required": [
+        "classification",
+        "coverage_table",
+        "budget",
+        "unused_budget",
+        "unexplored_space",
+        "non_evaluated_methods",
+        "status_values"
+      ],
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": ["smoke pass", "baseline pass", "exploratory campaign", "complete research package"]
+        },
+        "coverage_table": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "requested", "executed", "artifact", "status"],
+            "properties": {
+              "category": { "type": "string" },
+              "requested": { "type": "integer", "minimum": 0 },
+              "executed": { "type": "integer", "minimum": 0 },
+              "artifact": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["not-requested", "complete", "partial", "missing"]
+              }
+            }
+          }
+        },
+        "budget": { "type": "object" },
+        "unused_budget": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "unexplored_space": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "non_evaluated_methods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "method", "status", "reason", "artifact"],
+            "properties": {
+              "category": { "type": "string" },
+              "method": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["proposed", "implemented", "failed", "skipped", "blocked"]
+              },
+              "reason": { "type": "string" },
+              "artifact": { "type": "string" }
+            }
+          }
+        },
+        "status_values": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["proposed", "implemented", "evaluated", "failed", "skipped", "blocked"]
+          }
+        }
+      }
+    },
     "run_bundles": {
       "type": "array",
       "items": {

@@ -170,6 +170,84 @@ class ArtifactPackagerTests(unittest.TestCase):
             )
             self.assertEqual(validate_package_manifest(result["package"]), [])
 
+    def test_packager_surfaces_experiment_coverage_and_unused_budget(self) -> None:
+        runs_root = WORKSPACE_ROOT / "runs"
+        runs_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=runs_root) as tmpdir:
+            test_root = Path(tmpdir)
+            mission_root = test_root / "mission"
+            mission_root.mkdir(parents=True, exist_ok=True)
+            target_repo = test_root / "forecasting-project"
+            target_repo.mkdir(parents=True, exist_ok=True)
+            findings_dir = mission_root / "findings"
+            findings_dir.mkdir(parents=True, exist_ok=True)
+
+            mission_state_path = mission_root / "mission_state.json"
+            mission_state = {
+                "mission_id": "coverage-package-mission",
+                "title": "Coverage package test",
+                "objective": "Show planned-vs-executed methods and unused budget in final packages.",
+                "current_phase": "final-report",
+                "status": "completed",
+                "target_repo": str(target_repo),
+                "roles": ["report-synthesizer"],
+                "runtime_launcher": {"max_iterations": 5},
+                "mission_runtime": {"iterations_completed": 2},
+                "artifacts": {"docs": [], "configs": []},
+                "next_actions": {"actions": [], "generated_configs": []},
+                "experiment_coverage": {
+                    "methods": [
+                        {
+                            "category": "Numeric baselines",
+                            "name": "seasonal naive",
+                            "status": "evaluated",
+                            "artifact": "results/leaderboard.csv",
+                        },
+                        {
+                            "category": "Deep learning models",
+                            "name": "LSTM",
+                            "status": "skipped",
+                            "reason": "GPU budget was left unused during the smoke pass.",
+                        },
+                        {
+                            "category": "LLM/text methods",
+                            "name": "tariff-note prompting",
+                            "status": "proposed",
+                            "reason": "Brainstormed but not implemented.",
+                        },
+                    ],
+                    "budget": {"gpu_requested": True, "gpu_used": False},
+                },
+            }
+            mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+            (mission_root / "mission_summary.md").write_text("# Summary\n", encoding="utf-8")
+            (mission_root / "mission_decisions.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_branches.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_memory.json").write_text("{}\n", encoding="utf-8")
+            (mission_root / "mission_experiments.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "ledger.jsonl").write_text("", encoding="utf-8")
+            (findings_dir / "finding.md").write_text("- Coverage stayed explicitly partial.\n", encoding="utf-8")
+
+            result = package_mission_artifacts(mission_state_path, output_root=test_root / "packages")
+
+            coverage = result["package"]["experiment_coverage"]
+            rows = {row["category"]: row for row in coverage["coverage_table"]}
+            self.assertEqual(coverage["classification"], "exploratory campaign")
+            self.assertEqual(rows["Numeric baselines"]["status"], "complete")
+            self.assertEqual(rows["Deep learning models"]["status"], "missing")
+            self.assertEqual(rows["LLM/text methods"]["status"], "missing")
+            self.assertIn("iterations unused: 3/5", coverage["unused_budget"])
+            self.assertIn("GPU requested or available but not used", coverage["unused_budget"])
+            self.assertEqual(
+                {method["status"] for method in coverage["non_evaluated_methods"]},
+                {"proposed", "skipped"},
+            )
+            summary = result["summary_path"].read_text(encoding="utf-8")
+            self.assertIn("## Experiment coverage", summary)
+            self.assertIn("| Numeric baselines | 1 | 1 | results/leaderboard.csv | complete |", summary)
+            self.assertIn("### Unused budget / unexplored space", summary)
+            self.assertEqual(validate_package_manifest(result["package"]), [])
+
     def test_packager_categorizes_declared_data_separately_from_configs(self) -> None:
         runs_root = WORKSPACE_ROOT / "runs"
         runs_root.mkdir(parents=True, exist_ok=True)

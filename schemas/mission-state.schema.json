@@ -76,6 +76,50 @@
     "evaluation_comparison": { "type": "object" },
     "self_correction": { "type": "object" },
     "mission_package": { "type": "object" },
+    "experiment_coverage": {
+      "type": "object",
+      "properties": {
+        "classification": {
+          "type": "string",
+          "enum": ["smoke pass", "baseline pass", "exploratory campaign", "complete research package"]
+        },
+        "categories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "category": { "type": "string" },
+              "requested": { "type": "integer", "minimum": 0 },
+              "executed": { "type": "integer", "minimum": 0 },
+              "artifact": { "type": "string" },
+              "artifact_path": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["category", "status"],
+            "properties": {
+              "category": { "type": "string" },
+              "name": { "type": "string" },
+              "method": { "type": "string" },
+              "status": {
+                "type": "string",
+                "enum": ["proposed", "implemented", "evaluated", "failed", "skipped", "blocked"]
+              },
+              "reason": { "type": "string" },
+              "skip_reason": { "type": "string" },
+              "artifact": { "type": "string" },
+              "artifact_path": { "type": "string" }
+            }
+          }
+        },
+        "budget": { "type": "object" }
+      }
+    },
     "stage_runs": { "type": "object" },
     "mission_scheduler": { "type": "object" },
     "branch_records": {
