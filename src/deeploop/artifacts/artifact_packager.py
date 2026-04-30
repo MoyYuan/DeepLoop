@@ -212,6 +212,19 @@ def _coerce_int(value: Any) -> int | None:
     return None
 
 
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
 def _truthy_budget_flag(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -360,7 +373,13 @@ def _build_experiment_coverage(
         unused_budget.append("GPU requested or available but not used")
     wall_time_requested = budget.get("wall_time_requested") or budget.get("wall_time_budget")
     wall_time_used = budget.get("wall_time_used")
-    if wall_time_requested is not None and wall_time_used is not None and str(wall_time_requested) != str(wall_time_used):
+    wall_time_requested_float = _coerce_float(wall_time_requested)
+    wall_time_used_float = _coerce_float(wall_time_used)
+    if (
+        wall_time_requested_float is not None
+        and wall_time_used_float is not None
+        and wall_time_used_float < wall_time_requested_float
+    ):
         unused_budget.append(f"wall-time budget: requested {wall_time_requested}, used {wall_time_used}")
 
     rows = sorted(rows_by_category.values(), key=lambda item: item["category"])
@@ -369,13 +388,10 @@ def _build_experiment_coverage(
     incomplete_rows = [row for row in rows if row["status"] in {"missing", "partial"}]
     requested_rows = [row for row in rows if int(row["requested"]) > 0]
     baseline_only = bool(requested_rows) and all(_is_baseline_category(row["category"]) for row in requested_rows)
-    if (
-        requested_total > 0
-        and executed_total >= requested_total
-        and not unused_budget
-        and package_claim_state in {"replicated", "paper-candidate", "release-candidate"}
-        and replication_evidence.get("total_manifests", 0) >= 2
-    ):
+    all_requested_executed = requested_total > 0 and executed_total >= requested_total
+    replicated_package = package_claim_state in {"replicated", "paper-candidate", "release-candidate"}
+    replicated_manifests = replication_evidence.get("total_manifests", 0) >= 2
+    if all_requested_executed and not unused_budget and replicated_package and replicated_manifests:
         classification = "complete research package"
     elif baseline_only and executed_total > 0:
         classification = "baseline pass"
