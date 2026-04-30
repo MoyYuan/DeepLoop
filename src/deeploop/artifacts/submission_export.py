@@ -41,11 +41,6 @@ def _prepare_output_root(output_root: Path, *, force: bool) -> None:
     output_root.mkdir(parents=True, exist_ok=True)
 
 
-def _slug(text: str) -> str:
-    chars = [char.lower() if char.isalnum() else "-" for char in text]
-    return "-".join("".join(chars).strip("-").split("-")) or "artifact"
-
-
 def _artifact_section(artifact: dict[str, Any], *, target_repo: Path) -> Path:
     category = str(artifact.get("metadata", {}).get("export_category") or "")
     source_path = Path(str(artifact.get("source_path", ""))).expanduser()
@@ -251,7 +246,7 @@ def export_submission_repository(
         "bookkeeping": bookkeeping,
         "checks": {
             "all_package_artifacts_copied": len(copied_artifacts) == len(artifacts),
-            "deep_loop_source_tree_excluded": True,
+            "deeploop_source_tree_excluded": True,
             "runtime_cache_copied_only_as_selected_bookkeeping": True,
         },
     }
