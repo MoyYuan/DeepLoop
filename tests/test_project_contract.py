@@ -143,6 +143,7 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn(str(extra_doc.resolve()), planner_handoff["input_artifacts"])
         self.assertIn(str(project_data.resolve()), planner_handoff["input_artifacts"])
         self.assertIn(str(extra_data.resolve()), planner_handoff["input_artifacts"])
+        self.assertNotIn("dataset_artifacts", planner_handoff)
         self.assertEqual(
             [artifact["path"] for artifact in dataset_handoff["dataset_artifacts"]],
             data_paths,

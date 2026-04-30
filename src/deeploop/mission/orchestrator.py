@@ -37,6 +37,7 @@ ROLE_OUTPUTS = {
     "critic-verifier": ["critique summaries", "evidence-state recommendations"],
     "report-synthesizer": ["findings summaries", "paper-ready notes"],
 }
+DATASET_ARTIFACT_ROLES = {"dataset-strategist", "execution-operator"}
 
 
 def _load_yaml(path: Path) -> dict:
@@ -325,7 +326,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
                 "Record non-trivial findings in the mission ledger or findings directory.",
             ],
         }
-        if role in {"dataset-strategist", "execution-operator"} and mission_artifacts["data"]:
+        if role in DATASET_ARTIFACT_ROLES and mission_artifacts["data"]:
             handoff["dataset_artifacts"] = mission_artifacts["data"]
         handoff_path = handoff_root / f"{role}.json"
         write_json_object(handoff_path, handoff)

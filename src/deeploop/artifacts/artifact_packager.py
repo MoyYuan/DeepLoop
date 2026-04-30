@@ -47,6 +47,7 @@ DEFAULT_CATEGORIES = (
     "runtime_metadata",
     "plain_folder_smoke_metadata",
 )
+DATA_REFERENCE_POLICIES = {"reference", "reference-only", "external-reference"}
 
 
 def _remove_tree(path: Path) -> None:
@@ -606,6 +607,12 @@ def _artifact_bullets(artifacts: list[dict[str, Any]], artifact_ids: list[str], 
     return bullets
 
 
+def _data_artifact_reference_only(metadata: dict[str, Any]) -> bool:
+    return metadata.get("package") is False or str(
+        metadata.get("packaging_policy") or metadata.get("package_policy") or ""
+    ).strip().lower() in DATA_REFERENCE_POLICIES
+
+
 def package_mission_artifacts(
     mission_state_path: Path,
     *,
@@ -711,9 +718,7 @@ def package_mission_artifacts(
             data_metadata = {}
         if not str(raw_path or "").strip():
             continue
-        reference_only = data_metadata.get("package") is False or str(
-            data_metadata.get("packaging_policy") or data_metadata.get("package_policy") or ""
-        ).strip().lower() in {"reference", "reference-only", "external-reference"}
+        reference_only = _data_artifact_reference_only(data_metadata)
         maybe_register(
             raw_path,
             category="mission_datasets",
