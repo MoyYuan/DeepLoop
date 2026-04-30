@@ -37,9 +37,14 @@ DEFAULT_CATEGORIES = (
     "ledgers",
     "findings",
     "manifests",
+    "task_metrics",
+    "task_predictions",
+    "task_run_logs",
+    "task_method_artifacts",
     "kernel_outputs",
     "critique_reports",
     "runtime_metadata",
+    "plain_folder_smoke_metadata",
 )
 
 
@@ -455,6 +460,19 @@ def _artifact_kind_for_path(path: Path, category: str) -> str:
         return "mission-config"
     if category == "manifests":
         return "study-manifest" if name == "study_manifest.json" else "run-manifest"
+    if category == "task_metrics":
+        return "task-metrics"
+    if category == "task_predictions":
+        return "task-predictions"
+    if category == "task_run_logs":
+        lowered = name.lower()
+        if "stability" in lowered:
+            return "task-stability-notes"
+        return "task-run-log"
+    if category == "task_method_artifacts":
+        return "task-method-artifact"
+    if category == "plain_folder_smoke_metadata":
+        return "plain-folder-smoke-metadata"
     if category == "kernel_outputs":
         if name.endswith(".jsonl"):
             return "kernel-records"
@@ -489,6 +507,98 @@ def _artifact_label(path: Path, category: str) -> str:
     return path.name
 
 
+def _looks_like_artifact_path(raw: str) -> bool:
+    text = raw.strip()
+    if not text:
+        return False
+    if text.startswith(("~", "/", ".")) or "/" in text or "\\" in text:
+        return True
+    return bool(Path(text).suffix)
+
+
+def _recorded_artifact_category(path: Path) -> str:
+    lowered_name = path.name.lower()
+    lowered_parts = {part.lower() for part in path.parts}
+    lowered_path = path.as_posix().lower()
+    if "plain_folder_followups" in lowered_parts or "plain-folder" in lowered_path:
+        return "plain_folder_smoke_metadata"
+    if "metrics" in lowered_name:
+        return "task_metrics"
+    if "prediction" in lowered_name or "predictions" in lowered_name or "model-output" in lowered_name:
+        return "task_predictions"
+    if lowered_name.endswith(".log") or lowered_name in {"run-log.txt", "run_log.txt"} or "stability" in lowered_name:
+        return "task_run_logs"
+    if any(
+        token in lowered_name
+        for token in (
+            "prior-art",
+            "hypotheses",
+            "evaluation-targets",
+            "watchlist",
+            "run-manifest-draft",
+            "execution-profile",
+            "resource-tier",
+            "method",
+        )
+    ):
+        return "task_method_artifacts"
+    return "task_method_artifacts"
+
+
+def _resolve_recorded_artifact_path(raw_path: str, *, source_path: Path, mission_root: Path, target_repo: Path) -> Path:
+    raw_text = raw_path.strip()
+    candidate = Path(raw_text).expanduser()
+    if candidate.is_absolute() or raw_text.startswith("~"):
+        return _resolve_existing_or_packaged_path(raw_text, source_path=source_path)
+    for root in (mission_root, target_repo, WORKSPACE_ROOT, REPO_ROOT):
+        resolved = (root / candidate).resolve()
+        if resolved.exists():
+            return resolved
+    return (mission_root / candidate).resolve()
+
+
+def _strings_from_value(raw: Any) -> list[str]:
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, (list, tuple, set)):
+        values: list[str] = []
+        for item in raw:
+            values.extend(_strings_from_value(item))
+        return values
+    return []
+
+
+def _metric_fragments(path: Path, *, limit: int = 3) -> list[str]:
+    if path.suffix.lower() != ".json":
+        return []
+    try:
+        payload = _load_json(path)
+    except Exception:
+        return []
+    if not isinstance(payload, dict):
+        return []
+    metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else payload
+    fragments: list[str] = []
+    for key, value in metrics.items():
+        if isinstance(value, (int, float)):
+            fragments.append(f"{key}={value:.6g}")
+        if len(fragments) >= limit:
+            break
+    return fragments
+
+
+def _artifact_bullets(artifacts: list[dict[str, Any]], artifact_ids: list[str], *, prefix: str, limit: int = 4) -> list[str]:
+    selected_ids = set(artifact_ids[:limit])
+    bullets: list[str] = []
+    for artifact in artifacts:
+        if artifact["artifact_id"] not in selected_ids:
+            continue
+        fragments = _metric_fragments(Path(artifact["source_path"]))
+        detail = f" — {', '.join(fragments)}" if fragments else ""
+        bullets.append(f"{prefix}: {artifact['label']} (`{artifact['artifact_id']}`){detail}.")
+    return bullets
+
+
 def package_mission_artifacts(
     mission_state_path: Path,
     *,
@@ -516,6 +626,7 @@ def package_mission_artifacts(
     category_membership: dict[str, set[str]] = {category: set() for category in DEFAULT_CATEGORIES}
     pending_links: set[tuple[Path, Path, str]] = set()
     pending_artifact_ids: set[str] = set()
+    recorded_output_artifacts: dict[str, dict[str, Any]] = {}
 
     def register_artifact(
         path: Path,
@@ -584,6 +695,101 @@ def package_mission_artifacts(
             metadata={"declared_by": "artifact_package_contract"},
         )
 
+    def register_recorded_output(raw_path: str, *, declared_by: str, source_path: Path, phase: str | None = None) -> None:
+        if not _looks_like_artifact_path(raw_path):
+            return
+        resolved = _resolve_recorded_artifact_path(
+            raw_path,
+            source_path=source_path,
+            mission_root=mission_root,
+            target_repo=target_repo,
+        )
+        category = _recorded_artifact_category(resolved)
+        metadata: dict[str, Any] = {"declared_by": declared_by, "science_handoff": True}
+        if phase:
+            metadata["phase"] = phase
+        artifact_id = register_artifact(resolved, category=category, metadata=metadata, lazy=True)
+        if category != "plain_folder_smoke_metadata" and resolved.exists() and resolved.is_file():
+            category_membership.setdefault("kernel_outputs", set()).add(artifact_id)
+        record = recorded_output_artifacts.setdefault(
+            artifact_id,
+            {
+                "artifact_id": artifact_id,
+                "source_path": str(resolved),
+                "declared_by": [],
+                "category": category,
+                "phase": phase,
+            },
+        )
+        declared_sources = record.setdefault("declared_by", [])
+        if declared_by not in declared_sources:
+            declared_sources.append(declared_by)
+        if phase and not record.get("phase"):
+            record["phase"] = phase
+
+    def register_outputs_from_mapping(mapping: Any, *, declared_by: str, source_path: Path, phase: str | None = None) -> None:
+        if not isinstance(mapping, dict):
+            return
+        for key in ("produced_artifacts", "output_paths", "artifact_paths"):
+            for raw_path in _strings_from_value(mapping.get(key)):
+                register_recorded_output(raw_path, declared_by=f"{declared_by}.{key}", source_path=source_path, phase=phase)
+        action_result = mapping.get("action_result")
+        if isinstance(action_result, dict):
+            action_phase = str(action_result.get("phase") or phase or "").strip() or phase
+            for raw_path in _strings_from_value(action_result.get("output_paths")):
+                register_recorded_output(
+                    raw_path,
+                    declared_by=f"{declared_by}.action_result.output_paths",
+                    source_path=source_path,
+                    phase=action_phase,
+                )
+        latest_outcome = mapping.get("latest_outcome")
+        if isinstance(latest_outcome, dict):
+            register_outputs_from_mapping(latest_outcome, declared_by=f"{declared_by}.latest_outcome", source_path=source_path, phase=phase)
+
+    register_outputs_from_mapping(mission_state, declared_by="mission_state", source_path=mission_state_path)
+    phase_outputs = mission_state.get("phase_outputs_by_phase")
+    if isinstance(phase_outputs, dict):
+        for phase, outputs in phase_outputs.items():
+            for raw_path in _strings_from_value(outputs):
+                register_recorded_output(
+                    raw_path,
+                    declared_by="mission_state.phase_outputs_by_phase",
+                    source_path=mission_state_path,
+                    phase=str(phase),
+                )
+    for index, action in enumerate(mission_state.get("next_actions", {}).get("actions", [])):
+        if not isinstance(action, dict):
+            continue
+        action_phase = str(action.get("phase") or "").strip() or None
+        for raw_path in _strings_from_value(action.get("output_paths")):
+            register_recorded_output(
+                raw_path,
+                declared_by=f"mission_state.next_actions.actions[{index}].output_paths",
+                source_path=mission_state_path,
+                phase=action_phase,
+            )
+    agent_driver = mission_state.get("agent_driver")
+    if isinstance(agent_driver, dict):
+        register_outputs_from_mapping(agent_driver, declared_by="mission_state.agent_driver", source_path=mission_state_path)
+        memory_path_raw = agent_driver.get("memory_path")
+        if isinstance(memory_path_raw, str) and memory_path_raw:
+            memory_path = _resolve_recorded_artifact_path(
+                memory_path_raw,
+                source_path=mission_state_path,
+                mission_root=mission_root,
+                target_repo=target_repo,
+            )
+            if memory_path.exists() and memory_path.is_file():
+                for entry in _load_jsonl(memory_path):
+                    if isinstance(entry, dict):
+                        register_outputs_from_mapping(entry, declared_by="agent_driver.memory", source_path=memory_path, phase=str(entry.get("phase") or "") or None)
+    experiments_path = mission_root / "mission_experiments.jsonl"
+    if experiments_path.exists():
+        for entry in _load_jsonl(experiments_path):
+            if isinstance(entry, dict):
+                register_outputs_from_mapping(entry, declared_by="mission_experiments", source_path=experiments_path, phase=str(entry.get("phase") or "") or None)
+
     mission_aliases = {mission_id, mission_id.removesuffix("-mission")}
     manifest_search_roots = [
         WORKSPACE_ROOT / "runs" / target_repo.name,
@@ -619,7 +825,9 @@ def package_mission_artifacts(
         bundle_artifact_ids = [manifest_artifact_id]
         critique_artifact_ids: list[str] = []
         for kernel_path in kernel_paths:
-            kernel_id = register_artifact(kernel_path, category="kernel_outputs")
+            kernel_category = _recorded_artifact_category(kernel_path)
+            kernel_id = register_artifact(kernel_path, category=kernel_category)
+            category_membership.setdefault("kernel_outputs", set()).add(kernel_id)
             bundle_artifact_ids.append(kernel_id)
             pending_links.add((manifest_path, kernel_path, "produces"))
         for critique_path in critique_paths:
@@ -718,6 +926,20 @@ def package_mission_artifacts(
     for category in required_categories:
         if not category_membership.get(category):
             missing_required_artifacts.append(f"category:{category}")
+    missing_recorded_output_artifacts = [
+        {
+            "artifact_id": record["artifact_id"],
+            "source_path": record["source_path"],
+            "declared_by": list(record.get("declared_by", [])),
+            "category": record.get("category"),
+            "phase": record.get("phase"),
+            "reason": "declared by recursive-agent output metadata but the file was not found",
+        }
+        for record in sorted(recorded_output_artifacts.values(), key=lambda item: item["source_path"])
+        if record["artifact_id"] in pending_artifact_ids
+    ]
+    for record in missing_recorded_output_artifacts:
+        missing_required_artifacts.append(f"phase-output:{record['source_path']}")
     all_required_artifacts_present = not missing_required_artifacts
     missing_required_artifacts_summary = (
         f"Missing required mission artifacts: {', '.join(missing_required_artifacts)}"
@@ -812,6 +1034,31 @@ def package_mission_artifacts(
         finding_bullets.extend(_extract_text_bullets(Path(finding["source_path"]), limit=2))
         if len(finding_bullets) >= 4:
             break
+    task_evidence_bullets = _artifact_bullets(artifacts, artifact_map["task_metrics"], prefix="Task metric")
+    task_evidence_bullets.extend(
+        _artifact_bullets(artifacts, artifact_map["task_predictions"], prefix="Task prediction/model output", limit=3)
+    )
+    task_evidence_bullets.extend(_artifact_bullets(artifacts, artifact_map["task_run_logs"], prefix="Task run log", limit=3))
+    task_evidence_bullets.extend(
+        _artifact_bullets(artifacts, artifact_map["task_method_artifacts"], prefix="Task method artifact", limit=3)
+    )
+    if artifact_map["plain_folder_smoke_metadata"]:
+        task_evidence_bullets.extend(
+            _artifact_bullets(
+                artifacts,
+                artifact_map["plain_folder_smoke_metadata"],
+                prefix="Plain-folder smoke metadata (not task evidence)",
+                limit=3,
+            )
+        )
+    if missing_recorded_output_artifacts:
+        task_evidence_bullets.append(
+            "Missing recorded task output artifacts: "
+            + ", ".join(record["source_path"] for record in missing_recorded_output_artifacts[:4])
+            + "."
+        )
+    if not task_evidence_bullets:
+        task_evidence_bullets.append("No task-specific recursive-agent output artifacts were declared for packaging.")
     has_documented_caveats = bool(finding_artifacts or critique_reasons or critique_warnings)
     paper_blockers: list[str] = []
     if CLAIM_ORDER.get(package_claim_state, CLAIM_ORDER["exploratory"]) < CLAIM_ORDER["replicated"]:
@@ -962,6 +1209,16 @@ def package_mission_artifacts(
                 "bullets": paper_bullets,
                 "key_artifact_ids": [bundle["manifest_artifact_id"] for bundle in top_bundles],
             },
+            "task_evidence": {
+                "headline": "Task-specific science evidence",
+                "bullets": task_evidence_bullets,
+                "key_artifact_ids": (
+                    artifact_map["task_metrics"][:3]
+                    + artifact_map["task_predictions"][:2]
+                    + artifact_map["task_run_logs"][:2]
+                    + artifact_map["task_method_artifacts"][:2]
+                ),
+            },
             "release_review": {
                 "headline": "Release review posture",
                 "bullets": release_bullets,
@@ -979,6 +1236,7 @@ def package_mission_artifacts(
                 for category, ids in artifact_map.items()
             },
             "pending_downstream_artifacts": [record["source_path"] for record in pending_artifacts],
+            "missing_recorded_output_artifacts": missing_recorded_output_artifacts,
         },
     }
 
@@ -1021,6 +1279,8 @@ def package_mission_artifacts(
         "",
     ]
     markdown_lines.extend(f"- {line}" for line in operator_bullets)
+    markdown_lines.extend(["", "## Task-specific science evidence", ""])
+    markdown_lines.extend(f"- {line}" for line in task_evidence_bullets)
     markdown_lines.extend(["", "## Paper drafting", ""])
     markdown_lines.extend(f"- {line}" for line in paper_bullets)
     markdown_lines.extend(["", "## Release review", ""])
