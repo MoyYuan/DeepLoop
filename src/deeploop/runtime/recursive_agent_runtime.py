@@ -391,6 +391,78 @@ def _save_loop_state(runtime_root: Path, state: dict[str, Any]) -> None:
     _write_json(_state_path(runtime_root), state)
 
 
+def _replace_markdown_field(lines: list[str], field: str, value: str) -> list[str]:
+    prefix = f"- {field}:"
+    updated = list(lines)
+    for index, line in enumerate(updated):
+        if line.startswith(prefix):
+            updated[index] = f"{prefix} {value}"
+            return updated
+    updated.append(f"{prefix} {value}")
+    return updated
+
+
+def _sync_outer_runtime_summary_from_recursive_agent(mission_state: Mapping[str, Any]) -> None:
+    mission_runtime = mission_state.get("mission_runtime")
+    agent_driver = mission_state.get("agent_driver")
+    if not isinstance(mission_runtime, Mapping) or not isinstance(agent_driver, Mapping):
+        return
+    synchronized_at = now_utc()
+    raw_summary_json_path = mission_runtime.get("summary_json_path")
+    if raw_summary_json_path:
+        summary_json_path = Path(str(raw_summary_json_path)).expanduser()
+        try:
+            summary = _load_json(summary_json_path) if summary_json_path.exists() else {}
+            summary["mission"] = {
+                "mission_id": mission_state.get("mission_id"),
+                "current_phase": mission_state.get("current_phase"),
+                "next_phase": mission_state.get("next_phase"),
+                "status": mission_state.get("status"),
+                "autonomy_status": mission_state.get("autonomy_status", {}),
+            }
+            summary["recursive_agent"] = dict(agent_driver)
+            summary["summary_source"] = "mission_state"
+            summary["summary_synchronized_at"] = synchronized_at
+            _write_json(summary_json_path, summary)
+        except (OSError, ValueError):
+            pass
+
+    raw_summary_markdown_path = mission_runtime.get("summary_markdown_path")
+    if not raw_summary_markdown_path:
+        return
+    summary_markdown_path = Path(str(raw_summary_markdown_path)).expanduser()
+    try:
+        lines = summary_markdown_path.read_text(encoding="utf-8").splitlines() if summary_markdown_path.exists() else []
+        autonomy = mission_state.get("autonomy_status", {}) if isinstance(mission_state.get("autonomy_status"), Mapping) else {}
+        active_action = agent_driver.get("pending_action") or agent_driver.get("current_action")
+        iteration_text = (
+            f"{agent_driver.get('iterations_completed')} / {agent_driver.get('max_iterations')}"
+            if agent_driver.get("max_iterations") is not None
+            else str(agent_driver.get("iterations_completed") or "unknown")
+        )
+        role = active_action.get("role") if isinstance(active_action, Mapping) else "unknown"
+        phase = (
+            active_action.get("phase")
+            if isinstance(active_action, Mapping) and active_action.get("phase") is not None
+            else mission_state.get("current_phase")
+        )
+        replacements = {
+            "current_phase": f"`{mission_state.get('current_phase')}`",
+            "next_phase": f"`{mission_state.get('next_phase')}`",
+            "mission_status": f"`{mission_state.get('status')}`",
+            "autonomy_state": f"`{autonomy.get('state', 'unknown')}`",
+            "autonomy_reason": str(autonomy.get("reason", "n/a")),
+            "summary_source": "`mission_state`",
+            "summary_synchronized_at": f"`{synchronized_at}`",
+            "current_recursive_iteration": f"`{iteration_text}`, role={role}, phase={phase}",
+        }
+        for field, value in replacements.items():
+            lines = _replace_markdown_field(lines, field, value)
+        _write_markdown(summary_markdown_path, lines)
+    except OSError:
+        pass
+
+
 
 
 def _validate_result(payload: dict[str, Any]) -> list[str]:
@@ -648,6 +720,7 @@ def _apply_result_to_mission(
         "memory_path": str(_memory_path(runtime_root)),
         "status": status,
         "iterations_completed": state["iterations_completed"],
+        "max_iterations": state.get("max_iterations"),
         "consecutive_failures": state["consecutive_failures"],
         "latest_result_path": state.get("latest_result_path"),
         "latest_iteration_path": state.get("latest_iteration_path"),
@@ -683,6 +756,7 @@ def _apply_result_to_mission(
             "reason": "The recursive agent loop is advancing the mission through fresh-context agent iterations.",
         }
     write_mission_state(mission_state_path, mission_state)
+    _sync_outer_runtime_summary_from_recursive_agent(mission_state)
     return mission_state
 
 
@@ -724,6 +798,8 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     agent_cfg = config.get("agent", {})
     if not isinstance(agent_cfg, dict) or not isinstance(agent_cfg.get("command"), list) or not agent_cfg["command"]:
         raise ValueError("recursive agent runtime requires agent.command to be a non-empty list")
+    state["max_iterations"] = max_iterations
+    _save_loop_state(runtime_root, state)
 
     iterations: list[dict[str, Any]] = []
     status = "running"
@@ -1183,6 +1259,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         "loop_name": loop_name,
         "status": status,
         "iterations_completed": state["iterations_completed"],
+        "max_iterations": state.get("max_iterations"),
         "consecutive_failures": state["consecutive_failures"],
         "runtime_root": str(runtime_root),
         "memory_path": str(_memory_path(runtime_root)),
@@ -1210,6 +1287,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     return {
         "status": status,
         "iterations_completed": state["iterations_completed"],
+        "max_iterations": state.get("max_iterations"),
         "consecutive_failures": state["consecutive_failures"],
         "runtime_root": runtime_root,
         "memory_path": _memory_path(runtime_root),

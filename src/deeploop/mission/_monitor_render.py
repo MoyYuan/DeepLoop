@@ -13,6 +13,8 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
     outer_loop = snapshot.get("outer_loop", {})
     runtime = outer_loop.get("runtime") if isinstance(outer_loop, Mapping) else None
     current_action = outer_loop.get("current_action") if isinstance(outer_loop, Mapping) else None
+    historical_action = outer_loop.get("historical_action") if isinstance(outer_loop, Mapping) else None
+    recursive_agent = outer_loop.get("recursive_agent") if isinstance(outer_loop, Mapping) else None
     current_branch = outer_loop.get("current_branch") if isinstance(outer_loop, Mapping) else None
     operator_inbox = snapshot.get("operator_inbox", {})
     current_operator_request = (
@@ -61,6 +63,8 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
         lines.append(f"- budget_summary: {operator_console.get('budget_summary')}")
     if operator_console.get("inner_loop_summary"):
         lines.append(f"- inner_loop_summary: {operator_console.get('inner_loop_summary')}")
+    if operator_console.get("current_recursive_iteration"):
+        lines.append(f"- current_recursive_iteration: {operator_console.get('current_recursive_iteration')}")
     if operator_console.get("eta_summary"):
         lines.append(f"- eta_summary: {operator_console.get('eta_summary')}")
     if operator_console.get("blocked_on"):
@@ -181,6 +185,10 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
                 )
         if runtime.get("status") != "running" and runtime.get("terminal_reason"):
             lines.append(f"- terminal_reason: {runtime['terminal_reason']}")
+        recursive_runtime = runtime.get("recursive_agent")
+        if isinstance(recursive_runtime, Mapping):
+            lines.append(f"- recursive_agent_summary: {recursive_runtime.get('summary')}")
+            lines.append(f"- recursive_agent_status: `{recursive_runtime.get('status')}`")
     else:
         lines.append("- runtime_status: `unavailable`")
         lines.append("- runtime_note: outer-loop runtime artifacts have not been written yet.")
@@ -217,6 +225,16 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
             )
 
     lines.extend(["", "## Current work", ""])
+    if isinstance(historical_action, Mapping):
+        lines.extend(
+            [
+                f"- outer_action: `{historical_action.get('action_id')}`",
+                f"- outer_action_status: `{historical_action.get('status')}` (historical)",
+                f"- outer_action_task: {historical_action.get('task')}",
+            ]
+        )
+    elif isinstance(current_action, Mapping):
+        lines.append(f"- outer_action: `{current_action.get('action_id')}`")
     if isinstance(current_action, Mapping):
         lines.extend(
             [
@@ -232,6 +250,19 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
             lines.append(f"- action_notes: {'; '.join(current_action['notes'])}")
     else:
         lines.append("- current_action: none surfaced")
+
+    if isinstance(recursive_agent, Mapping):
+        active_recursive_action = recursive_agent.get("active_action")
+        lines.append(f"- current_recursive_iteration: {recursive_agent.get('summary')}")
+        if isinstance(active_recursive_action, Mapping):
+            lines.extend(
+                [
+                    f"- current_recursive_action: `{active_recursive_action.get('loop_action_id') or active_recursive_action.get('action_id') or 'n/a'}`",
+                    f"- recursive_action_role: `{active_recursive_action.get('role')}`",
+                    f"- recursive_action_phase: `{active_recursive_action.get('phase')}`",
+                    f"- recursive_action_task: {active_recursive_action.get('task')}",
+                ]
+            )
 
     if isinstance(current_branch, Mapping):
         lines.extend(

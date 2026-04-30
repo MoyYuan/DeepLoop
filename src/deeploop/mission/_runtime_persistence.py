@@ -135,6 +135,7 @@ def _runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict[str, 
         if isinstance(outer_loop.get("operator_request_log_path"), str)
         else None
     )
+    recursive_agent = mission_state.get("agent_driver") if isinstance(mission_state.get("agent_driver"), Mapping) else None
     runtime_recovery = mission_state.get("runtime_recovery") if isinstance(mission_state.get("runtime_recovery"), Mapping) else None
     autonomy_gap_telemetry = build_autonomy_gap_telemetry(
         mission_state,
@@ -160,6 +161,7 @@ def _runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict[str, 
             "current_request": operator_request,
         },
         "autonomy_gap_telemetry": autonomy_gap_telemetry,
+        "recursive_agent": dict(recursive_agent) if isinstance(recursive_agent, Mapping) else None,
         "latest_history": history[-1:] if history else [],
     }
 
@@ -181,6 +183,12 @@ def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict
         if isinstance(autonomy_gap_telemetry, Mapping)
         else {}
     )
+    recursive_agent = summary.get("recursive_agent") if isinstance(summary.get("recursive_agent"), Mapping) else None
+    recursive_current_action = (
+        recursive_agent.get("pending_action") or recursive_agent.get("current_action")
+        if isinstance(recursive_agent, Mapping)
+        else None
+    )
     lines = [
         "# Mission outer runtime",
         "",
@@ -192,6 +200,7 @@ def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict
         f"- mission_status: `{mission_state.get('status')}`",
         f"- autonomy_state: `{autonomy.get('state', 'unknown')}`",
         f"- autonomy_reason: {autonomy.get('reason', 'n/a')}",
+        f"- summary_source: `mission_state`",
         f"- autonomy_gap_summary: {autonomy_gap_telemetry.get('summary', 'n/a')}",
         f"- operator_requests_total: `{telemetry_counts.get('operator_requests_total', 0)}`",
         f"- temporary_gap_requests: `{telemetry_counts.get('temporary_gap_requests', 0)}`",
@@ -216,6 +225,19 @@ def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict
             f"downscope=`{recovery_preferences.get('downscope', 0)}`"
         ),
     ]
+    if isinstance(recursive_agent, Mapping):
+        iteration_text = (
+            f"{recursive_agent.get('iterations_completed')} / {recursive_agent.get('max_iterations')}"
+            if recursive_agent.get("max_iterations") is not None
+            else str(recursive_agent.get("iterations_completed") or "unknown")
+        )
+        role = recursive_current_action.get("role") if isinstance(recursive_current_action, Mapping) else "unknown"
+        phase = (
+            recursive_current_action.get("phase")
+            if isinstance(recursive_current_action, Mapping) and recursive_current_action.get("phase") is not None
+            else mission_state.get("current_phase")
+        )
+        lines.append(f"- current_recursive_iteration: `{iteration_text}`, role={role}, phase={phase}")
     latest_temporary_gap = (
         autonomy_gap_telemetry.get("latest_temporary_gap")
         if isinstance(autonomy_gap_telemetry, Mapping)

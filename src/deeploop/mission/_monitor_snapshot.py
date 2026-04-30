@@ -125,6 +125,15 @@ def build_mission_snapshot(
         current_phase=str(mission_state.get("current_phase") or ""),
         runtime=runtime,
     )
+    historical_action = None
+    recursive_agent = runtime.get("recursive_agent") if isinstance(runtime, Mapping) else None
+    if (
+        isinstance(recursive_agent, Mapping)
+        and isinstance(current_action, Mapping)
+        and str(current_action.get("status") or "") in {"completed", "cancelled"}
+    ):
+        historical_action = dict(current_action)
+        current_action = None
     current_action_record = _current_action_record(actions, current_action)
     branches = _branch_records(mission_state, branch_log)
     current_branch = _select_current_branch(branches, runtime=runtime, current_action=current_action)
@@ -225,6 +234,8 @@ def build_mission_snapshot(
         "decision_tail": decision_log[-3:],
         "runtime": runtime,
         "current_action": current_action,
+        "historical_action": historical_action,
+        "recursive_agent": dict(recursive_agent) if isinstance(recursive_agent, Mapping) else None,
         "current_branch": current_branch,
         "branch_counts": dict(sorted(branch_counts.items())),
         "branches": [_summarize_branch(branch) for branch in branches[-5:]],
