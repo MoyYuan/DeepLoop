@@ -1,7 +1,20 @@
 import os
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+
+def _resolve_repo_root() -> Path:
+    source_root = Path(__file__).resolve().parents[3]
+    if (source_root / "configs").is_dir() and (source_root / "schemas").is_dir():
+        return source_root
+
+    packaged_assets_root = Path(__file__).resolve().parents[1] / "_assets"
+    if (packaged_assets_root / "configs").is_dir() and (packaged_assets_root / "schemas").is_dir():
+        return packaged_assets_root
+
+    return source_root
+
+
+REPO_ROOT = _resolve_repo_root()
 DEFAULT_WORKSPACE_ROOT = Path.home() / "workspaces"
 WORKSPACE_ROOT_ENV_VAR = "DEEPLOOP_WORKSPACE_ROOT"
 

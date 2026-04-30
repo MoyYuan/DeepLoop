@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import importlib
+import subprocess
 import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
@@ -91,6 +94,40 @@ class PackageStructureTests(unittest.TestCase):
             module_name, attr_name = target.split(":")
             exported = getattr(importlib.import_module(module_name), attr_name)
             self.assertTrue(callable(exported), target)
+
+    def test_wheel_contains_runtime_assets_for_plain_folder_bootstrap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pip",
+                    "wheel",
+                    str(REPO_ROOT),
+                    "--no-deps",
+                    "--no-build-isolation",
+                    "--wheel-dir",
+                    tmpdir,
+                ],
+                cwd=REPO_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            wheel_path = next(Path(tmpdir).glob("deeploop-*.whl"))
+            with ZipFile(wheel_path) as wheel:
+                wheel_files = set(wheel.namelist())
+
+        expected_assets = {
+            "deeploop/_assets/configs/autonomy/mission-outer-loop.yaml",
+            "deeploop/_assets/configs/runtime/recursive-agent-runtime.yaml",
+            "deeploop/_assets/schemas/mission-action.schema.json",
+            "deeploop/_assets/scripts/runtime/invoke_provider_prompt.py",
+            "deeploop/_assets/scripts/mission/run_mission.py",
+            "deeploop/_assets/scripts/mission/manage_mission.py",
+        }
+        self.assertTrue(expected_assets.issubset(wheel_files), expected_assets - wheel_files)
 
     def test_release_hygiene_ignores_generated_build_artifacts(self) -> None:
         gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
