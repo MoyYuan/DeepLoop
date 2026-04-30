@@ -850,6 +850,8 @@ def _resolve_snapshot(args: argparse.Namespace, *, log_tail_lines: int, ledger_t
 
 
 _RUNTIME_CACHE_ROOT = Path.home() / ".deeploop" / "runtime_cache"
+_RUNTIME_CACHE_TOP_LEVEL_DIRS = ("configs", "schemas", "scripts")
+_RUNTIME_CACHE_TOP_LEVEL_FILES = ("AGENTS.md",)
 
 
 def _is_editable_install() -> bool:
@@ -874,12 +876,12 @@ def _is_editable_install() -> bool:
 
 
 def _snapshot_src_for_mission(mission_id: str, launched_at: str) -> Path | None:
-    """Snapshot src/deeploop into ~/.deeploop/runtime_cache/<mission_id>/<ts>/src/.
+    """Snapshot the editable runtime into ~/.deeploop/runtime_cache/<mission_id>/<ts>/.
 
     Returns the cache src root (parent of the deeploop package directory) so
     that prepending it to PYTHONPATH — and setting DEEPLOOP_RUNTIME_CACHE_SRC —
-    makes the background daemon load modules from the static snapshot instead of
-    the live source tree.
+    makes the background daemon load modules and repo-relative runtime assets
+    from the static snapshot instead of the live source tree.
 
     Returns None when the install is not editable or when the copy fails.
     This function is best-effort: it silently returns None on any error so it
@@ -895,14 +897,28 @@ def _snapshot_src_for_mission(mission_id: str, launched_at: str) -> Path | None:
         return None
 
     safe_ts = launched_at.replace(":", "-").replace(" ", "_").replace("+", "_")
-    cache_src = _RUNTIME_CACHE_ROOT / str(mission_id) / safe_ts / "src"
+    cache_root = _RUNTIME_CACHE_ROOT / str(mission_id) / safe_ts
+    cache_src = cache_root / "src"
     cache_pkg = cache_src / "deeploop"
+    ignore_generated = shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo")
 
     try:
         if cache_pkg.exists():
             shutil.rmtree(cache_pkg)
         cache_src.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(pkg_src, cache_pkg)
+        shutil.copytree(pkg_src, cache_pkg, ignore=ignore_generated)
+        for dirname in _RUNTIME_CACHE_TOP_LEVEL_DIRS:
+            source = REPO_ROOT / dirname
+            if not source.exists():
+                continue
+            destination = cache_root / dirname
+            if destination.exists():
+                shutil.rmtree(destination)
+            shutil.copytree(source, destination, ignore=ignore_generated)
+        for filename in _RUNTIME_CACHE_TOP_LEVEL_FILES:
+            source = REPO_ROOT / filename
+            if source.is_file():
+                shutil.copy2(source, cache_root / filename)
     except Exception:
         return None
 

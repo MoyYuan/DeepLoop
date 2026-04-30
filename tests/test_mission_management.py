@@ -341,6 +341,42 @@ class MissionManagementTests(unittest.TestCase):
         self.assertTrue((first / "deeploop" / "__init__.py").exists())
         self.assertTrue((second / "deeploop" / "__init__.py").exists())
 
+    def test_snapshot_src_includes_repo_level_runtime_assets(self) -> None:
+        from deeploop.mission.mission_management import _snapshot_src_for_mission
+
+        test_root = _fresh_test_root("start_runtime_cache_repo_assets")
+        fake_repo_root = test_root / "repo"
+        fake_pkg_src = fake_repo_root / "src" / "deeploop"
+        fake_pkg_src.mkdir(parents=True, exist_ok=True)
+        (fake_pkg_src / "__init__.py").write_text("__version__ = '0.1.0'\n", encoding="utf-8")
+        (fake_repo_root / "configs" / "autonomy").mkdir(parents=True, exist_ok=True)
+        (fake_repo_root / "configs" / "autonomy" / "mission-outer-loop.yaml").write_text("mode: test\n", encoding="utf-8")
+        (fake_repo_root / "schemas").mkdir(parents=True, exist_ok=True)
+        (fake_repo_root / "schemas" / "mission-state.schema.json").write_text("{}", encoding="utf-8")
+        (fake_repo_root / "scripts" / "runtime").mkdir(parents=True, exist_ok=True)
+        (fake_repo_root / "scripts" / "runtime" / "invoke_provider_prompt.py").write_text("print('ok')\n", encoding="utf-8")
+        (fake_repo_root / "AGENTS.md").write_text("runtime rules\n", encoding="utf-8")
+        runtime_cache_root = test_root / "runtime_cache"
+
+        with patch("deeploop.mission.mission_management._is_editable_install", return_value=True):
+            with patch("deeploop.mission.mission_management.REPO_ROOT", fake_repo_root):
+                with patch("deeploop.mission.mission_management._RUNTIME_CACHE_ROOT", runtime_cache_root):
+                    cache_src = _snapshot_src_for_mission("demo-cache", "2026-04-26T18:00:00.123456+00:00")
+
+        self.assertIsNotNone(cache_src)
+        cache_root = cache_src.parent
+        self.assertTrue((cache_src / "deeploop" / "__init__.py").exists())
+        self.assertEqual(
+            (cache_root / "configs" / "autonomy" / "mission-outer-loop.yaml").read_text(encoding="utf-8"),
+            "mode: test\n",
+        )
+        self.assertEqual((cache_root / "schemas" / "mission-state.schema.json").read_text(encoding="utf-8"), "{}")
+        self.assertEqual(
+            (cache_root / "scripts" / "runtime" / "invoke_provider_prompt.py").read_text(encoding="utf-8"),
+            "print('ok')\n",
+        )
+        self.assertEqual((cache_root / "AGENTS.md").read_text(encoding="utf-8"), "runtime rules\n")
+
     def test_status_logs_and_decisions_surface_operator_views(self) -> None:
         test_root = _fresh_test_root("status_logs_decisions")
         mission_root = test_root / "mission"
