@@ -32,7 +32,7 @@ def result_contract_markdown(result_json_path: Path) -> list[str]:
     ]
 
 
-def _contract_field(mission_state: dict[str, Any], field: str) -> Any:
+def _resolve_contract_field_value(mission_state: dict[str, Any], field: str) -> Any:
     if field in mission_state:
         return mission_state[field]
     project_contract = mission_state.get("project_contract")
@@ -77,7 +77,7 @@ def _contract_value_lines(value: Any, *, indent: int = 0) -> list[str]:
 
 
 def mission_contract_markdown(mission_state: dict[str, Any]) -> list[str]:
-    acceptance_criteria = _contract_field(mission_state, "acceptance_criteria")
+    acceptance_criteria = _resolve_contract_field_value(mission_state, "acceptance_criteria")
     lines: list[str] = []
     if acceptance_criteria is not None:
         lines.extend(
@@ -91,9 +91,9 @@ def mission_contract_markdown(mission_state: dict[str, Any]) -> list[str]:
             ]
         )
     other_requirements = {
-        field: _contract_field(mission_state, field)
+        field: _resolve_contract_field_value(mission_state, field)
         for field in CONTRACT_OPERATIONAL_FIELDS
-        if field != "acceptance_criteria" and _contract_field(mission_state, field) is not None
+        if field != "acceptance_criteria" and _resolve_contract_field_value(mission_state, field) is not None
     }
     if other_requirements:
         lines.extend(["## Mission contract requirements", ""])

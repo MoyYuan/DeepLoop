@@ -367,7 +367,7 @@ def _data_artifact_paths(data_artifacts: list) -> list[str]:
     return paths
 
 
-def _mission_contract_requirements(mission_cfg: dict, project_contract: dict[str, object]) -> dict[str, object]:
+def _extract_mission_contract_requirements(mission_cfg: dict, project_contract: dict[str, object]) -> dict[str, object]:
     contract_requirements = (
         project_contract.get("contract_requirements")
         if isinstance(project_contract.get("contract_requirements"), dict)
@@ -391,7 +391,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     project_contract = discover_project_contract(target_repo)
     mission_artifacts = _merge_artifacts(config.get("artifacts"), project_contract, target_repo=target_repo)
     data_artifact_paths = _data_artifact_paths(mission_artifacts["data"])
-    mission_contract_requirements = _mission_contract_requirements(mission_cfg, project_contract)
+    mission_contract_requirements = _extract_mission_contract_requirements(mission_cfg, project_contract)
     handoff_artifacts = (
         project_contract_input_artifacts(project_contract)
         + mission_artifacts["docs"]

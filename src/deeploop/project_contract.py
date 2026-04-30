@@ -106,7 +106,7 @@ def _dedupe_strings(values: list[str]) -> list[str]:
     return ordered
 
 
-def _contract_field_value(payload: dict[str, Any], project: dict[str, Any], field: str) -> Any:
+def _extract_contract_requirement_value(payload: dict[str, Any], project: dict[str, Any], field: str) -> Any:
     if field in payload:
         return payload[field]
     if field in project:
@@ -120,7 +120,7 @@ def _contract_field_value(payload: dict[str, Any], project: dict[str, Any], fiel
 def _plain_contract_requirements(payload: dict[str, Any], project: dict[str, Any]) -> dict[str, Any]:
     requirements: dict[str, Any] = {}
     for field in CONTRACT_OPERATIONAL_FIELDS:
-        value = _contract_field_value(payload, project, field)
+        value = _extract_contract_requirement_value(payload, project, field)
         if value is not None:
             requirements[field] = value
     return requirements
