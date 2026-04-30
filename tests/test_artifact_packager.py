@@ -706,7 +706,7 @@ class ArtifactPackagerTests(unittest.TestCase):
             submission_manifest = json.loads((output_root / "submission_manifest.json").read_text(encoding="utf-8"))
             self.assertTrue(submission_manifest["checks"]["all_package_artifacts_copied"])
             readme = (output_root / "README.md").read_text(encoding="utf-8")
-            self.assertIn("submission repo'", readme)
+            self.assertIn(f"--output '{output_root}'", readme)
             self.assertFalse((output_root / "runs").exists())
             self.assertFalse((output_root / "scratch").exists())
 if __name__ == "__main__":
