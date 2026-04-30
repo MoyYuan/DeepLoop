@@ -101,6 +101,38 @@ python scripts/mission/package_mission.py --mission-state ~/workspaces/runs/deep
 `meta_eval.py` also invokes the packager so the standard mission meta-eval path
 materializes the package automatically.
 
+For the final human-facing handoff, export the completed mission package into a
+clean submission repository layout:
+
+```bash
+deeploop export \
+  --mission-state ~/workspaces/runs/deeploop/missions/translation-full-mission/mission_state.json \
+  --output /path/to/submission-repo \
+  --format github-repo
+```
+
+The export reuses the canonical package manifest, then writes a README-first
+tree with:
+
+- `README.md` — mission objective, method/result/caveat summary, artifact index,
+  and exact export command
+- `project-input/` — copied inputs from the researcher-owned target project
+- `methods/` — mission summaries and method-facing handoff notes
+- `results/` — generated metrics, predictions, logs, stability notes, and other
+  science outputs
+- `manifests/` — experiment and run manifests
+- `docs/` — findings, caveats, and review reports
+- `bookkeeping/deeploop/` — DeepLoop package manifests, ledgers, runtime
+  metadata, and release-review records kept separate from science outputs
+- `submission_manifest.json` and `provenance.json` — machine-readable export
+  index and provenance
+- `caveats-and-limitations.md` — conservative blockers and limitations gathered
+  from package claim/release posture
+
+The output folder must be outside the DeepLoop source clone. If the destination
+already contains files other than `.git`, pass `--force` only when it is safe to
+replace that folder's contents.
+
 To re-run release review or attempt promotion after recording approvals:
 
 ```bash
