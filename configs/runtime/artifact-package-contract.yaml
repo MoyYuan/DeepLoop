@@ -1,6 +1,6 @@
 version: 1
 policy_name: deeploop-mission-artifact-package
-output_root: ~/workspaces/runs/deeploop/packages
+output_root: workspace://runs/deeploop/packages
 
 description: |
   Deterministic mission artifact packaging contract. The packager copies a
@@ -59,12 +59,12 @@ artifact_map:
     - "*_redteam_report.md"
   global_report_roots:
     self_optimization:
-      root: ~/workspaces/runs/deeploop/self_optimization
+      root: workspace://runs/deeploop/self_optimization
       patterns:
         - "**/self_optimization_report_*.json"
         - "**/optimization_recommendations_*.yaml"
     fresh_context_redteam:
-      root: ~/workspaces/runs/deeploop/fresh_context_redteam
+      root: workspace://runs/deeploop/fresh_context_redteam
       patterns:
         - "*_redteam_report.json"
         - "*_redteam_report.md"

@@ -21,7 +21,9 @@ from deeploop.research.novelty_refresh import (
 )
 from deeploop.core.paths import MISSIONS_DIR
 
-TRANSLATION_REPO = Path.home() / "workspaces" / "repos" / "translation-pilot"
+from deeploop.core.paths import WORKSPACE_ROOT
+
+TRANSLATION_REPO = WORKSPACE_ROOT / "repos" / "translation-pilot"
 MISSION_CONFIG_PATH = REPO_ROOT / "configs" / "autonomy" / "novelty-refresh.yaml"
 
 

@@ -1,13 +1,13 @@
 version: 1
 rule_ingestion_order:
   - ~/.copilot/copilot-instructions.md
-  - ~/workspaces/AGENTS.md
-  - ~/workspaces/repos/deeploop/AGENTS.md
+  - workspace://AGENTS.md
+  - repo://AGENTS.md
   - target repo AGENTS.md
   - target repo .github/copilot-instructions.md
 sandbox_defaults:
   per_agent_isolation: true
-  sandbox_root: ~/workspaces/scratch/deeploop/sandboxes
+  sandbox_root: workspace://scratch/deeploop/sandboxes
   artifact_mode: explicit_paths_only
   permission_mode: minimum-necessary
 related_runtime_contracts:

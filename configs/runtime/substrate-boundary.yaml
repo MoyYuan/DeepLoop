@@ -30,9 +30,9 @@ deeploop_scientific_freedom:
   - may propose new training or adaptation plans
   - must record those choices as DeepLoop-owned design/runtime artifacts
 generated_artifact_roots:
-  - ~/workspaces/runs/deeploop/
-  - ~/workspaces/runs/<substrate>/
-  - ~/workspaces/scratch/<project>/
+  - workspace://runs/deeploop/
+  - workspace://runs/<substrate>/
+  - workspace://scratch/<project>/
 allowed_surface_classes:
   - substrate-fact
   - generic-behavior

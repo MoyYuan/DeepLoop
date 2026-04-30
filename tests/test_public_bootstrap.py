@@ -17,6 +17,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from deeploop.core.paths import MISSIONS_DIR
 from deeploop.mission.project_bootstrap import build_mission_config_from_project_root
 from deeploop.mission.project_runner import run_project_until_complete
 
@@ -36,7 +37,7 @@ class PublicBootstrapTests(unittest.TestCase):
         project_root = self._copy_example(test_root)
 
         expected_config = build_mission_config_from_project_root(project_root)
-        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / expected_config["mission"]["id"]
+        mission_root = MISSIONS_DIR / expected_config["mission"]["id"]
         shutil.rmtree(mission_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
 

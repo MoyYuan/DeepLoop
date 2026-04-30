@@ -25,6 +25,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from deeploop.core.paths import WORKSPACE_ROOT
 from deeploop.research.statistical_rigor import (
     DEFAULT_CONTRACT_PATH,
     _build_proportion_summary,
@@ -414,7 +415,7 @@ class TestTranslationCaseStudy(unittest.TestCase):
 
     def test_translation_baseline_structure(self) -> None:
         """Verify translation baseline paths exist if available."""
-        baseline_root = Path.home() / "workspaces" / "runs" / "translation-pilot"
+        baseline_root = WORKSPACE_ROOT / "runs" / "translation-pilot"
         if not baseline_root.exists():
             self.skipTest("Translation baseline not available")
         

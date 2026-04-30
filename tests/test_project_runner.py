@@ -14,6 +14,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from deeploop.core.paths import MISSIONS_DIR
 from deeploop.mission.project_runner import _find_explicit_mission_configs, initialize_mission_from_project_root, run_project_until_complete
 
 
@@ -24,7 +25,7 @@ class ProjectRunnerTests(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
         project_root = test_root / "translation-pilot"
         project_root.mkdir(parents=True, exist_ok=True)
-        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "resume-existing-mission"
+        mission_root = MISSIONS_DIR / "resume-existing-mission"
         shutil.rmtree(mission_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
         mission_root.mkdir(parents=True, exist_ok=True)
@@ -425,7 +426,7 @@ class ProjectRunnerTests(unittest.TestCase):
         missions_dir.mkdir(parents=True, exist_ok=True)
         explicit_config_path = missions_dir / "custom-mission.yaml"
         explicit_config_path.write_text("mission:\n  id: custom-explicit-mission\n", encoding="utf-8")
-        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "custom-explicit-mission"
+        mission_root = MISSIONS_DIR / "custom-explicit-mission"
         shutil.rmtree(mission_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
 
@@ -452,7 +453,7 @@ class ProjectRunnerTests(unittest.TestCase):
         shutil.rmtree(test_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
         test_root.mkdir(parents=True, exist_ok=True)
-        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "bootstrap-only-mission"
+        mission_root = MISSIONS_DIR / "bootstrap-only-mission"
         shutil.rmtree(mission_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
         mission_root.mkdir(parents=True, exist_ok=True)
@@ -484,7 +485,7 @@ class ProjectRunnerTests(unittest.TestCase):
         missions_dir = test_root / ".deeploop" / "missions"
         missions_dir.mkdir(parents=True, exist_ok=True)
         (missions_dir / "my-mission.yaml").write_text("mission:\n  id: notice-mission\n", encoding="utf-8")
-        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "notice-mission"
+        mission_root = MISSIONS_DIR / "notice-mission"
         shutil.rmtree(mission_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
 
@@ -516,7 +517,7 @@ class ProjectRunnerTests(unittest.TestCase):
         missions_dir = test_root / ".deeploop" / "missions"
         missions_dir.mkdir(parents=True, exist_ok=True)
         (missions_dir / "explicit.yaml").write_text("mission:\n  id: explicit-id\n", encoding="utf-8")
-        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / "explicit-id"
+        mission_root = MISSIONS_DIR / "explicit-id"
         shutil.rmtree(mission_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
 

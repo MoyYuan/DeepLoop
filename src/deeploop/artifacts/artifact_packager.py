@@ -18,7 +18,7 @@ from deeploop.core.structured_io import (
     load_jsonl_objects as _load_jsonl,
     load_yaml_mapping as _load_yaml,
 )
-from deeploop.core.paths import REPO_ROOT, RUNS_DIR, WORKSPACE_ROOT
+from deeploop.core.paths import REPO_ROOT, RUNS_DIR, WORKSPACE_ROOT, resolve_workspace_path
 
 PACKAGE_CONTRACT_PATH = REPO_ROOT / "configs" / "runtime" / "artifact-package-contract.yaml"
 PACKAGE_SCHEMA_PATH = REPO_ROOT / "schemas" / "mission-artifact-package.schema.json"
@@ -68,7 +68,7 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
 
 
 def _safe_resolve(path: str | Path) -> Path:
-    return Path(path).expanduser().resolve()
+    return resolve_workspace_path(path)
 
 
 def _infer_repo_root_from_contract_path(contract_path: Path) -> Path | None:
@@ -81,6 +81,8 @@ def _infer_repo_root_from_contract_path(contract_path: Path) -> Path | None:
 def _resolve_contract_declared_path(raw_path: str | Path, *, contract_path: Path) -> Path:
     raw_text = str(raw_path)
     normalized_text = raw_text.replace("\\", "/")
+    if normalized_text.startswith("workspace://"):
+        return resolve_workspace_path(normalized_text)
     candidate = Path(normalized_text).expanduser()
     if candidate.is_absolute() or raw_text.startswith("~"):
         return candidate.resolve()

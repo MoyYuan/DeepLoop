@@ -90,7 +90,7 @@ substrates:
   translation-pilot:
     project: translation-pilot
     run_roots:
-      - ~/workspaces/runs/translation-pilot
+      - workspace://runs/translation-pilot
     preferred_challenge_artifacts:
       - baseline_findings
       - mechanistic_hypothesis

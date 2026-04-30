@@ -159,7 +159,7 @@ substrates:
     project: translation-pilot
     mission_id: translation-full
     run_roots:
-      - ~/workspaces/runs/translation-pilot
+      - workspace://runs/translation-pilot
     branch_identification:
       pattern: model_family + model_identifier
       examples:

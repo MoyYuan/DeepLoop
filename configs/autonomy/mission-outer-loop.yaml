@@ -50,8 +50,8 @@ out_of_scope_by_default:
 
 runtime_ownership:
   mutable_roots:
-    - ~/workspaces/runs/deeploop
-    - ~/workspaces/scratch/deeploop
+    - workspace://runs/deeploop
+    - workspace://scratch/deeploop
   protected_surfaces:
     - substrate benchmark definitions
     - substrate evaluation metrics

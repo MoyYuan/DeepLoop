@@ -14,7 +14,7 @@ evaluation_triggers:
 
 mission_contexts:
   - id: translation-full-mission
-    target_repo: ~/workspaces/repos/translation-pilot
+    target_repo: workspace://repos/translation-pilot
     prior_art_source: docs/research/novelty-positioning.md
     literature_artifacts:
       - docs/research/novelty-positioning.md

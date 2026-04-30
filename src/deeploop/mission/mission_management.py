@@ -14,6 +14,9 @@ from typing import Any, Sequence
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import LAUNCHES_DIR
 from deeploop.core.paths import REPO_ROOT
+from deeploop.core.paths import WORKSPACE_ROOT
+from deeploop.core.paths import WORKSPACE_ROOT_ENV_VAR
+from deeploop.core.paths import workspace_root_diagnostics
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object
 from deeploop.mission.mission_monitor import build_mission_snapshot, render_mission_snapshot
 from deeploop.mission.mission_state import load_mission_state
@@ -203,6 +206,9 @@ def _start_launch(
         "cwd": str(REPO_ROOT),
         "command": command,
         "runtime_cache_src": str(cache_src) if cache_src is not None else None,
+        "workspace_root": str(WORKSPACE_ROOT),
+        "workspace_root_env_var": WORKSPACE_ROOT_ENV_VAR,
+        "workspace_root_diagnostics": workspace_root_diagnostics(mission_state.get("target_repo")),
         "status_command": _management_command("status", mission_state_path),
         "logs_command": _management_command("logs", mission_state_path),
         "decisions_command": _management_command("decisions", mission_state_path),
@@ -228,9 +234,14 @@ def _render_launch_summary(payload: dict[str, Any], *, launch_reason: str) -> st
         f"- max_iterations: `{payload.get('max_iterations')}`",
         f"- operator_posture: {_mode_summary(mode)}",
         f"- pid: `{payload.get('pid')}`",
+        f"- workspace_root: `{payload.get('workspace_root')}` (override with `{payload.get('workspace_root_env_var')}`)",
         f"- log_path: `{payload.get('log_path')}`",
         f"- launch_metadata_path: `{payload.get('launch_metadata_path')}`",
     ]
+    diagnostics = payload.get("workspace_root_diagnostics")
+    if isinstance(diagnostics, list) and diagnostics:
+        lines.append("- workspace_root_warnings:")
+        lines.extend(f"  - {diagnostic}" for diagnostic in diagnostics)
     resume_context = payload.get("resume_context")
     if launch_reason == "resume" and isinstance(resume_context, dict):
         lines.extend(["", "## Resume handoff", ""])
@@ -1288,7 +1299,10 @@ def build_parser() -> argparse.ArgumentParser:
         command = subparsers.add_parser(
             name,
             help=help_text,
-            description=help_text,
+            description=(
+                f"{help_text} The resolved workspace root is printed at launch; set "
+                f"{WORKSPACE_ROOT_ENV_VAR} before init/start to choose artifact placement."
+            ),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
         command.add_argument("--mission-state", required=True, help="Path to mission_state.json.")

@@ -6,7 +6,7 @@ placement_order:
       - policy is stable and safety-relevant
     locations:
       - ~/.copilot/copilot-instructions.md
-      - ~/workspaces/AGENTS.md
+      - workspace://AGENTS.md
   - layer: deeploop-shared
     use_when:
       - policy is shared across research substrates

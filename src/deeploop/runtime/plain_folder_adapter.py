@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 from typing import Iterable
 
+from deeploop.core.paths import RUNS_DIR
+
 
 class PlainFolderStageAdapter:
     name = "deeploop.runtime.plain_folder_adapter"
     substrate_name = "plain-folder"
     substrate_repo_root = Path(__file__).resolve().parents[3]
-    runs_root = Path.home() / "workspaces" / "runs" / "deeploop" / "plain-folder-adapter"
+    runs_root = RUNS_DIR / "plain-folder-adapter"
     prompt_template_id = "plain_folder_prompt_v1"
     parser_id = "plain_folder_parser_v1"
 

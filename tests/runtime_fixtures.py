@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from deeploop.core.paths import RUNS_DIR
 from typing import Iterable
 
 
@@ -9,7 +11,7 @@ class DemoRuntimeAdapter:
     name = "runtime_fixtures.demo_runtime_adapter"
     substrate_name = "demo-substrate"
     substrate_repo_root = Path(__file__).resolve().parents[1]
-    runs_root = Path.home() / "workspaces" / "runs" / "deeploop" / "runtime-fixtures"
+    runs_root = RUNS_DIR / "runtime-fixtures"
     prompt_template_id = "demo_prompt_v1"
     parser_id = "demo_parser_v1"
 

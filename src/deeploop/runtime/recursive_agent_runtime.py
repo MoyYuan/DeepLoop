@@ -11,6 +11,7 @@ import yaml
 
 from deeploop.autonomy.mission_contract_snapshot import resolve_phase_contract_for_state
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
+from deeploop.core.paths import WORKSPACE_URI_PREFIX, resolve_workspace_path
 from deeploop.core.paths import REPO_ROOT as DEEPLOOP_REPO_ROOT
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object, write_markdown
 from deeploop.mission.mission_state import load_mission_state, write_mission_state
@@ -1120,7 +1121,10 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             "action_phase": action.get("phase") or "",
             "decision_id": action.get("decision_id") or "",
         }
-        base_command = [str(token).format(**context) for token in agent_cfg["command"]]
+        base_command = [
+            str(resolve_workspace_path(token_text)) if token_text.startswith(WORKSPACE_URI_PREFIX) else token_text
+            for token_text in (str(token).format(**context) for token in agent_cfg["command"])
+        ]
         full_command = _build_command(base_command, _resolved_env_name(agent_cfg.get("env_name")))
 
         environment = dict(os.environ)
@@ -1150,7 +1154,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         try:
             completed = subprocess.run(
                 full_command,
-                cwd=Path(str(agent_cfg.get("cwd", mission_state["target_repo"]))).expanduser(),
+                cwd=resolve_workspace_path(str(agent_cfg.get("cwd", mission_state["target_repo"]))),
                 input=prompt_text if bool(agent_cfg.get("stdin_prompt", False)) else None,
                 text=True,
                 capture_output=True,

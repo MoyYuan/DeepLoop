@@ -10,6 +10,7 @@ from typing import Any, Mapping
 import yaml
 
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
+from deeploop.core.paths import resolve_workspace_path
 from deeploop.core.paths import REPO_ROOT as DEEPLOOP_REPO_ROOT
 from deeploop.research.sanity_gates import evaluate_research_sanity, extract_proposal_config_path
 from deeploop.research.self_correction import assess_manifest_for_self_correction
@@ -55,6 +56,13 @@ def _normalize_tokens(raw: Any) -> list[str]:
     if isinstance(raw, (str, Path)):
         return [str(raw)]
     return [str(item) for item in raw]
+
+
+def _resolve_workspace_tokens(raw: Any) -> list[str]:
+    return [
+        str(resolve_workspace_path(token)) if token.startswith("workspace://") else token
+        for token in _normalize_tokens(raw)
+    ]
 
 
 def _policy_entry(policy: dict[str, Any], kind: str) -> dict[str, Any]:
@@ -307,7 +315,7 @@ def _reroute_command(entry: dict[str, Any], *, proposal_config_path: Path | None
     explicit_command = repair_cfg.get("reroute_command")
     if explicit_command:
         env_name = _resolved_env_name(repair_cfg.get("reroute_env_name", entry.get("env_name")))
-        return _normalize_tokens(explicit_command), env_name
+        return _resolve_workspace_tokens(explicit_command), env_name
     stage_id = entry.get("stage_id")
     adapter = entry.get("adapter")
     if not stage_id or not adapter or proposal_config_path is None:
@@ -325,21 +333,21 @@ def _reroute_command(entry: dict[str, Any], *, proposal_config_path: Path | None
         str(adapter),
     ]
     for raw_path in _normalize_tokens(entry.get("pythonpath")):
-        command.extend(["--pythonpath", str(Path(raw_path).expanduser())])
+        command.extend(["--pythonpath", str(resolve_workspace_path(raw_path))])
     return command, reroute_env_name
 
 
 def _resume_command(entry: dict[str, Any], mode: str) -> tuple[list[str], str | None]:
     repair_cfg = entry.get("repair", {}) if isinstance(entry.get("repair"), dict) else {}
     if mode == "resume" and repair_cfg.get("resume_command"):
-        command = _normalize_tokens(repair_cfg.get("resume_command"))
+        command = _resolve_workspace_tokens(repair_cfg.get("resume_command"))
         env_name = _resolved_env_name(repair_cfg.get("resume_env_name", entry.get("env_name")))
         return command, env_name
     if mode == "retry" and repair_cfg.get("retry_command"):
-        command = _normalize_tokens(repair_cfg.get("retry_command"))
+        command = _resolve_workspace_tokens(repair_cfg.get("retry_command"))
         env_name = _resolved_env_name(repair_cfg.get("retry_env_name", entry.get("env_name")))
         return command, env_name
-    return _normalize_tokens(entry.get("command")), _resolved_env_name(entry.get("env_name"))
+    return _resolve_workspace_tokens(entry.get("command")), _resolved_env_name(entry.get("env_name"))
 
 
 def _select_recovery(
@@ -511,10 +519,10 @@ def _run_entry(
     entry_id = str(entry["id"])
     entry_root = queue_root / entry_id
     entry_root.mkdir(parents=True, exist_ok=True)
-    expected_manifest = Path(entry["expected_manifest"]).expanduser()
-    repo_root = Path(entry["repo"]).expanduser()
+    expected_manifest = resolve_workspace_path(entry["expected_manifest"])
+    repo_root = resolve_workspace_path(entry["repo"])
     proposal_config_path = (
-        Path(entry["proposal_config"]).expanduser()
+        resolve_workspace_path(entry["proposal_config"])
         if isinstance(entry.get("proposal_config"), str)
         else extract_proposal_config_path(entry.get("command", []), repo_root=repo_root)
     )
@@ -602,7 +610,7 @@ def _run_entry(
         else:
             limits = _recovery_limits(policy, entry)
             current_mode = "primary"
-            current_command = _normalize_tokens(entry.get("command"))
+            current_command = _resolve_workspace_tokens(entry.get("command"))
             current_env_name = _resolved_env_name(entry.get("env_name"))
             final_failure: dict[str, Any] | None = None
             final_assessment: dict[str, Any] | None = None
@@ -706,9 +714,9 @@ def _run_entry(
 
 def run_self_healing_queue(config_path: Path, *, policy_path: Path | None = None) -> dict[str, Any]:
     config = _load_yaml(Path(config_path).resolve())
-    resolved_policy_path = Path(config.get("runtime_policy") or policy_path or DEFAULT_POLICY_PATH).expanduser().resolve()
+    resolved_policy_path = resolve_workspace_path(config.get("runtime_policy") or policy_path or DEFAULT_POLICY_PATH)
     policy = _load_yaml(resolved_policy_path)
-    mission_state_path = Path(config["mission_state"]).expanduser()
+    mission_state_path = resolve_workspace_path(config["mission_state"])
     mission_state = _load_json(mission_state_path)
     mission_root = mission_state_path.parent
     ledger_path = mission_root / "ledger.jsonl"
