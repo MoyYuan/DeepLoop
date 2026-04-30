@@ -2,7 +2,7 @@ version: 1
 rule_ingestion_order:
   - ~/.copilot/copilot-instructions.md
   - workspace://AGENTS.md
-  - repo://AGENTS.md
+  - workspace://repos/deeploop/AGENTS.md
   - target repo AGENTS.md
   - target repo .github/copilot-instructions.md
 sandbox_defaults:
