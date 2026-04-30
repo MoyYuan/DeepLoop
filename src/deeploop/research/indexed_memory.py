@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from deeploop.core.structured_io import write_json_object
+from deeploop.core.structured_io import json_safe_value, write_json_object
 from deeploop.core.ledger import append_jsonl, now_utc
 from deeploop.core.paths import REPO_ROOT, RESEARCH_MEMORY_DIR
 
@@ -65,13 +65,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _jsonify(value: Any) -> Any:
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): _jsonify(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_jsonify(item) for item in value]
-    return value
+    return json_safe_value(value, stringify_keys=True)
 
 
 def _normalize_strings(raw: Any) -> list[str]:

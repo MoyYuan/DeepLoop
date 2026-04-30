@@ -151,6 +151,30 @@ class IndexedResearchMemoryTests(unittest.TestCase):
         persisted = json.loads(index_path.read_text(encoding="utf-8"))
         self.assertEqual([entry["entity_id"] for entry in persisted["active_entries"]], ["new"])
 
+    def test_rejects_recursive_payload_before_json_serialization(self) -> None:
+        test_root = _fresh_test_root("rejects_recursive_payload")
+        contract = build_research_memory_contract(memory_root=test_root / "research-memory")
+        payload: dict[str, object] = {"summary": "Recursive payload should fail normally."}
+        payload["self"] = payload
+
+        with self.assertRaisesRegex(ValueError, "circular reference"):
+            record_research_memory_entry(
+                {
+                    "entity_type": "mission",
+                    "entity_id": "recursive-mission",
+                    "mission_id": "recursive-mission",
+                    "status": "running",
+                    "summary": "Recursive payload should fail normally.",
+                    "payload": payload,
+                    "provenance": {
+                        "source_kind": "mission-memory",
+                        "mission_id": "recursive-mission",
+                        "recorded_at": "2026-01-01T00:00:00+00:00",
+                    },
+                },
+                contract=contract,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
