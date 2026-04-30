@@ -688,7 +688,7 @@ class ArtifactPackagerTests(unittest.TestCase):
             }
             (run_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
-            output_root = test_root / "submission-repo"
+            output_root = test_root / "submission repo"
             result = export_submission_repository(mission_state_path, output_root, force=True)
 
             self.assertTrue(result["readme_path"].exists())
@@ -705,6 +705,8 @@ class ArtifactPackagerTests(unittest.TestCase):
             self.assertTrue((output_root / "bookkeeping" / "deeploop" / "mission_artifact_package.json").exists())
             submission_manifest = json.loads((output_root / "submission_manifest.json").read_text(encoding="utf-8"))
             self.assertTrue(submission_manifest["checks"]["all_package_artifacts_copied"])
+            readme = (output_root / "README.md").read_text(encoding="utf-8")
+            self.assertIn("submission repo'", readme)
             self.assertFalse((output_root / "runs").exists())
             self.assertFalse((output_root / "scratch").exists())
 if __name__ == "__main__":

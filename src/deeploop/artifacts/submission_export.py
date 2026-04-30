@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import shlex
 import shutil
 from pathlib import Path
 from typing import Any
@@ -126,6 +127,32 @@ def _copy_package_bookkeeping(package_result: dict[str, Any], *, output_root: Pa
     return copied
 
 
+def _reproduce_command(
+    *,
+    mission_state_path: Path,
+    output_root: Path,
+    export_format: str,
+    force: bool,
+) -> list[str]:
+    command = [
+        "deeploop",
+        "export",
+        "--mission-state",
+        str(mission_state_path),
+        "--output",
+        str(output_root),
+        "--format",
+        export_format,
+    ]
+    if force:
+        command.append("--force")
+    return command
+
+
+def _shell_command(command: list[str]) -> str:
+    return " ".join(shlex.quote(part) for part in command)
+
+
 def _build_readme_lines(
     *,
     mission: dict[str, Any],
@@ -133,6 +160,7 @@ def _build_readme_lines(
     copied_artifacts: list[dict[str, Any]],
     output_root: Path,
     mission_state_path: Path,
+    export_format: str,
     force: bool,
 ) -> list[str]:
     run_bundles = package.get("run_bundles", [])
@@ -142,9 +170,12 @@ def _build_readme_lines(
         *claim_summary.get("release_candidate_blockers", []),
     ]
     artifact_lines = [f"- `{item['export_path']}` — {item.get('kind', 'artifact')}" for item in copied_artifacts]
-    reproduce_command = f"deeploop export --mission-state {mission_state_path} --output {output_root} --format github-repo"
-    if force:
-        reproduce_command = f"{reproduce_command} --force"
+    reproduce_command = _reproduce_command(
+        mission_state_path=mission_state_path,
+        output_root=output_root,
+        export_format=export_format,
+        force=force,
+    )
     return [
         "# DeepLoop submission export",
         "",
@@ -173,7 +204,7 @@ def _build_readme_lines(
         "## Reproduce this export",
         "",
         "```bash",
-        reproduce_command,
+        _shell_command(reproduce_command),
         "```",
         "",
     ]
@@ -220,18 +251,12 @@ def export_submission_repository(
     ]
     bookkeeping = _copy_package_bookkeeping(package_result, output_root=output_root)
 
-    reproduce_command = [
-        "deeploop",
-        "export",
-        "--mission-state",
-        str(mission_state_path),
-        "--output",
-        str(output_root),
-        "--format",
-        export_format,
-    ]
-    if force:
-        reproduce_command.append("--force")
+    reproduce_command = _reproduce_command(
+        mission_state_path=mission_state_path,
+        output_root=output_root,
+        export_format=export_format,
+        force=force,
+    )
     provenance = {
         "schema_version": 1,
         "mission_id": package["mission_id"],
@@ -270,6 +295,7 @@ def export_submission_repository(
             copied_artifacts=copied_artifacts,
             output_root=output_root,
             mission_state_path=mission_state_path,
+            export_format=export_format,
             force=force,
         ),
     )
