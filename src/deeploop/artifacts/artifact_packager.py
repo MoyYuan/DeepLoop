@@ -237,6 +237,10 @@ def _coverage_category_key(value: Any) -> str:
     return text or "Uncategorized"
 
 
+def _coverage_method_name(method: dict[str, Any]) -> str:
+    return str(method.get("name") or method.get("method") or "unnamed method")
+
+
 def _is_baseline_category(category: str) -> bool:
     normalized = category.strip().lower()
     return normalized in BASELINE_CATEGORIES or normalized.endswith("baselines")
@@ -252,7 +256,7 @@ def _build_experiment_coverage(
     if not isinstance(raw_coverage, dict):
         raw_coverage = {}
     methods = raw_coverage.get("methods")
-    method_entries = [dict(method) for method in methods if isinstance(method, dict)] if isinstance(methods, list) else []
+    method_entries = [method for method in methods if isinstance(method, dict)] if isinstance(methods, list) else []
     rows_by_category: dict[str, dict[str, Any]] = {}
 
     def row_for(category: str) -> dict[str, Any]:
@@ -302,7 +306,7 @@ def _build_experiment_coverage(
             non_evaluated_methods.append(
                 {
                     "category": category,
-                    "method": str(method.get("name") or method.get("method") or "unnamed method"),
+                    "method": _coverage_method_name(method),
                     "status": status,
                     "reason": (
                         f"invalid status `{raw_status}` recorded"
@@ -363,10 +367,8 @@ def _build_experiment_coverage(
     requested_total = sum(int(row["requested"]) for row in rows)
     executed_total = sum(int(row["executed"]) for row in rows)
     incomplete_rows = [row for row in rows if row["status"] in {"missing", "partial"}]
-    baseline_only = bool(rows) and all(
-        _is_baseline_category(row["category"]) or int(row["requested"]) == 0
-        for row in rows
-    )
+    requested_rows = [row for row in rows if int(row["requested"]) > 0]
+    baseline_only = bool(requested_rows) and all(_is_baseline_category(row["category"]) for row in requested_rows)
     if (
         requested_total > 0
         and executed_total >= requested_total
