@@ -35,7 +35,7 @@ def _prepare_output_root(output_root: Path, *, force: bool) -> None:
     if output_root.exists():
         existing = [path for path in output_root.iterdir() if path.name != ".git"]
         if existing and not force:
-            raise FileExistsError(f"Submission export output is not empty; pass force=True to replace it: {output_root}")
+            raise FileExistsError(f"Submission export output is not empty; pass --force to replace it: {output_root}")
         for path in existing:
             _remove_path(path)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -133,6 +133,7 @@ def _render_readme(
     copied_artifacts: list[dict[str, Any]],
     output_root: Path,
     mission_state_path: Path,
+    force: bool,
 ) -> list[str]:
     run_bundles = package.get("run_bundles", [])
     claim_summary = package.get("claim_summary", {})
@@ -141,6 +142,9 @@ def _render_readme(
         *claim_summary.get("release_candidate_blockers", []),
     ]
     artifact_lines = [f"- `{item['export_path']}` — {item.get('kind', 'artifact')}" for item in copied_artifacts]
+    reproduce_command = f"deeploop export --mission-state {mission_state_path} --output {output_root} --format github-repo"
+    if force:
+        reproduce_command = f"{reproduce_command} --force"
     return [
         "# DeepLoop submission export",
         "",
@@ -169,7 +173,7 @@ def _render_readme(
         "## Reproduce this export",
         "",
         "```bash",
-        f"deeploop export --mission-state {mission_state_path} --output {output_root} --format github-repo --force",
+        reproduce_command,
         "```",
         "",
     ]
@@ -216,6 +220,18 @@ def export_submission_repository(
     ]
     bookkeeping = _copy_package_bookkeeping(package_result, output_root=output_root)
 
+    reproduce_command = [
+        "deeploop",
+        "export",
+        "--mission-state",
+        str(mission_state_path),
+        "--output",
+        str(output_root),
+        "--format",
+        export_format,
+    ]
+    if force:
+        reproduce_command.append("--force")
     provenance = {
         "schema_version": 1,
         "mission_id": package["mission_id"],
@@ -224,17 +240,7 @@ def export_submission_repository(
         "package_digest": package["package_digest"],
         "export_format": export_format,
         "target_repo": str(target_repo),
-        "reproduce_command": [
-            "deeploop",
-            "export",
-            "--mission-state",
-            str(mission_state_path),
-            "--output",
-            str(output_root),
-            "--format",
-            export_format,
-            "--force",
-        ],
+        "reproduce_command": reproduce_command,
     }
     manifest = {
         "schema_version": 1,
@@ -264,6 +270,7 @@ def export_submission_repository(
             copied_artifacts=copied_artifacts,
             output_root=output_root,
             mission_state_path=mission_state_path,
+            force=force,
         ),
     )
     write_json_object(manifest_path, manifest)
