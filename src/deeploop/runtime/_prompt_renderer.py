@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from deeploop.autonomy.mission_contract_snapshot import resolve_phase_contract_for_state
+from deeploop.project_contract import CONTRACT_OPERATIONAL_FIELDS
 
 
 def result_contract_markdown(result_json_path: Path) -> list[str]:
@@ -29,6 +30,79 @@ def result_contract_markdown(result_json_path: Path) -> list[str]:
         "",
         "If the mission is done, set `status` to `complete`.",
     ]
+
+
+def _contract_field(mission_state: dict[str, Any], field: str) -> Any:
+    if field in mission_state:
+        return mission_state[field]
+    project_contract = mission_state.get("project_contract")
+    if not isinstance(project_contract, dict):
+        return None
+    requirements = project_contract.get("contract_requirements")
+    if isinstance(requirements, dict) and field in requirements:
+        return requirements[field]
+    metadata = project_contract.get("project_metadata")
+    if isinstance(metadata, dict) and field in metadata:
+        return metadata[field]
+    return None
+
+
+def _format_contract_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _contract_value_lines(value: Any, *, indent: int = 0) -> list[str]:
+    prefix = "  " * indent
+    if isinstance(value, dict):
+        lines: list[str] = []
+        for key, child in value.items():
+            if isinstance(child, (dict, list)):
+                lines.append(f"{prefix}- {key}:")
+                lines.extend(_contract_value_lines(child, indent=indent + 1))
+            else:
+                lines.append(f"{prefix}- {key}: {_format_contract_scalar(child)}")
+        return lines
+    if isinstance(value, list):
+        lines = []
+        for item in value:
+            if isinstance(item, (dict, list)):
+                lines.append(f"{prefix}-")
+                lines.extend(_contract_value_lines(item, indent=indent + 1))
+            else:
+                lines.append(f"{prefix}- {_format_contract_scalar(item)}")
+        return lines
+    return [f"{prefix}- {_format_contract_scalar(value)}"]
+
+
+def mission_contract_markdown(mission_state: dict[str, Any]) -> list[str]:
+    acceptance_criteria = _contract_field(mission_state, "acceptance_criteria")
+    lines: list[str] = []
+    if acceptance_criteria is not None:
+        lines.extend(
+            [
+                "## Mission acceptance criteria",
+                "",
+                "Project-contract pass/fail requirements; do not treat these as optional.",
+                "",
+                *_contract_value_lines(acceptance_criteria),
+                "",
+            ]
+        )
+    other_requirements = {
+        field: _contract_field(mission_state, field)
+        for field in CONTRACT_OPERATIONAL_FIELDS
+        if field != "acceptance_criteria" and _contract_field(mission_state, field) is not None
+    }
+    if other_requirements:
+        lines.extend(["## Mission contract requirements", ""])
+        for field, value in other_requirements.items():
+            lines.append(f"### {field}")
+            lines.append("")
+            lines.extend(_contract_value_lines(value))
+            lines.append("")
+    return lines
 
 
 def render_prompt(
@@ -132,6 +206,7 @@ def render_prompt(
             lines.append("Relevant terminal/promotion rules:")
             lines.extend(f"- {item}" for item in phase_rules)
             lines.append("")
+    lines.extend(mission_contract_markdown(mission_state))
     if isinstance(next_actions, dict):
         next_actions_summary = str(next_actions.get("summary") or "").strip()
         if next_actions_summary:

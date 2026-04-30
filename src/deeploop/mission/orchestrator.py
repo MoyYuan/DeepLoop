@@ -24,7 +24,12 @@ from deeploop.mission.mission_memory import sync_mission_memory
 from deeploop.mission.plain_folder_followup import materialize_plain_folder_followups
 from deeploop.mission.mission_state import write_mission_state
 from deeploop.platform.contracts import materialize_platform_expansion_bundle, sync_platform_expansion_bundle
-from deeploop.project_contract import discover_project_contract, normalize_data_artifacts, project_contract_input_artifacts
+from deeploop.project_contract import (
+    CONTRACT_OPERATIONAL_FIELDS,
+    discover_project_contract,
+    normalize_data_artifacts,
+    project_contract_input_artifacts,
+)
 from deeploop.runtime.sandbox import build_sandbox_spec, rule_sources_for_repo
 
 
@@ -362,6 +367,21 @@ def _data_artifact_paths(data_artifacts: list) -> list[str]:
     return paths
 
 
+def _mission_contract_requirements(mission_cfg: dict, project_contract: dict[str, object]) -> dict[str, object]:
+    contract_requirements = (
+        project_contract.get("contract_requirements")
+        if isinstance(project_contract.get("contract_requirements"), dict)
+        else {}
+    )
+    requirements: dict[str, object] = {}
+    for field in CONTRACT_OPERATIONAL_FIELDS:
+        if field in mission_cfg:
+            requirements[field] = mission_cfg[field]
+        elif isinstance(contract_requirements, dict) and field in contract_requirements:
+            requirements[field] = contract_requirements[field]
+    return requirements
+
+
 def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     config = _load_yaml(config_path)
     mission_cfg = config["mission"]
@@ -371,7 +391,13 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     project_contract = discover_project_contract(target_repo)
     mission_artifacts = _merge_artifacts(config.get("artifacts"), project_contract, target_repo=target_repo)
     data_artifact_paths = _data_artifact_paths(mission_artifacts["data"])
-    handoff_artifacts = project_contract_input_artifacts(project_contract) + mission_artifacts["docs"] + mission_artifacts["configs"] + data_artifact_paths
+    mission_contract_requirements = _mission_contract_requirements(mission_cfg, project_contract)
+    handoff_artifacts = (
+        project_contract_input_artifacts(project_contract)
+        + mission_artifacts["docs"]
+        + mission_artifacts["configs"]
+        + data_artifact_paths
+    )
     handoff_artifacts = list(dict.fromkeys(handoff_artifacts))
     mission_root = MISSIONS_DIR / mission_id
 
@@ -458,6 +484,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         "rule_sources": rule_sources_for_repo(target_repo),
         "artifacts": mission_artifacts,
         "project_contract": project_contract,
+        **mission_contract_requirements,
         **({"mission_contract": mission_contract} if mission_contract else {}),
         **({"mission_contract_path": mission_contract_path} if mission_contract_path else {}),
         "contract_snapshot": {
@@ -480,6 +507,11 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         acceptance_criteria = mission_cfg.get("acceptance_criteria")
     if isinstance(acceptance_criteria, dict) and acceptance_criteria:
         state["acceptance_criteria"] = acceptance_criteria
+    contract_coverage = mission_cfg.get("contract_coverage")
+    if not isinstance(contract_coverage, list):
+        contract_coverage = project_contract.get("contract_coverage")
+    if isinstance(contract_coverage, list):
+        state["contract_coverage"] = contract_coverage
     state_path = mission_root / "mission_state.json"
     autopilot_cfg = config.get("autopilot") if isinstance(config.get("autopilot"), dict) else {}
     runtime_profiles: dict[str, dict[str, str]] = {}

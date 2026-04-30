@@ -39,6 +39,8 @@ You can also include:
 - `artifacts.configs` for YAML/JSON/TOML configuration inputs
 - `artifacts.data` for datasets, labels, splits, predictions, and benchmark
   files that should not be treated as configs
+- operational contract fields such as `project.acceptance_criteria`,
+  `artifact_contract`, `budgets`, `data`, and `evaluation_contract`
 
 Dataset entries may be simple paths or metadata records:
 
@@ -63,6 +65,14 @@ DeepLoop preserves the dataset metadata in mission state, surfaces it to
 dataset and execution roles, and keeps these files out of `mission_configs`.
 If a CSV or other non-config file is declared under `artifacts.configs`,
 DeepLoop emits a warning so the contract can be corrected.
+DeepLoop also promotes those known contract fields into the generated mission
+config and recursive-agent prompts. Prompts include a visible `Mission
+acceptance criteria` section so concrete pass/fail requirements, required
+artifacts, budgets, data assumptions, and evaluation requirements stay in
+active runtime context rather than only preserved metadata. Unknown top-level
+fields in `project-facts.yaml` are preserved in the discovered project
+contract and reported as not operationalized so they do not look silently
+enforced.
 
 ## What must stay out of the project folder
 
