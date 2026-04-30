@@ -95,7 +95,7 @@ class PackageStructureTests(unittest.TestCase):
             exported = getattr(importlib.import_module(module_name), attr_name)
             self.assertTrue(callable(exported), target)
 
-    def test_wheel_contains_runtime_assets_for_plain_folder_bootstrap(self) -> None:
+    def test_wheel_contains_required_runtime_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             completed = subprocess.run(
                 [

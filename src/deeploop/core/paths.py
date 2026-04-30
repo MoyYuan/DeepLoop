@@ -11,7 +11,10 @@ def _resolve_repo_root() -> Path:
     if (packaged_assets_root / "configs").is_dir() and (packaged_assets_root / "schemas").is_dir():
         return packaged_assets_root
 
-    return source_root
+    raise RuntimeError(
+        "Unable to resolve DeepLoop runtime assets. Expected either a source checkout "
+        f"at {source_root} or packaged assets at {packaged_assets_root}."
+    )
 
 
 REPO_ROOT = _resolve_repo_root()
