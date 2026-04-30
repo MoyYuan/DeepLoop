@@ -239,7 +239,7 @@ def _coverage_category_key(value: Any) -> str:
 
 def _is_baseline_category(category: str) -> bool:
     normalized = category.strip().lower()
-    return normalized in BASELINE_CATEGORIES or normalized.endswith(" baselines")
+    return normalized in BASELINE_CATEGORIES or normalized.endswith("baselines")
 
 
 def _build_experiment_coverage(
@@ -307,7 +307,11 @@ def _build_experiment_coverage(
                     "reason": (
                         f"invalid status `{raw_status}` recorded"
                         if raw_status not in METHOD_STATUS_VALUES
-                        else str(method.get("reason") or method.get("skip_reason") or "reason not recorded")
+                        else str(
+                            method.get("reason")
+                            or method.get("skip_reason")
+                            or f"no reason provided for {status} status"
+                        )
                     ),
                     "artifact": _coverage_artifact_display(method.get("artifact") or method.get("artifact_path")),
                 }
@@ -378,7 +382,12 @@ def _build_experiment_coverage(
     else:
         classification = "exploratory campaign"
     explicit_classification = str(raw_coverage.get("classification") or "").strip()
-    if explicit_classification:
+    if explicit_classification in {
+        "smoke pass",
+        "baseline pass",
+        "exploratory campaign",
+        "complete research package",
+    }:
         classification = explicit_classification
 
     unexplored_space = [f"{row['category']}: {row['executed']}/{row['requested']} executed" for row in incomplete_rows]
