@@ -115,7 +115,9 @@ class PackageStructureTests(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
-            wheel_path = next(Path(tmpdir).glob("deeploop-*.whl"))
+            wheel_paths = list(Path(tmpdir).glob("deeploop-*.whl"))
+            self.assertEqual(len(wheel_paths), 1, [path.name for path in wheel_paths])
+            wheel_path = wheel_paths[0]
             with ZipFile(wheel_path) as wheel:
                 wheel_files = set(wheel.namelist())
 

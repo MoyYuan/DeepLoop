@@ -12,6 +12,7 @@ class build_py(_build_py):
         self._copy_runtime_assets()
 
     def _copy_runtime_assets(self) -> None:
+        # _build.py lives at src/deeploop/_build.py, so parents[2] is the repo root.
         repo_root = Path(__file__).resolve().parents[2]
         asset_root = Path(self.build_lib) / "deeploop" / "_assets"
         asset_dirs = (
