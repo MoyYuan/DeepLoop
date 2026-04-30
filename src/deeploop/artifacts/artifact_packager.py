@@ -33,6 +33,7 @@ CLAIM_ORDER = {
 }
 METHOD_STATUS_VALUES = {"proposed", "implemented", "evaluated", "failed", "skipped", "blocked"}
 EVALUATED_METHOD_STATUSES = {"evaluated"}
+BASELINE_CATEGORIES = {"baseline benchmarks", "baseline models", "baselines", "evaluated runs", "numeric baselines"}
 DEFAULT_CATEGORIES = (
     "mission_specs",
     "mission_configs",
@@ -236,6 +237,11 @@ def _coverage_category_key(value: Any) -> str:
     return text or "Uncategorized"
 
 
+def _is_baseline_category(category: str) -> bool:
+    normalized = category.strip().lower()
+    return normalized in BASELINE_CATEGORIES or normalized.endswith(" baselines")
+
+
 def _build_experiment_coverage(
     mission_state: dict[str, Any],
     run_bundles: list[dict[str, Any]],
@@ -281,9 +287,10 @@ def _build_experiment_coverage(
     non_evaluated_methods: list[dict[str, str]] = []
     for method in method_entries:
         category = _coverage_category_key(method.get("category"))
-        status = str(method.get("status") or "proposed").strip().lower()
+        raw_status = str(method.get("status") or "proposed").strip().lower()
+        status = raw_status
         if status not in METHOD_STATUS_VALUES:
-            status = "proposed"
+            status = "blocked"
         row = row_for(category)
         row["requested"] += 1
         if status in EVALUATED_METHOD_STATUSES:
@@ -297,14 +304,18 @@ def _build_experiment_coverage(
                     "category": category,
                     "method": str(method.get("name") or method.get("method") or "unnamed method"),
                     "status": status,
-                    "reason": str(method.get("reason") or method.get("skip_reason") or "reason not recorded"),
+                    "reason": (
+                        f"invalid status `{raw_status}` recorded"
+                        if raw_status not in METHOD_STATUS_VALUES
+                        else str(method.get("reason") or method.get("skip_reason") or "reason not recorded")
+                    ),
                     "artifact": _coverage_artifact_display(method.get("artifact") or method.get("artifact_path")),
                 }
             )
 
     if not rows_by_category and run_bundles:
         evaluated = sum(1 for bundle in run_bundles if str(bundle.get("status", "")).lower() == "completed")
-        row = row_for("Numeric baselines")
+        row = row_for("Evaluated runs")
         row["requested"] = evaluated
         row["executed"] = evaluated
         row["artifact"] = "run manifests"
@@ -349,7 +360,7 @@ def _build_experiment_coverage(
     executed_total = sum(int(row["executed"]) for row in rows)
     incomplete_rows = [row for row in rows if row["status"] in {"missing", "partial"}]
     baseline_only = bool(rows) and all(
-        any(token in row["category"].lower() for token in ("baseline", "numeric")) or int(row["requested"]) == 0
+        _is_baseline_category(row["category"]) or int(row["requested"]) == 0
         for row in rows
     )
     if (
