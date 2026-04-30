@@ -24,7 +24,7 @@ class build_py(_build_py):
         for relative_dir in asset_dirs:
             source = repo_root / relative_dir
             if not source.exists():
-                continue
+                raise FileNotFoundError(f"Missing required DeepLoop runtime asset directory: {source}")
             destination = asset_root / relative_dir
             if destination.exists():
                 shutil.rmtree(destination)

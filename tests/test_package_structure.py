@@ -97,24 +97,26 @@ class PackageStructureTests(unittest.TestCase):
 
     def test_wheel_contains_required_runtime_assets(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            completed = subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "pip",
-                    "wheel",
-                    str(REPO_ROOT),
-                    "--no-deps",
-                    "--no-build-isolation",
-                    "--wheel-dir",
-                    tmpdir,
-                ],
-                cwd=REPO_ROOT,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            try:
+                subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "wheel",
+                        str(REPO_ROOT),
+                        "--no-deps",
+                        "--no-build-isolation",
+                        "--wheel-dir",
+                        tmpdir,
+                    ],
+                    cwd=REPO_ROOT,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as exc:
+                self.fail((exc.stdout or "") + (exc.stderr or ""))
             wheel_paths = list(Path(tmpdir).glob("deeploop-*.whl"))
             self.assertEqual(len(wheel_paths), 1, [path.name for path in wheel_paths])
             wheel_path = wheel_paths[0]
