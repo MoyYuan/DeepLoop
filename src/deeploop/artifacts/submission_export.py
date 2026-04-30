@@ -100,7 +100,7 @@ def _copy_export_artifact(
     }
 
 
-def _artifact_with_category(artifact: dict[str, Any], artifact_map: dict[str, list[str]]) -> dict[str, Any]:
+def _enrich_artifact_with_export_category(artifact: dict[str, Any], artifact_map: dict[str, list[str]]) -> dict[str, Any]:
     metadata = dict(artifact.get("metadata", {}))
     artifact_id = str(artifact["artifact_id"])
     for category, artifact_ids in artifact_map.items():
@@ -126,7 +126,7 @@ def _copy_package_bookkeeping(package_result: dict[str, Any], *, output_root: Pa
     return copied
 
 
-def _render_readme(
+def _build_readme_lines(
     *,
     mission: dict[str, Any],
     package: dict[str, Any],
@@ -203,7 +203,7 @@ def export_submission_repository(
 
     artifact_map = package.get("artifact_map", {})
     artifacts = [
-        _artifact_with_category(artifact, artifact_map)
+        _enrich_artifact_with_export_category(artifact, artifact_map)
         for artifact in package.get("artifacts", [])
         if artifact.get("package_path")
     ]
@@ -264,7 +264,7 @@ def export_submission_repository(
     gitignore_path = output_root / ".gitignore"
     write_markdown(
         readme_path,
-        _render_readme(
+        _build_readme_lines(
             mission=mission,
             package=package,
             copied_artifacts=copied_artifacts,

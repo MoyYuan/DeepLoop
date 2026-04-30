@@ -8,6 +8,10 @@ from deeploop.artifacts.submission_export import SUPPORTED_EXPORT_FORMATS, expor
 from deeploop.core.paths import REPO_ROOT
 
 
+def _json_safe_result(result: dict[str, object]) -> dict[str, object]:
+    return {key: str(value) if isinstance(value, Path) else value for key, value in result.items()}
+
+
 def _add_export_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--mission-state", required=True, help="Path to the mission state JSON.")
     parser.add_argument("--output", required=True, help="Destination folder for the self-contained submission repo.")
@@ -31,7 +35,7 @@ def _export_mission(args: argparse.Namespace) -> int:
         else REPO_ROOT / "configs" / "runtime" / "artifact-package-contract.yaml",
         force=bool(getattr(args, "force", False)),
     )
-    print(json.dumps({key: str(value) if isinstance(value, Path) else value for key, value in result.items()}, indent=2))
+    print(json.dumps(_json_safe_result(result), indent=2))
     return 0
 
 
