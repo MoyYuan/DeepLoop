@@ -41,6 +41,7 @@ class ProjectContractTests(unittest.TestCase):
         (repo_root / ".github").mkdir(parents=True, exist_ok=True)
         (repo_root / "docs" / "research").mkdir(parents=True, exist_ok=True)
         (repo_root / "configs" / "runtime").mkdir(parents=True, exist_ok=True)
+        (repo_root / "data").mkdir(parents=True, exist_ok=True)
 
         (repo_root / "AGENTS.md").write_text("# Repo guidance\n", encoding="utf-8")
         (repo_root / ".github" / "copilot-instructions.md").write_text("# Copilot guidance\n", encoding="utf-8")
@@ -48,6 +49,8 @@ class ProjectContractTests(unittest.TestCase):
         project_doc.write_text("# Project brief\n", encoding="utf-8")
         provider_config = repo_root / "configs" / "runtime" / "provider.yaml"
         provider_config.write_text("provider: demo\n", encoding="utf-8")
+        project_data = repo_root / "data" / "train.csv"
+        project_data.write_text("dt,value\n2024-01-01,1\n", encoding="utf-8")
         contract_project = repo_root / ".deeploop" / "project.yaml"
         contract_project.write_text(
             yaml.safe_dump(
@@ -56,6 +59,17 @@ class ProjectContractTests(unittest.TestCase):
                     "artifacts": {
                         "docs": ["docs/research/project-brief.md"],
                         "configs": ["configs/runtime/provider.yaml"],
+                        "data": [
+                            {
+                                "path": "data/train.csv",
+                                "kind": "tabular-timeseries",
+                                "format": "csv",
+                                "role": "primary-dataset",
+                                "read_only": True,
+                                "prompt_safe": "header-and-summary-only",
+                                "split_keys": ["dt"],
+                            }
+                        ],
                     },
                 },
                 sort_keys=False,
@@ -72,6 +86,8 @@ class ProjectContractTests(unittest.TestCase):
         extra_doc.write_text("# Extra doc\n", encoding="utf-8")
         extra_config = repo_root / "configs" / "runtime" / "extra.yaml"
         extra_config.write_text("kind: extra\n", encoding="utf-8")
+        extra_data = repo_root / "data" / "holdout.csv"
+        extra_data.write_text("dt,value\n2024-01-02,2\n", encoding="utf-8")
 
         config_path = test_root / "mission.yaml"
         config_path.write_text(
@@ -85,11 +101,12 @@ class ProjectContractTests(unittest.TestCase):
                         "objective": "Ingest project-owned DeepLoop metadata.",
                         "target_repo": str(repo_root),
                     },
-                    "roles": ["planner"],
+                    "roles": ["planner", "dataset-strategist", "execution-operator"],
                     "phases": ["idea-intake", "final-report"],
                     "artifacts": {
                         "docs": [str(extra_doc)],
                         "configs": [str(extra_config)],
+                        "data": [{"path": str(extra_data), "kind": "labels", "format": "csv"}],
                     },
                 },
                 sort_keys=False,
@@ -101,6 +118,8 @@ class ProjectContractTests(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(Path(result["mission_root"]), ignore_errors=True))
         mission_state = json.loads(Path(result["state_path"]).read_text(encoding="utf-8"))
         planner_handoff = json.loads((Path(result["mission_root"]) / "agent_handoffs" / "planner.json").read_text(encoding="utf-8"))
+        dataset_handoff = json.loads((Path(result["mission_root"]) / "agent_handoffs" / "dataset-strategist.json").read_text(encoding="utf-8"))
+        execution_handoff = json.loads((Path(result["mission_root"]) / "agent_handoffs" / "execution-operator.json").read_text(encoding="utf-8"))
 
         self.assertEqual(mission_state["project_contract"]["status"], "available")
         self.assertEqual(mission_state["project_contract"]["project_metadata"]["name"], "demo-project")
@@ -108,12 +127,30 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn(str(extra_doc.resolve()), mission_state["artifacts"]["docs"])
         self.assertIn(str(provider_config.resolve()), mission_state["artifacts"]["configs"])
         self.assertIn(str(extra_config.resolve()), mission_state["artifacts"]["configs"])
+        data_paths = [artifact["path"] for artifact in mission_state["artifacts"]["data"]]
+        self.assertIn(str(project_data.resolve()), data_paths)
+        self.assertIn(str(extra_data.resolve()), data_paths)
+        project_data_record = next(artifact for artifact in mission_state["artifacts"]["data"] if artifact["path"] == str(project_data.resolve()))
+        self.assertEqual(project_data_record["kind"], "tabular-timeseries")
+        self.assertEqual(project_data_record["role"], "primary-dataset")
+        self.assertEqual(project_data_record["split_keys"], ["dt"])
+        self.assertNotIn(str(project_data.resolve()), mission_state["artifacts"]["configs"])
         self.assertIn(str(contract_project.resolve()), planner_handoff["input_artifacts"])
         self.assertIn(str(runtime_providers.resolve()), planner_handoff["input_artifacts"])
         self.assertIn(str(evaluation_contract.resolve()), planner_handoff["input_artifacts"])
         self.assertIn(str(mission_file.resolve()), planner_handoff["input_artifacts"])
         self.assertIn(str(project_doc.resolve()), planner_handoff["input_artifacts"])
         self.assertIn(str(extra_doc.resolve()), planner_handoff["input_artifacts"])
+        self.assertIn(str(project_data.resolve()), planner_handoff["input_artifacts"])
+        self.assertIn(str(extra_data.resolve()), planner_handoff["input_artifacts"])
+        self.assertEqual(
+            [artifact["path"] for artifact in dataset_handoff["dataset_artifacts"]],
+            data_paths,
+        )
+        self.assertEqual(
+            [artifact["path"] for artifact in execution_handoff["dataset_artifacts"]],
+            data_paths,
+        )
         self.assertIn(str(repo_root.joinpath("AGENTS.md").resolve()), mission_state["rule_sources"])
         self.assertIn(str(repo_root.joinpath(".github", "copilot-instructions.md").resolve()), mission_state["rule_sources"])
 
@@ -153,6 +190,44 @@ class ProjectContractTests(unittest.TestCase):
             [str(brief_path.resolve()), str(metrics_path.resolve())],
         )
         self.assertFalse(contract["warnings"])
+
+    def test_plain_project_contract_preserves_data_and_warns_on_csv_configs(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "plain_data_artifacts"
+        shutil.rmtree(test_root, ignore_errors=True)
+        repo_root = test_root / "epf-pilot"
+        (repo_root / "data").mkdir(parents=True, exist_ok=True)
+        dataset_path = repo_root / "data" / "daily.csv"
+        dataset_path.write_text("dt,pred_dt,value\n2024-01-01,2024-01-02,1\n", encoding="utf-8")
+        facts_path = repo_root / "project-facts.yaml"
+        facts_path.write_text(
+            yaml.safe_dump(
+                {
+                    "project": {"name": "epf-pilot"},
+                    "artifacts": {
+                        "configs": ["data/daily.csv"],
+                        "data": [
+                            {
+                                "path": "data/daily.csv",
+                                "kind": "tabular-timeseries",
+                                "role": "primary-dataset",
+                                "read_only": True,
+                                "prompt_safe": "header-and-summary-only",
+                                "split_keys": ["dt", "pred_dt"],
+                            }
+                        ],
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        contract = discover_project_contract(repo_root)
+
+        self.assertEqual(contract["artifacts"]["data"][0]["path"], str(dataset_path.resolve()))
+        self.assertEqual(contract["artifacts"]["data"][0]["format"], "csv")
+        self.assertEqual(contract["artifacts"]["data"][0]["split_keys"], ["dt", "pred_dt"])
+        self.assertTrue(any("artifacts.configs" in warning and "artifacts.data" in warning for warning in contract["warnings"]))
 
     def test_build_mission_config_from_project_root_uses_plain_project_metadata(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "project_bootstrap"

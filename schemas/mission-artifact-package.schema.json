@@ -100,6 +100,7 @@
       "required": [
         "mission_specs",
         "mission_configs",
+        "mission_datasets",
         "ledgers",
         "findings",
         "manifests",
@@ -115,6 +116,7 @@
       "properties": {
         "mission_specs": { "$ref": "#/$defs/artifactIdArray" },
         "mission_configs": { "$ref": "#/$defs/artifactIdArray" },
+        "mission_datasets": { "$ref": "#/$defs/artifactIdArray" },
         "ledgers": { "$ref": "#/$defs/artifactIdArray" },
         "findings": { "$ref": "#/$defs/artifactIdArray" },
         "manifests": { "$ref": "#/$defs/artifactIdArray" },

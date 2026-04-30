@@ -170,6 +170,59 @@ class ArtifactPackagerTests(unittest.TestCase):
             )
             self.assertEqual(validate_package_manifest(result["package"]), [])
 
+    def test_packager_categorizes_declared_data_separately_from_configs(self) -> None:
+        runs_root = WORKSPACE_ROOT / "runs"
+        runs_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=runs_root) as tmpdir:
+            test_root = Path(tmpdir)
+            mission_root = test_root / "mission"
+            mission_root.mkdir(parents=True, exist_ok=True)
+            target_repo = test_root / "plain-project"
+            target_repo.mkdir(parents=True, exist_ok=True)
+            dataset_path = target_repo / "daily.csv"
+            dataset_path.write_text("dt,pred_dt,value\n2024-01-01,2024-01-02,1\n", encoding="utf-8")
+
+            mission_state_path = mission_root / "mission_state.json"
+            mission_state = {
+                "mission_id": "dataset-package-mission",
+                "title": "Dataset package test",
+                "objective": "Package data artifacts by dataset policy.",
+                "current_phase": "final-report",
+                "status": "completed",
+                "target_repo": str(target_repo),
+                "roles": ["dataset-strategist", "execution-operator"],
+                "artifacts": {
+                    "docs": [],
+                    "configs": [],
+                    "data": [
+                        {
+                            "path": str(dataset_path),
+                            "kind": "tabular-timeseries",
+                            "format": "csv",
+                            "role": "primary-dataset",
+                            "prompt_safe": "header-and-summary-only",
+                            "packaging_policy": "reference-only",
+                        }
+                    ],
+                },
+                "next_actions": {"actions": [], "generated_configs": []},
+            }
+            mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+            (mission_root / "mission_summary.md").write_text("# Summary\n", encoding="utf-8")
+
+            result = package_mission_artifacts(mission_state_path, output_root=test_root / "packages")
+            errors = validate_package_manifest(result["package"])
+
+            self.assertEqual(errors, [])
+            dataset_ids = result["package"]["artifact_map"]["mission_datasets"]
+            self.assertEqual(len(dataset_ids), 1)
+            self.assertNotIn(dataset_ids[0], result["package"]["artifact_map"]["mission_configs"])
+            dataset_record = next(artifact for artifact in result["package"]["artifacts"] if artifact["artifact_id"] == dataset_ids[0])
+            self.assertEqual(dataset_record["kind"], "dataset")
+            self.assertEqual(dataset_record["status"], "referenced")
+            self.assertEqual(dataset_record["package_path"], "")
+            self.assertEqual(dataset_record["metadata"]["role"], "primary-dataset")
+
     def test_packager_marks_package_replicated_when_followup_manifest_exists(self) -> None:
         runs_root = WORKSPACE_ROOT / "runs"
         runs_root.mkdir(parents=True, exist_ok=True)

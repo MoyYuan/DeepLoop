@@ -36,6 +36,33 @@ You can also include:
 - `project.summary`
 - `project.constraints`
 - `project.human_inputs` such as budget facts or starting ideas
+- `artifacts.configs` for YAML/JSON/TOML configuration inputs
+- `artifacts.data` for datasets, labels, splits, predictions, and benchmark
+  files that should not be treated as configs
+
+Dataset entries may be simple paths or metadata records:
+
+```yaml
+artifacts:
+  docs:
+    - docs/project-brief.md
+  configs:
+    - configs/experiment.yaml
+  data:
+    - path: data/train.csv
+      kind: tabular-timeseries
+      format: csv
+      role: primary-dataset
+      read_only: true
+      prompt_safe: header-and-summary-only
+      split_keys: [dt, pred_dt]
+      packaging_policy: reference-only
+```
+
+DeepLoop preserves the dataset metadata in mission state, surfaces it to
+dataset and execution roles, and keeps these files out of `mission_configs`.
+If a CSV or other non-config file is declared under `artifacts.configs`,
+DeepLoop emits a warning so the contract can be corrected.
 
 ## What must stay out of the project folder
 

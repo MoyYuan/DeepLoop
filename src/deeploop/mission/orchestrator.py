@@ -24,7 +24,7 @@ from deeploop.mission.mission_memory import sync_mission_memory
 from deeploop.mission.plain_folder_followup import materialize_plain_folder_followups
 from deeploop.mission.mission_state import write_mission_state
 from deeploop.platform.contracts import materialize_platform_expansion_bundle, sync_platform_expansion_bundle
-from deeploop.project_contract import discover_project_contract, project_contract_input_artifacts
+from deeploop.project_contract import discover_project_contract, normalize_data_artifacts, project_contract_input_artifacts
 from deeploop.runtime.sandbox import build_sandbox_spec, rule_sources_for_repo
 
 
@@ -221,18 +221,22 @@ def _remove_tree(path: Path) -> None:
         raise OSError(f"Unable to remove existing mission root: {path}")
 
 
-def _merge_artifacts(config_artifacts: dict | None, project_contract: dict[str, object]) -> dict[str, list[str]]:
-    merged = {"docs": [], "configs": []}
+def _merge_artifacts(config_artifacts: dict | None, project_contract: dict[str, object], *, target_repo: Path) -> dict[str, list]:
+    merged: dict[str, list] = {"docs": [], "configs": [], "data": []}
     if isinstance(config_artifacts, dict):
         for key in ("docs", "configs"):
             values = config_artifacts.get(key)
             if isinstance(values, list):
                 merged[key].extend(str(item) for item in values if str(item).strip())
+        merged["data"].extend(normalize_data_artifacts(config_artifacts.get("data"), base_dir=target_repo))
     contract_artifacts = project_contract.get("artifacts") if isinstance(project_contract.get("artifacts"), dict) else {}
     for key in ("docs", "configs"):
         values = contract_artifacts.get(key)
         if isinstance(values, list):
             merged[key].extend(str(item) for item in values if str(item).strip())
+    data_values = contract_artifacts.get("data")
+    if isinstance(data_values, list):
+        merged["data"].extend(dict(item) for item in data_values if isinstance(item, dict))
     for key in ("docs", "configs"):
         deduped: list[str] = []
         seen: set[str] = set()
@@ -242,7 +246,26 @@ def _merge_artifacts(config_artifacts: dict | None, project_contract: dict[str, 
             seen.add(value)
             deduped.append(value)
         merged[key] = deduped
+    deduped_data: list[dict] = []
+    seen_data: set[str] = set()
+    for value in merged["data"]:
+        if not isinstance(value, dict):
+            continue
+        path = str(value.get("path") or "").strip()
+        if not path or path in seen_data:
+            continue
+        seen_data.add(path)
+        deduped_data.append(value)
+    merged["data"] = deduped_data
     return merged
+
+
+def _data_artifact_paths(data_artifacts: list) -> list[str]:
+    paths: list[str] = []
+    for artifact in data_artifacts:
+        if isinstance(artifact, dict) and str(artifact.get("path") or "").strip():
+            paths.append(str(artifact["path"]))
+    return paths
 
 
 def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
@@ -252,8 +275,9 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     mission_id = mission_cfg["id"]
     target_repo = Path(mission_cfg["target_repo"]).expanduser()
     project_contract = discover_project_contract(target_repo)
-    mission_artifacts = _merge_artifacts(config.get("artifacts"), project_contract)
-    handoff_artifacts = project_contract_input_artifacts(project_contract) + mission_artifacts["docs"] + mission_artifacts["configs"]
+    mission_artifacts = _merge_artifacts(config.get("artifacts"), project_contract, target_repo=target_repo)
+    data_artifact_paths = _data_artifact_paths(mission_artifacts["data"])
+    handoff_artifacts = project_contract_input_artifacts(project_contract) + mission_artifacts["docs"] + mission_artifacts["configs"] + data_artifact_paths
     handoff_artifacts = list(dict.fromkeys(handoff_artifacts))
     mission_root = MISSIONS_DIR / mission_id
 
@@ -301,6 +325,8 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
                 "Record non-trivial findings in the mission ledger or findings directory.",
             ],
         }
+        if role in {"dataset-strategist", "execution-operator"} and mission_artifacts["data"]:
+            handoff["dataset_artifacts"] = mission_artifacts["data"]
         handoff_path = handoff_root / f"{role}.json"
         write_json_object(handoff_path, handoff)
         handoffs[role] = str(handoff_path)
