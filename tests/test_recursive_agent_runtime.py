@@ -239,6 +239,126 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         shutil.rmtree(sandbox_root, ignore_errors=True)
         shutil.rmtree(test_root, ignore_errors=True)
 
+    def test_runtime_rejects_out_of_scope_provider_artifacts(self) -> None:
+        mission_id = "recursive-agent-runtime-artifact-scope"
+        sandbox_root = SANDBOXES_DIR / mission_id
+        test_root = _fresh_test_root("recursive-agent-runtime-artifact-scope")
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "mission_id": mission_id,
+                    "mode": "sandboxed-yolo",
+                    "title": "Artifact scope test mission",
+                    "summary": "Ensure provider artifacts stay in allowed roots.",
+                    "objective": "Reject out-of-sandbox provider artifacts.",
+                    "current_phase": "experiment-design",
+                    "next_phase": "execution",
+                    "status": "initialized",
+                    "target_repo": str(REPO_ROOT),
+                    "roles": ["planner"],
+                    "next_actions": {
+                        "summary": "Run one artifact-producing action.",
+                        "actions": [
+                            {
+                                "action_id": "artifact-scope",
+                                "kind": "critique",
+                                "role": "planner",
+                                "task": "Return one valid and one invalid produced artifact.",
+                                "status": "pending",
+                                "phase": "experiment-design",
+                                "artifacts": [],
+                            }
+                        ],
+                    },
+                    "autonomy_status": {"state": "initialized", "reason": "test"},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        leaked_path = test_root / "session-state" / "plan.md"
+        fake_agent = test_root / "fake_artifact_scope_agent.py"
+        fake_agent.write_text(
+            "\n".join(
+                [
+                    "import argparse, json, os",
+                    "from pathlib import Path",
+                    "parser = argparse.ArgumentParser()",
+                    "parser.add_argument('--result-json', required=True)",
+                    "parser.add_argument('--leaked-path', required=True)",
+                    "args = parser.parse_args()",
+                    "outputs_dir = Path(os.environ['DEEPLOOP_SANDBOX_OUTPUTS_DIR'])",
+                    "accepted = outputs_dir / 'run_manifest_draft.md'",
+                    "accepted.write_text('ok\\n', encoding='utf-8')",
+                    "leaked = Path(args.leaked_path)",
+                    "leaked.parent.mkdir(parents=True, exist_ok=True)",
+                    "leaked.write_text('ambient session plan\\n', encoding='utf-8')",
+                    "payload = {",
+                    "    'status': 'complete',",
+                    "    'summary': 'Produced one accepted and one rejected artifact.',",
+                    "    'produced_artifacts': [str(accepted), str(leaked)],",
+                    "}",
+                    "Path(args.result_json).write_text(json.dumps(payload), encoding='utf-8')",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config_path = test_root / "recursive-runtime.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "mission_state": str(mission_state_path),
+                    "loop_name": "artifact-scope-loop",
+                    "max_iterations": 1,
+                    "agent": {
+                        "command": [
+                            sys.executable,
+                            str(fake_agent),
+                            "--result-json",
+                            "{result_json_path}",
+                            "--leaked-path",
+                            str(leaked_path),
+                        ],
+                        "cwd": str(REPO_ROOT),
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        result = run_recursive_agent_loop(config_path)
+
+        self.assertEqual(result["status"], "completed")
+        latest_outcome = result["latest_outcome"]
+        self.assertEqual(len(latest_outcome["produced_artifacts"]), 1)
+        self.assertTrue(latest_outcome["produced_artifacts"][0].endswith("run_manifest_draft.md"))
+        self.assertNotIn(str(leaked_path), latest_outcome["produced_artifacts"])
+        self.assertEqual([entry["accepted"] for entry in latest_outcome["artifact_provenance"]], [True, False])
+        self.assertEqual(
+            latest_outcome["artifact_provenance"][1]["reason"],
+            "outside sandbox outputs and mission artifact roots",
+        )
+        self.assertTrue(latest_outcome["artifact_provenance"][1]["sandbox_root"].endswith(f"{mission_id}/planner"))
+        self.assertTrue(any(str(leaked_path) in warning for warning in latest_outcome["warnings"]))
+
+        mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
+        action_output_paths = mission_state["next_actions"]["actions"][0]["output_paths"]
+        self.assertEqual(len(action_output_paths), 1)
+        self.assertNotIn(str(leaked_path), action_output_paths)
+
+        memory_entries = [json.loads(line) for line in result["memory_path"].read_text(encoding="utf-8").splitlines() if line.strip()]
+        self.assertEqual(len(memory_entries[0]["produced_artifacts"]), 1)
+        self.assertNotIn(str(leaked_path), memory_entries[0]["produced_artifacts"])
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        shutil.rmtree(test_root, ignore_errors=True)
+
     def test_runtime_blocks_when_no_followup_action_exists(self) -> None:
         mission_id = "recursive-agent-runtime-blocks"
         sandbox_root = SANDBOXES_DIR / mission_id

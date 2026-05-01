@@ -171,6 +171,14 @@ Mission findings are appended under:
 
 - `findings/recursive-loop-*.md`
 
+Provider-returned `produced_artifacts` are accepted only when they resolve under
+the current role's sandbox `outputs_dir`, the mission artifact roots
+(`findings/`, `runtime/`, `agent_handoffs/`), or an explicitly configured
+`allowed_mission_artifact_roots` entry. Out-of-scope paths stay out of
+`produced_artifacts` and action `output_paths`; the iteration outcome records an
+artifact provenance entry with `produced_by`, `sandbox_root`, `accepted`, and a
+rejection reason plus a warning.
+
 ## Why this runtime exists
 
 This executor fills the fresh-context worker slot inside the canonical mission
