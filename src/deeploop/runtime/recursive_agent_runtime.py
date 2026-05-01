@@ -454,7 +454,7 @@ def _sync_outer_runtime_summary_from_recursive_agent(mission_state: Mapping[str,
             "autonomy_reason": str(autonomy.get("reason", "n/a")),
             "summary_source": "`mission_state`",
             "summary_synchronized_at": f"`{synchronized_at}`",
-            "current_recursive_iteration": f"`{iteration_text}`, role={role}, phase={phase}",
+            "current_recursive_iteration": f"{iteration_text}, role={role}, phase={phase}",
         }
         for field, value in replacements.items():
             lines = _replace_markdown_field(lines, field, value)

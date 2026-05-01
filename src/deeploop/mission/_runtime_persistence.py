@@ -237,7 +237,7 @@ def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict
             if isinstance(recursive_current_action, Mapping) and recursive_current_action.get("phase") is not None
             else mission_state.get("current_phase")
         )
-        lines.append(f"- current_recursive_iteration: `{iteration_text}`, role={role}, phase={phase}")
+        lines.append(f"- current_recursive_iteration: {iteration_text}, role={role}, phase={phase}")
     latest_temporary_gap = (
         autonomy_gap_telemetry.get("latest_temporary_gap")
         if isinstance(autonomy_gap_telemetry, Mapping)
