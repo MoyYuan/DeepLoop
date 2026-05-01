@@ -42,6 +42,7 @@ def render_prompt(
     decision_record: dict[str, Any] | None,
     result_json_path: Path,
     iteration_number: int,
+    max_iterations: int | None = None,
 ) -> str:
     current_phase = str(mission_state.get("current_phase") or "")
     phase_policy = resolve_phase_contract_for_state(current_phase, mission_state=mission_state)
@@ -53,6 +54,14 @@ def render_prompt(
         "",
         f"- mission_id: `{mission_state.get('mission_id')}`",
         f"- iteration: `{iteration_number}`",
+        *(
+            [
+                f"- recursive_iteration_budget: `{iteration_number}/{max_iterations}`",
+                f"- recursive_iterations_remaining_after_this: `{max(max_iterations - iteration_number, 0)}`",
+            ]
+            if max_iterations is not None
+            else []
+        ),
         f"- role: `{action['role']}`",
         f"- loop_action_id: `{action.get('loop_action_id')}`",
         f"- mission_action_id: `{action.get('action_id')}`",
