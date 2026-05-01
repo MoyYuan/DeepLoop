@@ -261,6 +261,66 @@ def _merge_artifacts(config_artifacts: dict | None, project_contract: dict[str, 
     return merged
 
 
+def _stringify_contract_value(value: object) -> str:
+    if value is None:
+        return "unspecified"
+    if isinstance(value, list):
+        return ", ".join(_stringify_contract_value(item) for item in value) or "unspecified"
+    if isinstance(value, dict):
+        return ", ".join(f"{key}={_stringify_contract_value(item)}" for key, item in value.items()) or "unspecified"
+    text = str(value).strip()
+    return text or "unspecified"
+
+
+def _render_mission_contract_summary(mission_contract: dict[str, object]) -> list[str]:
+    readiness = mission_contract.get("readiness") if isinstance(mission_contract.get("readiness"), dict) else {}
+    objective = mission_contract.get("objective") if isinstance(mission_contract.get("objective"), dict) else {}
+    data = mission_contract.get("data") if isinstance(mission_contract.get("data"), dict) else {}
+    evaluation = mission_contract.get("evaluation") if isinstance(mission_contract.get("evaluation"), dict) else {}
+    artifacts = mission_contract.get("artifacts") if isinstance(mission_contract.get("artifacts"), dict) else {}
+    budget = mission_contract.get("budget") if isinstance(mission_contract.get("budget"), dict) else {}
+    boundaries = mission_contract.get("boundaries") if isinstance(mission_contract.get("boundaries"), dict) else {}
+    prerequisites = [
+        item for item in mission_contract.get("prerequisites", [])
+        if isinstance(item, dict)
+    ]
+    summary_lines = [
+        "",
+        "## Readiness summary",
+        f"- readiness_status: `{readiness.get('status', 'unknown')}`",
+        f"- launch_recommendation: `{readiness.get('launch_recommendation', 'unknown')}`",
+        f"- task_type: `{objective.get('task_type', 'research')}`",
+        f"- objective_contract: {_stringify_contract_value(objective.get('text'))}",
+        f"- data_contract: dataset={_stringify_contract_value(data.get('dataset'))}; target={_stringify_contract_value(data.get('target'))}; split_policy={_stringify_contract_value(data.get('split_policy'))}",
+        f"- evaluation_contract: benchmark={_stringify_contract_value(evaluation.get('benchmark_expectations'))}; success={_stringify_contract_value(evaluation.get('success_criteria'))}; novelty={_stringify_contract_value(evaluation.get('novelty_target'))}",
+        f"- artifact_contract: deliverables={_stringify_contract_value(artifacts.get('deliverables'))}",
+        f"- budget_contract: compute={_stringify_contract_value(budget.get('compute_budget'))}; stop_rules={_stringify_contract_value(budget.get('stop_rules'))}",
+        f"- boundary_contract: leakage={_stringify_contract_value(boundaries.get('leakage_policy'))}; publication={_stringify_contract_value(boundaries.get('publication_boundary'))}",
+    ]
+    blocking_items = [item for item in prerequisites if item.get("status") == "blocking"]
+    if blocking_items:
+        summary_lines.extend(["", "### Blocking prerequisites"])
+        summary_lines.extend(
+            f"- {item.get('question')} ({item.get('reason')})"
+            for item in blocking_items
+        )
+    clarification_items = [item for item in prerequisites if item.get("status") == "needs-clarification"]
+    if clarification_items:
+        summary_lines.extend(["", "### Clarifications"])
+        summary_lines.extend(
+            f"- {item.get('question')} (guardrail: {_stringify_contract_value(item.get('assumed_default'))})"
+            for item in clarification_items
+        )
+    defaulted_items = [item for item in prerequisites if item.get("status") == "defaulted"]
+    if defaulted_items:
+        summary_lines.extend(["", "### Defaults applied"])
+        summary_lines.extend(
+            f"- {item.get('section')}: {_stringify_contract_value(item.get('assumed_default'))}"
+            for item in defaulted_items
+        )
+    return summary_lines
+
+
 def _data_artifact_paths(data_artifacts: list) -> list[str]:
     paths: list[str] = []
     for artifact in data_artifacts:
@@ -285,6 +345,22 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     if mission_root.exists() and force:
         _remove_tree(mission_root)
     mission_root.mkdir(parents=True, exist_ok=True)
+    mission_contract = config.get("mission_contract") if isinstance(config.get("mission_contract"), dict) else {}
+    mission_contract_path: str | None = None
+    if mission_contract:
+        compiled_contract_path = mission_root / "compiled_mission_contract.yaml"
+        write_yaml_mapping(
+            compiled_contract_path,
+            {
+                "mission_id": mission_id,
+                "target_repo": str(target_repo),
+                "contract": mission_contract,
+            },
+        )
+        mission_contract_path = str(compiled_contract_path)
+    if mission_contract_path:
+        handoff_artifacts.append(mission_contract_path)
+    handoff_artifacts = list(dict.fromkeys(handoff_artifacts))
     handoff_root = mission_root / "agent_handoffs"
     findings_root = mission_root / "findings"
     handoff_root.mkdir(parents=True, exist_ok=True)
@@ -349,6 +425,8 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         "rule_sources": rule_sources_for_repo(target_repo),
         "artifacts": mission_artifacts,
         "project_contract": project_contract,
+        **({"mission_contract": mission_contract} if mission_contract else {}),
+        **({"mission_contract_path": mission_contract_path} if mission_contract_path else {}),
         "contract_snapshot": {
             "schema_version": contract_snapshot["schema_version"],
             "path": contract_snapshot["snapshot_path"],
@@ -457,7 +535,10 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         ),
         f"- project_contract_status: `{project_contract['status']}`",
         f"- project_contract_root: `{project_contract['contract_root']}`",
+        *( [f"- mission_contract_path: `{mission_contract_path}`"] if mission_contract_path else [] ),
     ]
+    if mission_contract:
+        summary_lines.extend(_render_mission_contract_summary(mission_contract))
     write_markdown(
         summary_path,
         summary_lines,
@@ -474,6 +555,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
             related_paths=[
                 str(state_path),
                 str(summary_path),
+                *( [mission_contract_path] if mission_contract_path else [] ),
                 outer_loop["decision_log_path"],
                 outer_loop["branch_log_path"],
                 outer_loop["mission_memory_path"],
