@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +42,18 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def _write_markdown(path: Path, lines: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _is_relative_to(path: Path, other: Path) -> bool:
+    try:
+        path.relative_to(other)
+    except ValueError:
+        return False
+    return True
+
+
+def _resolved_path(path: Path) -> Path:
+    return path.expanduser().resolve(strict=False)
 
 
 def _resolved_env_name(raw: Any) -> str | None:
@@ -226,6 +239,56 @@ def _classify_process_failure(policy: dict[str, Any], attempt: dict[str, Any]) -
     )
 
 
+def _classify_manifest_payload(
+    *,
+    policy: dict[str, Any],
+    manifest_path: Path,
+    manifest: dict[str, Any],
+    log_path: str,
+) -> dict[str, Any]:
+    validation_errors = _manifest_validation_errors(manifest)
+    if validation_errors:
+        return {
+            "status": "failure",
+            "failure": _failure_record(
+                policy,
+                "schema-mismatch",
+                details={
+                    "expected_manifest": str(manifest_path),
+                    "validation_errors": validation_errors,
+                    "log_path": log_path,
+                },
+            ),
+        }
+    assessment = assess_manifest_for_self_correction(manifest_path, manifest=manifest)
+    scientific_action = assessment["decision"]["action"]
+    if scientific_action != "continue":
+        repair_order = ["reroute", "stop"] if scientific_action == "reroute" else ["stop"]
+        return {
+            "status": "failure",
+            "manifest": manifest,
+            "assessment": assessment,
+            "failure": _failure_record(
+                policy,
+                "scientific-failure",
+                details={
+                    "expected_manifest": str(manifest_path),
+                    "scientific_action": scientific_action,
+                    "route_to": assessment["decision"]["route_to"],
+                    "triggered_by": assessment["decision"]["triggered_by"],
+                    "assessment": assessment,
+                },
+                repair_order=repair_order,
+            ),
+        }
+    return {
+        "status": "completed",
+        "manifest": manifest,
+        "manifest_path": str(manifest_path),
+        "assessment": assessment,
+    }
+
+
 def _classify_attempt_outcome(
     *,
     policy: dict[str, Any],
@@ -258,46 +321,164 @@ def _classify_attempt_outcome(
                 },
             ),
         }
-    validation_errors = _manifest_validation_errors(manifest)
-    if validation_errors:
-        return {
-            "status": "failure",
-            "failure": _failure_record(
-                policy,
-                "schema-mismatch",
-                details={
-                    "expected_manifest": str(expected_manifest),
-                    "validation_errors": validation_errors,
-                    "log_path": attempt["log_path"],
-                },
-            ),
-        }
-    assessment = assess_manifest_for_self_correction(expected_manifest, manifest=manifest)
-    scientific_action = assessment["decision"]["action"]
-    if scientific_action != "continue":
-        repair_order = ["reroute", "stop"] if scientific_action == "reroute" else ["stop"]
-        return {
-            "status": "failure",
-            "manifest": manifest,
-            "assessment": assessment,
-            "failure": _failure_record(
-                policy,
-                "scientific-failure",
-                details={
-                    "expected_manifest": str(expected_manifest),
-                    "scientific_action": scientific_action,
-                    "route_to": assessment["decision"]["route_to"],
-                    "triggered_by": assessment["decision"]["triggered_by"],
-                    "assessment": assessment,
-                },
-                repair_order=repair_order,
-            ),
-        }
-    return {
-        "status": "completed",
-        "manifest": manifest,
-        "assessment": assessment,
+    return _classify_manifest_payload(
+        policy=policy,
+        manifest_path=expected_manifest,
+        manifest=manifest,
+        log_path=str(attempt["log_path"]),
+    )
+
+
+def _repair_hints(proposal_config_path: Path | None) -> dict[str, Any]:
+    hints: dict[str, Any] = {
+        "configured_output_dir": None,
+        "mission_id": None,
+        "loop_id": None,
     }
+    if proposal_config_path is None or not proposal_config_path.exists():
+        return hints
+    try:
+        proposal = _load_yaml(proposal_config_path)
+    except (OSError, ValueError, yaml.YAMLError):
+        return hints
+    run_cfg = proposal.get("run", {}) if isinstance(proposal.get("run"), Mapping) else {}
+    configured_output_dir = run_cfg.get("output_dir")
+    if configured_output_dir:
+        hints["configured_output_dir"] = _resolved_path(Path(str(configured_output_dir)))
+    mission_id = proposal.get("mission_id")
+    if mission_id:
+        hints["mission_id"] = str(mission_id)
+    loop_id = run_cfg.get("loop_id")
+    if loop_id:
+        hints["loop_id"] = str(loop_id)
+    return hints
+
+
+def _artifact_search_roots(
+    *,
+    expected_manifest: Path,
+    mission_root: Path,
+    repo_root: Path,
+    proposal_config_path: Path | None,
+) -> list[Path]:
+    hints = _repair_hints(proposal_config_path)
+    configured_output_dir = hints.get("configured_output_dir")
+    raw_roots = [
+        configured_output_dir,
+        configured_output_dir.parent if isinstance(configured_output_dir, Path) else None,
+        expected_manifest.parent,
+        mission_root / "runtime",
+        mission_root,
+        repo_root / "runtime",
+    ]
+    ordered: list[Path] = []
+    seen: set[Path] = set()
+    for raw_root in raw_roots:
+        if not isinstance(raw_root, Path):
+            continue
+        resolved = _resolved_path(raw_root)
+        if not resolved.exists() or resolved in seen:
+            continue
+        ordered.append(resolved)
+        seen.add(resolved)
+    return ordered
+
+
+def _manifest_candidate_score(
+    *,
+    candidate_path: Path,
+    manifest: dict[str, Any],
+    expected_manifest: Path,
+    root_index: int,
+    hints: dict[str, Any],
+) -> tuple[int, int, int, int, str]:
+    configured_output_dir = hints.get("configured_output_dir")
+    exact_output_dir = int(isinstance(configured_output_dir, Path) and candidate_path == configured_output_dir / expected_manifest.name)
+    under_output_dir = int(isinstance(configured_output_dir, Path) and _is_relative_to(candidate_path, configured_output_dir))
+    loop_match = int(bool(hints.get("loop_id")) and str(manifest.get("loop_id") or "") == str(hints["loop_id"]))
+    mission_match = int(bool(hints.get("mission_id")) and str(manifest.get("mission_id") or "") == str(hints["mission_id"]))
+    return (-exact_output_dir, -under_output_dir, -loop_match, -mission_match, f"{root_index}:{candidate_path}")
+
+
+def _maybe_self_heal_manifest_path(
+    *,
+    policy: dict[str, Any],
+    failure: dict[str, Any],
+    expected_manifest: Path,
+    attempt: dict[str, Any],
+    mission_root: Path,
+    repo_root: Path,
+    proposal_config_path: Path | None,
+) -> dict[str, Any] | None:
+    if failure["kind"] not in {"missing-artifact", "schema-mismatch"}:
+        return None
+    hints = _repair_hints(proposal_config_path)
+    roots = _artifact_search_roots(
+        expected_manifest=expected_manifest,
+        mission_root=mission_root,
+        repo_root=repo_root,
+        proposal_config_path=proposal_config_path,
+    )
+    search_cfg = policy.get("artifact_search", {}) if isinstance(policy.get("artifact_search"), Mapping) else {}
+    patterns = [str(item) for item in search_cfg.get("manifest_globs", [f"**/{expected_manifest.name}"])]
+    max_candidates = max(1, int(search_cfg.get("max_candidates", 24)))
+    candidates: list[tuple[tuple[int, int, int, int, str], Path, dict[str, Any]]] = []
+    seen: set[Path] = {_resolved_path(expected_manifest)}
+    quarantined: list[str] = []
+    for root_index, root in enumerate(roots):
+        for pattern in patterns:
+            for candidate in sorted(root.glob(pattern)):
+                if not candidate.is_file():
+                    continue
+                resolved_candidate = _resolved_path(candidate)
+                if resolved_candidate in seen:
+                    continue
+                seen.add(resolved_candidate)
+                if not _is_relative_to(resolved_candidate, root):
+                    quarantined.append(str(resolved_candidate))
+                    continue
+                try:
+                    manifest = _load_json(resolved_candidate)
+                except (OSError, json.JSONDecodeError, ValueError):
+                    continue
+                if _manifest_validation_errors(manifest):
+                    continue
+                score = _manifest_candidate_score(
+                    candidate_path=resolved_candidate,
+                    manifest=manifest,
+                    expected_manifest=expected_manifest,
+                    root_index=root_index,
+                    hints=hints,
+                )
+                candidates.append((score, resolved_candidate, manifest))
+                if len(candidates) >= max_candidates:
+                    break
+            if len(candidates) >= max_candidates:
+                break
+        if len(candidates) >= max_candidates:
+            break
+    if not candidates:
+        failure["details"]["searched_roots"] = [str(root) for root in roots]
+        if quarantined:
+            failure["details"]["quarantined_candidates"] = quarantined
+        return None
+    _, source_manifest_path, manifest = sorted(candidates, key=lambda item: item[0])[0]
+    expected_manifest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_manifest_path, expected_manifest)
+    outcome = _classify_manifest_payload(
+        policy=policy,
+        manifest_path=expected_manifest,
+        manifest=manifest,
+        log_path=str(attempt["log_path"]),
+    )
+    if outcome["status"] != "completed":
+        return None
+    outcome["repair"] = {
+        "mode": "normalize-path",
+        "source_manifest": str(source_manifest_path),
+        "target_manifest": str(expected_manifest),
+    }
+    return outcome
 
 
 def _recovery_limits(policy: dict[str, Any], entry: dict[str, Any]) -> dict[str, int]:
@@ -538,6 +719,7 @@ def _run_entry(
         "final_status": "unknown",
         "next_route_to": None,
     }
+    mission_root = mission_state_path.parent
     if expected_manifest.exists() and not bool(config.get("rerun_existing", False)):
         summary["final_status"] = "skipped"
         _append_history(
@@ -638,11 +820,37 @@ def _run_entry(
                 )
                 outcome = _classify_attempt_outcome(policy=policy, expected_manifest=expected_manifest, attempt=attempt)
                 attempt_record = {key: attempt[key] for key in ("attempt", "mode", "env_name", "command", "full_command", "started_at", "completed_at", "returncode", "log_path")}
+                if outcome["status"] != "completed":
+                    repaired_outcome = _maybe_self_heal_manifest_path(
+                        policy=policy,
+                        failure=outcome["failure"],
+                        expected_manifest=expected_manifest,
+                        attempt=attempt,
+                        mission_root=mission_root,
+                        repo_root=repo_root,
+                        proposal_config_path=proposal_config_path,
+                    )
+                    if repaired_outcome is not None:
+                        outcome = repaired_outcome
                 if outcome["status"] == "completed":
                     attempt_record["assessment"] = outcome["assessment"]
+                    if "repair" in outcome:
+                        attempt_record["recovery_applied"] = outcome["repair"]
+                        summary["recovered"] = True
                     summary["attempts"].append(attempt_record)
+                    if "repair" in outcome:
+                        _append_history(
+                            entry_root,
+                            {
+                                "created_at": now_utc(),
+                                "event": "attempt-repaired",
+                                "attempt": attempt_record["attempt"],
+                                "mode": attempt_record["mode"],
+                                "recovery_applied": outcome["repair"],
+                            },
+                        )
                     summary["final_status"] = "completed"
-                    summary["manifest_path"] = str(expected_manifest)
+                    summary["manifest_path"] = str(outcome.get("manifest_path", expected_manifest))
                     summary["assessment"] = outcome["assessment"]
                     final_assessment = outcome["assessment"]
                     break
