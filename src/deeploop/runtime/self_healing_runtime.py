@@ -18,6 +18,7 @@ from deeploop.research.self_correction import assess_manifest_for_self_correctio
 
 DEFAULT_POLICY_PATH = DEEPLOOP_REPO_ROOT / "configs" / "runtime" / "self-healing-runtime.yaml"
 RUN_MANIFEST_SCHEMA_PATH = DEEPLOOP_REPO_ROOT / "schemas" / "run-manifest.schema.json"
+DEFAULT_ARTIFACT_SEARCH_MAX_CANDIDATES = 24
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -391,13 +392,20 @@ def _manifest_candidate_score(
     expected_manifest: Path,
     root_index: int,
     hints: dict[str, Any],
-) -> tuple[int, int, int, int, str]:
+) -> tuple[int, int, int, int, int, str]:
     configured_output_dir = hints.get("configured_output_dir")
-    exact_output_dir = int(isinstance(configured_output_dir, Path) and candidate_path == configured_output_dir / expected_manifest.name)
-    under_output_dir = int(isinstance(configured_output_dir, Path) and _is_relative_to(candidate_path, configured_output_dir))
-    loop_match = int(bool(hints.get("loop_id")) and str(manifest.get("loop_id") or "") == str(hints["loop_id"]))
-    mission_match = int(bool(hints.get("mission_id")) and str(manifest.get("mission_id") or "") == str(hints["mission_id"]))
-    return (-exact_output_dir, -under_output_dir, -loop_match, -mission_match, f"{root_index}:{candidate_path}")
+    exact_output_dir = isinstance(configured_output_dir, Path) and candidate_path == configured_output_dir / expected_manifest.name
+    under_output_dir = isinstance(configured_output_dir, Path) and _is_relative_to(candidate_path, configured_output_dir)
+    loop_match = bool(hints.get("loop_id")) and str(manifest.get("loop_id") or "") == str(hints["loop_id"])
+    mission_match = bool(hints.get("mission_id")) and str(manifest.get("mission_id") or "") == str(hints["mission_id"])
+    return (
+        0 if exact_output_dir else 1,
+        0 if under_output_dir else 1,
+        0 if loop_match else 1,
+        0 if mission_match else 1,
+        root_index,
+        str(candidate_path),
+    )
 
 
 def _maybe_self_heal_manifest_path(
@@ -421,8 +429,8 @@ def _maybe_self_heal_manifest_path(
     )
     search_cfg = policy.get("artifact_search", {}) if isinstance(policy.get("artifact_search"), Mapping) else {}
     patterns = [str(item) for item in search_cfg.get("manifest_globs", [f"**/{expected_manifest.name}"])]
-    max_candidates = max(1, int(search_cfg.get("max_candidates", 24)))
-    candidates: list[tuple[tuple[int, int, int, int, str], Path, dict[str, Any]]] = []
+    max_candidates = max(1, int(search_cfg.get("max_candidates", DEFAULT_ARTIFACT_SEARCH_MAX_CANDIDATES)))
+    candidates: list[tuple[tuple[int, int, int, int, int, str], Path, dict[str, Any]]] = []
     seen: set[Path] = {_resolved_path(expected_manifest)}
     quarantined: list[str] = []
     for root_index, root in enumerate(roots):
