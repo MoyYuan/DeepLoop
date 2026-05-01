@@ -261,13 +261,15 @@ def _merge_artifacts(config_artifacts: dict | None, project_contract: dict[str, 
     return merged
 
 
-def _stringify_contract_value(value: object) -> str:
+def _stringify_contract_value(value: object, *, max_depth: int = 3) -> str:
+    if max_depth < 0:
+        return "…"
     if value is None:
         return "unspecified"
     if isinstance(value, list):
-        return ", ".join(_stringify_contract_value(item) for item in value) or "unspecified"
+        return "[" + ", ".join(_stringify_contract_value(item, max_depth=max_depth - 1) for item in value) + "]"
     if isinstance(value, dict):
-        return ", ".join(f"{key}={_stringify_contract_value(item)}" for key, item in value.items()) or "unspecified"
+        return "{" + "; ".join(f"{key}={_stringify_contract_value(item, max_depth=max_depth - 1)}" for key, item in value.items()) + "}"
     text = str(value).strip()
     return text or "unspecified"
 
@@ -284,6 +286,13 @@ def _render_mission_contract_summary(mission_contract: dict[str, object]) -> lis
         item for item in mission_contract.get("prerequisites", [])
         if isinstance(item, dict)
     ]
+    def _section_line(label: str, values: dict[str, object]) -> str:
+        rendered = "; ".join(
+            f"{key}={_stringify_contract_value(item)}"
+            for key, item in values.items()
+        )
+        return f"- {label}: {rendered}"
+
     summary_lines = [
         "",
         "## Readiness summary",
@@ -291,11 +300,37 @@ def _render_mission_contract_summary(mission_contract: dict[str, object]) -> lis
         f"- launch_recommendation: `{readiness.get('launch_recommendation', 'unknown')}`",
         f"- task_type: `{objective.get('task_type', 'research')}`",
         f"- objective_contract: {_stringify_contract_value(objective.get('text'))}",
-        f"- data_contract: dataset={_stringify_contract_value(data.get('dataset'))}; target={_stringify_contract_value(data.get('target'))}; split_policy={_stringify_contract_value(data.get('split_policy'))}",
-        f"- evaluation_contract: benchmark={_stringify_contract_value(evaluation.get('benchmark_expectations'))}; success={_stringify_contract_value(evaluation.get('success_criteria'))}; novelty={_stringify_contract_value(evaluation.get('novelty_target'))}",
-        f"- artifact_contract: deliverables={_stringify_contract_value(artifacts.get('deliverables'))}",
-        f"- budget_contract: compute={_stringify_contract_value(budget.get('compute_budget'))}; stop_rules={_stringify_contract_value(budget.get('stop_rules'))}",
-        f"- boundary_contract: leakage={_stringify_contract_value(boundaries.get('leakage_policy'))}; publication={_stringify_contract_value(boundaries.get('publication_boundary'))}",
+        _section_line(
+            "data_contract",
+            {
+                "dataset": data.get("dataset"),
+                "target": data.get("target"),
+                "split_policy": data.get("split_policy"),
+            },
+        ),
+        _section_line(
+            "evaluation_contract",
+            {
+                "benchmark": evaluation.get("benchmark_expectations"),
+                "success": evaluation.get("success_criteria"),
+                "novelty": evaluation.get("novelty_target"),
+            },
+        ),
+        _section_line("artifact_contract", {"deliverables": artifacts.get("deliverables")}),
+        _section_line(
+            "budget_contract",
+            {
+                "compute": budget.get("compute_budget"),
+                "stop_rules": budget.get("stop_rules"),
+            },
+        ),
+        _section_line(
+            "boundary_contract",
+            {
+                "leakage": boundaries.get("leakage_policy"),
+                "publication": boundaries.get("publication_boundary"),
+            },
+        ),
     ]
     blocking_items = [item for item in prerequisites if item.get("status") == "blocking"]
     if blocking_items:

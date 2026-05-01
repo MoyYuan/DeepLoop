@@ -72,13 +72,21 @@ DEFAULT_LEAKAGE_GUARDRAIL = (
     "Assume strict no-leakage handling: holdout/test data must not inform prompt, feature, or hyperparameter choices."
 )
 _KICKOFF_DOC_HINTS = ("project-brief", "kickoff", "brief", "readme")
+_PATH_HINT_FILE_EXTENSIONS = "csv|tsv|jsonl|json|parquet|txt"
+_IDENTIFIER_PATTERN = r"[A-Za-z0-9_.\-]+"
+_TARGET_VARIABLE_PATTERN = rf"\btarget(?: variable| column| label)?(?: is|:)?\s+[`'\"]?({_IDENTIFIER_PATTERN})"
+_LABEL_COLUMN_PATTERN = rf"\blabel(?: column)?(?: is|:)?\s+[`'\"]?({_IDENTIFIER_PATTERN})"
+_PREDICTION_TARGET_PATTERN = rf"\bpredict(?:ing)?\s+[`'\"]?({_IDENTIFIER_PATTERN})"
+_TRANSLATION_TARGET_PATTERN = rf"\btranslate\b.*?\bfrom\s+({_IDENTIFIER_PATTERN})\s+\bto\s+({_IDENTIFIER_PATTERN})"
+_COMPUTE_BUDGET_PATTERN = r"\b(\d+)\s*(gpu|cpu)\s*hours?\b"
+_EXCLUDED_TARGET_KEYWORDS = {"quality", "performance", "metrics", "baseline"}
 _TASK_TYPE_PATTERNS = (
     ("translation", ("translation", "translate", "bilingual")),
+    ("summarization", ("summarization", "summarize", "summary generation")),
+    ("generation", ("generation", "generate", "next token", "completion")),
+    ("retrieval", ("retrieval", "search", "rank", "ranking")),
     ("classification", ("classifier", "classification", "classify")),
     ("regression", ("regression", "regressor", "predict", "forecast", "estimate")),
-    ("retrieval", ("retrieval", "search", "rank", "ranking")),
-    ("summarization", ("summarization", "summarize", "summary generation")),
-    ("generation", ("generation", "generate")),
     ("benchmarking", ("benchmark", "baseline comparison", "ablation")),
 )
 
@@ -107,16 +115,15 @@ def _collapse_whitespace(text: str) -> str:
 
 
 def _flatten_text_fragments(value: Any) -> list[str]:
+    flattened: list[str] = []
     if isinstance(value, str):
         text = _collapse_whitespace(value.strip())
         return [text] if text else []
     if isinstance(value, list):
-        flattened: list[str] = []
         for item in value:
             flattened.extend(_flatten_text_fragments(item))
         return flattened
     if isinstance(value, dict):
-        flattened: list[str] = []
         for key, item in value.items():
             flattened.extend(_flatten_text_fragments(f"{key}:"))
             flattened.extend(_flatten_text_fragments(item))
@@ -210,7 +217,10 @@ def _first_sentence(text: str, *, fallback: str) -> str:
 
 
 def _extract_path_hints(text: str) -> list[str]:
-    matches = re.findall(r"(?:~?/|\.{1,2}/)[A-Za-z0-9._/\-]+|[A-Za-z0-9._/\-]+\.(?:csv|tsv|jsonl|json|parquet|txt)", text)
+    matches = re.findall(
+        rf"(?:~?/|\.{{1,2}}/)[A-Za-z0-9._/-]+|[A-Za-z0-9._/-]+\.(?:{_PATH_HINT_FILE_EXTENSIONS})",
+        text,
+    )
     seen: set[str] = set()
     ordered: list[str] = []
     for match in matches:
@@ -234,7 +244,12 @@ def _coerce_summary_value(value: Any) -> str | list[str] | dict[str, Any] | None
     if isinstance(value, str):
         return _collapse_whitespace(value.strip())
     if isinstance(value, list):
-        cleaned = [item for item in (_coerce_summary_value(entry) for entry in value) if item not in (None, "", [], {})]
+        cleaned: list[str | list[str] | dict[str, Any]] = []
+        for entry in value:
+            item = _coerce_summary_value(entry)
+            if item in (None, "", [], {}):
+                continue
+            cleaned.append(item)
         return cleaned or None
     if isinstance(value, dict):
         cleaned = {
@@ -248,6 +263,8 @@ def _coerce_summary_value(value: Any) -> str | list[str] | dict[str, Any] | None
 
 def _infer_task_type(text: str) -> str:
     lower_text = text.lower()
+    if any(hint in lower_text for hint in ("next token", "language model", "text completion")):
+        return "generation"
     for task_type, hints in _TASK_TYPE_PATTERNS:
         if any(hint in lower_text for hint in hints):
             return task_type
@@ -255,21 +272,20 @@ def _infer_task_type(text: str) -> str:
 
 
 def _extract_target(text: str, task_type: str) -> str | None:
-    patterns = [
-        r"\btarget(?: variable| column| label)?(?: is|:)?\s+[`'\"]?([A-Za-z0-9_.-]+)",
-        r"\blabel(?: column)?(?: is|:)?\s+[`'\"]?([A-Za-z0-9_.-]+)",
-        r"\bpredict(?:ing)?\s+[`'\"]?([A-Za-z0-9_.-]+)",
-    ]
+    patterns = [_TARGET_VARIABLE_PATTERN, _LABEL_COLUMN_PATTERN, _PREDICTION_TARGET_PATTERN]
     if task_type == "translation":
-        match = re.search(r"\btranslate\b.*?\bfrom\s+([A-Za-z0-9_.-]+)\s+\bto\s+([A-Za-z0-9_.-]+)", text, flags=re.IGNORECASE)
+        match = re.search(_TRANSLATION_TARGET_PATTERN, text, flags=re.IGNORECASE)
         if match:
-            return f"{match.group(1)}->{match.group(2)}"
+            return {
+                "source_language": match.group(1),
+                "target_language": match.group(2),
+            }
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if not match:
             continue
         candidate = match.group(1).strip(".,;:()[]{}'\"")
-        if candidate and candidate.lower() not in {"quality", "performance", "metrics", "baseline"}:
+        if candidate and candidate.lower() not in _EXCLUDED_TARGET_KEYWORDS:
             return candidate
     return None
 
@@ -347,7 +363,10 @@ def compile_mission_contract(
         )
     )
     if split_policy is None and re.search(r"\b(train|validation|test|holdout)\b", combined_text, flags=re.IGNORECASE):
-        split_policy = "Kickoff mentions a train/validation/test or holdout boundary."
+        split_policy = (
+            "Detected a train/validation/test or holdout boundary in the kickoff, "
+            "but the exact split policy still needs operator confirmation."
+        )
     benchmark_expectations = _coerce_summary_value(
         _first_mapping_value(
             human_inputs,
@@ -402,7 +421,7 @@ def compile_mission_contract(
         )
     )
     if compute_budget is None:
-        budget_match = re.search(r"\b(\d+)\s*(gpu|cpu)\s*hours?\b", combined_text, flags=re.IGNORECASE)
+        budget_match = re.search(_COMPUTE_BUDGET_PATTERN, combined_text, flags=re.IGNORECASE)
         if budget_match:
             compute_budget = f"{budget_match.group(1)} {budget_match.group(2).upper()} hours"
     if compute_budget is None and autopilot.get("max_iterations") is not None:

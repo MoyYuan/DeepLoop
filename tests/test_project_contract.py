@@ -399,11 +399,11 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(mission_contract["readiness"]["status"], "ready-with-clarifications")
         self.assertTrue(
             any(item["id"] == "publication-boundary" for item in mission_contract["prerequisites"]),
-            mission_contract["prerequisites"],
+            "Expected publication-boundary prerequisite to be present",
         )
         self.assertTrue(
             any(item["id"] == "novelty-target" for item in mission_contract["prerequisites"]),
-            mission_contract["prerequisites"],
+            "Expected novelty-target prerequisite to be present",
         )
 
     def test_initialize_mission_writes_compiled_mission_contract_summary(self) -> None:
@@ -437,7 +437,8 @@ class ProjectContractTests(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(Path(result["mission_root"]), ignore_errors=True))
         mission_state = json.loads(Path(result["state_path"]).read_text(encoding="utf-8"))
         mission_summary = Path(result["summary_path"]).read_text(encoding="utf-8")
-        planner_handoff = json.loads((Path(result["mission_root"]) / "agent_handoffs" / "planner.json").read_text(encoding="utf-8"))
+        planner_handoff_path = Path(result["mission_root"]) / "agent_handoffs" / "planner.json"
+        planner_handoff = json.loads(planner_handoff_path.read_text(encoding="utf-8"))
 
         self.assertEqual(mission_state["mission_contract"]["readiness"]["status"], "blocked")
         self.assertTrue(Path(mission_state["mission_contract_path"]).exists())
