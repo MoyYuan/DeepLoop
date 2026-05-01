@@ -44,6 +44,17 @@ def _load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def _extract_nonempty_strings(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    normalized: list[str] = []
+    for item in values:
+        text = str(item).strip()
+        if text:
+            normalized.append(text)
+    return normalized
+
+
 class _TemplateMap(dict[str, str]):
     def __missing__(self, key: str) -> str:
         return "{" + key + "}"
@@ -415,6 +426,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     write_text(Path(outer_loop["current_operator_request_path"]), "{}\n")
 
     roles = list(config.get("roles", []))
+    mission_constraints = _extract_nonempty_strings(mission_cfg.get("constraints"))
     sandboxes: dict[str, dict] = {}
     handoffs: dict[str, str] = {}
     for role in roles:
@@ -447,11 +459,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         "title": mission_cfg["title"],
         "summary": mission_cfg["summary"],
         "objective": mission_cfg["objective"],
-        "constraints": [
-            str(item).strip()
-            for item in mission_cfg.get("constraints", [])
-            if str(item).strip()
-        ],
+        "constraints": mission_constraints,
         "human_inputs": (
             dict(mission_cfg.get("human_inputs"))
             if isinstance(mission_cfg.get("human_inputs"), dict)
@@ -568,18 +576,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         *( [f"- mission_profile: `{mission_profile}`"] if mission_profile else [] ),
         f"- target_repo: `{target_repo}`",
         f"- objective: {mission_cfg['objective']}",
-        *(
-            [
-                "- constraints: "
-                + "; ".join(
-                    str(item).strip()
-                    for item in mission_cfg.get("constraints", [])
-                    if str(item).strip()
-                )
-            ]
-            if any(str(item).strip() for item in mission_cfg.get("constraints", []))
-            else []
-        ),
+        *([f"- constraints: {'; '.join(mission_constraints)}"] if mission_constraints else []),
         f"- current_phase: `{current_phase}`",
         f"- contract_snapshot_path: `{contract_snapshot['snapshot_path']}`",
         f"- platform_root: `{platform_expansion['platform_root']}`",

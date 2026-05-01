@@ -44,9 +44,12 @@ DISCOVERY_QUESTIONS: tuple[tuple[str, str, str], ...] = (
         "What key information is still missing that DeepLoop should surface before autonomous kickoff?",
     ),
 )
+DISCOVERY_CANCEL_TOKENS = {"cancel", "exit", "quit"}
+# Keep the interactive loop bounded so blank stdin does not trap the operator forever.
+MAX_INITIAL_IDEA_ATTEMPTS = 3
 
 
-def _clean_text(value: Any) -> str:
+def _normalize_text(value: Any) -> str:
     return " ".join(str(value or "").split()).strip()
 
 
@@ -70,14 +73,14 @@ def build_discovery_checklist(answers: dict[str, str]) -> list[dict[str, str]]:
         {
             "id": "mission_idea",
             "label": "mission idea",
-            "status": "provided" if _clean_text(answers.get("mission_idea")) else "missing",
+            "status": "provided" if _normalize_text(answers.get("mission_idea")) else "missing",
         }
     ]
     checklist.extend(
         {
             "id": field_id,
             "label": label,
-            "status": "provided" if _clean_text(answers.get(field_id)) else "missing",
+            "status": "provided" if _normalize_text(answers.get(field_id)) else "missing",
         }
         for field_id, label, _prompt in DISCOVERY_QUESTIONS
     )
@@ -96,10 +99,30 @@ def _question_prompts(*, printer: Callable[[str], None], answers: dict[str, str]
 def _discovery_constraints(answers: dict[str, str]) -> list[str]:
     constraints: list[str] = []
     for key in ("risks_and_leakage", "compute_budget", "novelty_and_tradeoffs"):
-        value = _clean_text(answers.get(key))
+        value = _normalize_text(answers.get(key))
         if value:
             constraints.append(value)
     return constraints
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        deduped.append(value)
+    return deduped
+
+
+def _read_discovery_response(reader: Callable[[str], str], prompt: str) -> str | None:
+    """Return None for explicit cancel tokens; keep blank responses as empty strings."""
+    response = reader(prompt)
+    cleaned = _normalize_text(response)
+    if cleaned.lower() in DISCOVERY_CANCEL_TOKENS:
+        return None
+    return cleaned
 
 
 def _discovery_summary_lines(
@@ -129,7 +152,7 @@ def _discovery_payload(answers: dict[str, str]) -> dict[str, Any]:
     return {
         "mode": "interactive",
         "checklist": build_discovery_checklist(answers),
-        "answers": {key: value for key, value in answers.items() if _clean_text(value)},
+        "answers": {key: value for key, value in answers.items() if _normalize_text(value)},
     }
 
 
@@ -147,7 +170,7 @@ def _discovery_brief_lines(config: dict[str, Any], answers: dict[str, str]) -> l
         lines.append(f"- [{marker}] {item['label']}")
     lines.extend(["", "## Discovery answers"])
     for key, label, _prompt in (("mission_idea", "mission idea", ""), *DISCOVERY_QUESTIONS):
-        value = _clean_text(answers.get(key))
+        value = _normalize_text(answers.get(key))
         if value:
             lines.append(f"- **{label}**: {value}")
     return lines
@@ -161,19 +184,21 @@ def compile_discovery_config(
     project_root: Path | None = None,
 ) -> dict[str, Any]:
     answers = {"mission_idea": mission_idea, **discovery_answers}
-    objective = _clean_text(answers["mission_idea"]) or "Refine the mission interactively before execution."
+    objective = _normalize_text(answers["mission_idea"])
+    if not objective:
+        raise ValueError("mission_idea is required for discovery compilation")
     title_seed = objective.split(".")[0] or objective
     title = title_seed[:120].rstrip(" ,;:") or "Interactive mission discovery"
     summary_parts = [
         f"Compile an executable DeepLoop mission from interactive discovery for: {objective}",
     ]
-    available_assets = _clean_text(answers.get("available_assets"))
+    available_assets = _normalize_text(answers.get("available_assets"))
     if available_assets:
         summary_parts.append(f"Starting context: {available_assets}")
     summary = " ".join(summary_parts)
 
     if project_root is None:
-        resolved_mission_id = _clean_text(mission_id) or f"{_slugify(title)}-mission"
+        resolved_mission_id = _normalize_text(mission_id) or f"{_slugify(title)}-mission"
         discovery_root = SCRATCH_DIR / "mission_discovery_projects" / resolved_mission_id
         docs_root = discovery_root / "docs"
         docs_root.mkdir(parents=True, exist_ok=True)
@@ -200,7 +225,7 @@ def compile_discovery_config(
             for item in base_config["mission"].get("constraints", [])
             if str(item).strip()
         ]
-        merged_constraints = list(dict.fromkeys([*existing_constraints, *_discovery_constraints(answers)]))
+        merged_constraints = _dedupe_strings([*existing_constraints, *_discovery_constraints(answers)])
         existing_human_inputs = (
             dict(base_config["mission"].get("human_inputs"))
             if isinstance(base_config["mission"].get("human_inputs"), dict)
@@ -228,13 +253,26 @@ def run_interactive_discovery(
     printer("mission-discovery: starting interactive mission formulation")
     if project_root is not None:
         printer(f"mission-discovery: using project context from {project_root}")
-    idea = _clean_text(mission_idea)
+    idea = _normalize_text(mission_idea)
+    attempts = 0
     while not idea:
-        idea = _clean_text(reader("mission-discovery: What is your rough mission idea or goal? "))
+        response = _read_discovery_response(reader, "mission-discovery: What is your rough mission idea or goal? ")
+        if response is None:
+            return {"cancelled": True, "confirmed": False, "config": None, "config_path": None}
+        idea = response
+        attempts += 1
+        if idea:
+            break
+        if attempts >= MAX_INITIAL_IDEA_ATTEMPTS:
+            printer("mission-discovery: no mission idea provided; canceling discovery")
+            return {"cancelled": True, "confirmed": False, "config": None, "config_path": None}
     answers: dict[str, str] = {"mission_idea": idea}
     for field_id, _label, prompt in DISCOVERY_QUESTIONS:
         _question_prompts(printer=printer, answers=answers)
-        answers[field_id] = _clean_text(reader(f"mission-discovery: {prompt} "))
+        response = _read_discovery_response(reader, f"mission-discovery: {prompt} ")
+        if response is None:
+            return {"cancelled": True, "confirmed": False, "config": None, "config_path": None}
+        answers[field_id] = response
 
     config = compile_discovery_config(
         mission_idea=idea,
@@ -254,8 +292,11 @@ def run_interactive_discovery(
         compiled_config_path=compiled_config_path,
     ):
         printer(line)
-    confirmation = _clean_text(reader("mission-discovery: Proceed with mission kickoff? [y/N] ")).lower()
+    confirmation = _read_discovery_response(reader, "mission-discovery: Proceed with mission kickoff? [y/N] ")
+    if confirmation is None:
+        confirmation = "n"
     return {
+        "cancelled": False,
         "confirmed": confirmation in {"y", "yes"},
         "config": config,
         "config_path": compiled_config_path,

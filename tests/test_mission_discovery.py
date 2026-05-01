@@ -12,7 +12,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from deeploop.mission.mission_discovery import compile_discovery_config
+from deeploop.mission.mission_discovery import compile_discovery_config, run_interactive_discovery
 
 
 class MissionDiscoveryTests(unittest.TestCase):
@@ -104,6 +104,95 @@ class MissionDiscoveryTests(unittest.TestCase):
             "Figure out a leakage-safe research plan for a tabular forecasting dataset.",
         )
         self.assertTrue(Path(mission_state["target_repo"]).joinpath("project-facts.yaml").exists())
+
+    def test_init_mission_script_discovery_cancel_keeps_compiled_config_without_launching(self) -> None:
+        mission_id = "interactive-discovery-cli-cancel-test"
+        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / mission_id
+        discovery_root = Path.home() / "workspaces" / "scratch" / "deeploop" / "mission_discovery_projects" / mission_id
+        discovery_config_path = Path.home() / "workspaces" / "scratch" / "deeploop" / "mission_discovery_configs" / f"{mission_id}.yaml"
+        shutil.rmtree(mission_root, ignore_errors=True)
+        shutil.rmtree(discovery_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
+        self.addCleanup(lambda: shutil.rmtree(discovery_root, ignore_errors=True))
+        self.addCleanup(lambda: discovery_config_path.unlink(missing_ok=True))
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/mission/init_mission.py",
+                "--discover",
+                "--mission-id",
+                mission_id,
+                "--mission-idea",
+                "Plan a cautious benchmark mission from rough notes.",
+            ],
+            input="\n".join(
+                [
+                    "Dataset notes and a baseline.",
+                    "Improve benchmark score without leakage.",
+                    "Avoid train/test contamination.",
+                    "2 GPU-hours.",
+                    "Compiled mission and memo.",
+                    "Prefer rigor.",
+                    "Need benchmark approval.",
+                    "n",
+                ]
+            )
+            + "\n",
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("kickoff cancelled", completed.stdout)
+        self.assertTrue(discovery_config_path.exists())
+        self.assertFalse(mission_root.joinpath("mission_state.json").exists())
+
+    def test_run_interactive_discovery_cancels_after_repeated_empty_mission_idea(self) -> None:
+        responses = iter(["", "", ""])
+        printed: list[str] = []
+
+        result = run_interactive_discovery(
+            mission_id="interactive-discovery-empty-idea-test",
+            reader=lambda prompt: next(responses),
+            printer=printed.append,
+        )
+
+        self.assertTrue(result["cancelled"])
+        self.assertFalse(result["confirmed"])
+        self.assertIsNone(result["config_path"])
+        self.assertIn("mission-discovery: no mission idea provided; canceling discovery", printed)
+
+    def test_run_interactive_discovery_preserves_blank_followup_answers_as_missing(self) -> None:
+        responses = iter(
+            [
+                "A baseline notebook and dataset.",
+                "",
+                "Watch for leakage.",
+                "4 GPU-hours.",
+                "Mission memo.",
+                "Prefer rigor.",
+                "Need benchmark sign-off.",
+                "n",
+            ]
+        )
+        printed: list[str] = []
+
+        result = run_interactive_discovery(
+            mission_id="interactive-discovery-blank-followup-test",
+            mission_idea="Refine a forecasting mission from partial notes.",
+            reader=lambda prompt: next(responses),
+            printer=printed.append,
+        )
+        self.addCleanup(lambda: Path(result["config_path"]).unlink(missing_ok=True))
+        self.addCleanup(lambda: shutil.rmtree(Path(result["config"]["mission"]["target_repo"]), ignore_errors=True))
+
+        self.assertFalse(result["confirmed"])
+        checklist = result["config"]["mission"]["human_inputs"]["mission_discovery"]["checklist"]
+        success_criteria = next(item for item in checklist if item["id"] == "success_criteria")
+        self.assertEqual(success_criteria["status"], "missing")
 
 
 if __name__ == "__main__":
