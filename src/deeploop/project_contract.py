@@ -273,9 +273,9 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
         plain_artifacts_payload = plain_payload.get("artifacts") if isinstance(plain_payload.get("artifacts"), dict) else {}
         contract_requirements = _plain_contract_requirements(plain_payload, plain_project)
         unoperationalized_fields = sorted(
-            str(key)
+            key
             for key in plain_payload
-            if str(key) not in _PLAIN_OPERATIONAL_TOP_LEVEL_FIELDS
+            if key not in _PLAIN_OPERATIONAL_TOP_LEVEL_FIELDS
         )
         warnings = [
             "Plain project facts contain top-level fields that are preserved in the project contract "

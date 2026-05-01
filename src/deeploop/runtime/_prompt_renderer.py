@@ -90,11 +90,13 @@ def mission_contract_markdown(mission_state: dict[str, Any]) -> list[str]:
                 "",
             ]
         )
-    other_requirements = {
-        field: _resolve_contract_field_value(mission_state, field)
-        for field in CONTRACT_OPERATIONAL_FIELDS
-        if field != "acceptance_criteria" and _resolve_contract_field_value(mission_state, field) is not None
-    }
+    other_requirements: dict[str, Any] = {}
+    for field in CONTRACT_OPERATIONAL_FIELDS:
+        if field == "acceptance_criteria":
+            continue
+        value = _resolve_contract_field_value(mission_state, field)
+        if value is not None:
+            other_requirements[field] = value
     if other_requirements:
         lines.extend(["## Mission contract requirements", ""])
         for field, value in other_requirements.items():
