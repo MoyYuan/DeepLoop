@@ -447,6 +447,16 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         "title": mission_cfg["title"],
         "summary": mission_cfg["summary"],
         "objective": mission_cfg["objective"],
+        "constraints": [
+            str(item).strip()
+            for item in mission_cfg.get("constraints", [])
+            if str(item).strip()
+        ],
+        "human_inputs": (
+            dict(mission_cfg.get("human_inputs"))
+            if isinstance(mission_cfg.get("human_inputs"), dict)
+            else {}
+        ),
         "current_phase": current_phase,
         "completed_phases": completed_phases,
         "phase_history": phase_history,
@@ -558,6 +568,18 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         *( [f"- mission_profile: `{mission_profile}`"] if mission_profile else [] ),
         f"- target_repo: `{target_repo}`",
         f"- objective: {mission_cfg['objective']}",
+        *(
+            [
+                "- constraints: "
+                + "; ".join(
+                    str(item).strip()
+                    for item in mission_cfg.get("constraints", [])
+                    if str(item).strip()
+                )
+            ]
+            if any(str(item).strip() for item in mission_cfg.get("constraints", []))
+            else []
+        ),
         f"- current_phase: `{current_phase}`",
         f"- contract_snapshot_path: `{contract_snapshot['snapshot_path']}`",
         f"- platform_root: `{platform_expansion['platform_root']}`",
