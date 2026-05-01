@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -432,7 +433,6 @@ def _maybe_self_heal_manifest_path(
     candidate_limit = max(1, int(search_cfg.get("max_candidates", DEFAULT_ARTIFACT_SEARCH_MAX_CANDIDATES)))
     candidates: list[tuple[tuple[int, int, int, int, int, str], Path, dict[str, Any]]] = []
     seen: set[Path] = {_resolved_path(expected_manifest)}
-    quarantined: list[str] = []
     for root_index, root in enumerate(roots):
         for pattern in patterns:
             for candidate in sorted(root.glob(pattern)):
@@ -443,7 +443,6 @@ def _maybe_self_heal_manifest_path(
                     continue
                 seen.add(resolved_candidate)
                 if not _is_relative_to(resolved_candidate, root):
-                    quarantined.append(f"{root.name}/{candidate.name}")
                     continue
                 try:
                     manifest = _load_json(resolved_candidate)
@@ -467,12 +466,16 @@ def _maybe_self_heal_manifest_path(
             break
     if not candidates:
         failure["details"]["searched_roots"] = [str(root) for root in roots]
-        if quarantined:
-            failure["details"]["quarantined_candidates"] = quarantined
         return None
     _, source_manifest_path, manifest = sorted(candidates, key=lambda item: item[0])[0]
     expected_manifest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_manifest_path, expected_manifest)
+    with tempfile.NamedTemporaryFile(dir=expected_manifest.parent, delete=False) as tmp_file:
+        temp_manifest_path = Path(tmp_file.name)
+    try:
+        shutil.copy2(source_manifest_path, temp_manifest_path)
+        os.replace(temp_manifest_path, expected_manifest)
+    finally:
+        temp_manifest_path.unlink(missing_ok=True)
     outcome = _classify_manifest_payload(
         policy=policy,
         manifest_path=expected_manifest,
