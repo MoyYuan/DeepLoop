@@ -429,7 +429,7 @@ def _maybe_self_heal_manifest_path(
     )
     search_cfg = policy.get("artifact_search", {}) if isinstance(policy.get("artifact_search"), Mapping) else {}
     patterns = [str(item) for item in search_cfg.get("manifest_globs", [f"**/{expected_manifest.name}"])]
-    max_candidates = max(1, int(search_cfg.get("max_candidates", DEFAULT_ARTIFACT_SEARCH_MAX_CANDIDATES)))
+    candidate_limit = max(1, int(search_cfg.get("max_candidates", DEFAULT_ARTIFACT_SEARCH_MAX_CANDIDATES)))
     candidates: list[tuple[tuple[int, int, int, int, int, str], Path, dict[str, Any]]] = []
     seen: set[Path] = {_resolved_path(expected_manifest)}
     quarantined: list[str] = []
@@ -443,7 +443,7 @@ def _maybe_self_heal_manifest_path(
                     continue
                 seen.add(resolved_candidate)
                 if not _is_relative_to(resolved_candidate, root):
-                    quarantined.append(str(resolved_candidate))
+                    quarantined.append(f"{root.name}/{candidate.name}")
                     continue
                 try:
                     manifest = _load_json(resolved_candidate)
@@ -459,11 +459,11 @@ def _maybe_self_heal_manifest_path(
                     hints=hints,
                 )
                 candidates.append((score, resolved_candidate, manifest))
-                if len(candidates) >= max_candidates:
+                if len(candidates) >= candidate_limit:
                     break
-            if len(candidates) >= max_candidates:
+            if len(candidates) >= candidate_limit:
                 break
-        if len(candidates) >= max_candidates:
+        if len(candidates) >= candidate_limit:
             break
     if not candidates:
         failure["details"]["searched_roots"] = [str(root) for root in roots]
