@@ -233,11 +233,10 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
                 f"- outer_action_task: {historical_action.get('task')}",
             ]
         )
-    elif isinstance(current_action, Mapping):
-        lines.append(f"- outer_action: `{current_action.get('action_id')}`")
     if isinstance(current_action, Mapping):
         lines.extend(
             [
+                f"- outer_action: `{current_action.get('action_id')}`",
                 f"- current_action: `{current_action.get('action_id')}`",
                 f"- action_status: `{current_action.get('status')}`",
                 f"- action_kind: `{current_action.get('kind')}`",
