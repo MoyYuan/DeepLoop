@@ -22,6 +22,7 @@ from deeploop.runtime._prompt_renderer import (
 from deeploop.runtime.sandbox import build_sandbox_spec
 
 DEFAULT_POLICY_PATH = DEEPLOOP_REPO_ROOT / "configs" / "runtime" / "recursive-agent-runtime.yaml"
+ROLE_ALIASES = {"executor": "execution-operator"}
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -127,6 +128,24 @@ def _loop_action_id(loop_name: str, iteration_number: int, role: str) -> str:
     return f"{loop_name}-iter-{iteration_number:02d}-{safe_role}"
 
 
+def _canonical_role(role: str, mission_state: dict[str, Any] | None) -> str:
+    roles = mission_state.get("roles") if isinstance(mission_state, dict) else None
+    declared_roles = {str(item) for item in roles} if isinstance(roles, list) else set()
+    if role in declared_roles:
+        return role
+    alias = ROLE_ALIASES.get(role)
+    if alias is not None and (not declared_roles or alias in declared_roles):
+        return alias
+    return role
+
+
+def _canonicalize_action_role(action: dict[str, Any], mission_state: dict[str, Any] | None) -> dict[str, Any]:
+    role = _optional_string(action.get("role"))
+    if role is not None:
+        action["role"] = _canonical_role(role, mission_state)
+    return action
+
+
 def _latest_matching_record(path: Path | None, field: str, value: str | None) -> dict[str, Any] | None:
     if path is None or value is None or not path.exists():
         return None
@@ -192,6 +211,9 @@ def _sanitize_continuation(
     if continuation is None:
         return None
     sanitized = dict(continuation)
+    role = _optional_string(sanitized.get("role"))
+    if role is not None:
+        sanitized["role"] = _canonical_role(role, mission_state)
     next_actions = mission_state.get("next_actions") if isinstance(mission_state, dict) else None
     actions = next_actions.get("actions") if isinstance(next_actions, dict) else None
     if isinstance(actions, list):
@@ -319,6 +341,28 @@ def _should_yield_to_outer_runtime(
     decision_type = (_optional_string(phase_control.get("decision_type")) or "").lower()
     branch_status = (_optional_string(phase_control.get("branch_status")) or "").lower()
     return decision_type in {"hold", "stay-in-critique"} or branch_status == "critique-parked"
+
+
+def _should_yield_before_execution(
+    outcome: dict[str, Any] | None,
+    *,
+    action: dict[str, Any] | None,
+    remaining_iterations: int,
+) -> bool:
+    if remaining_iterations > 1 or not isinstance(outcome, dict) or not isinstance(action, dict):
+        return False
+    continuation = outcome.get("continuation")
+    if not isinstance(continuation, dict):
+        return False
+    phase_control = outcome.get("phase_control")
+    next_phase = _optional_string(continuation.get("phase"))
+    if next_phase is None and isinstance(phase_control, dict):
+        next_phase = _optional_string(phase_control.get("next_phase"))
+    action_phase = _optional_string(action.get("phase"))
+    if next_phase != "execution" or action_phase == "execution":
+        return False
+    continuation_role = _optional_string(continuation.get("role"))
+    return continuation_role in {None, "execution-operator"} or continuation_role in ROLE_ALIASES
 
 
 def _effective_outcome(outcome: dict[str, Any] | None, loop_status: str) -> dict[str, Any] | None:
@@ -719,8 +763,9 @@ def _apply_result_to_mission(
         "state_path": str(_state_path(runtime_root)),
         "memory_path": str(_memory_path(runtime_root)),
         "status": status,
-        "iterations_completed": state["iterations_completed"],
         "max_iterations": state.get("max_iterations"),
+        "iterations_completed": state["iterations_completed"],
+        "iterations_remaining": state.get("iterations_remaining"),
         "consecutive_failures": state["consecutive_failures"],
         "latest_result_path": state.get("latest_result_path"),
         "latest_iteration_path": state.get("latest_iteration_path"),
@@ -792,13 +837,14 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     _save_loop_state(runtime_root, state)
 
     max_iterations = int(config.get("max_iterations", policy.get("max_iterations", 8)))
+    state["max_iterations"] = max_iterations
+    state["iterations_remaining"] = max(0, max_iterations - int(state.get("iterations_completed", 0)))
     max_consecutive_failures = int(config.get("max_consecutive_failures", policy.get("max_consecutive_failures", 2)))
     recent_ledger_limit = int(config.get("recent_ledger_limit", policy.get("recent_ledger_limit", 8)))
     recent_memory_limit = int(config.get("recent_memory_limit", policy.get("recent_memory_limit", 6)))
     agent_cfg = config.get("agent", {})
     if not isinstance(agent_cfg, dict) or not isinstance(agent_cfg.get("command"), list) or not agent_cfg["command"]:
         raise ValueError("recursive agent runtime requires agent.command to be a non-empty list")
-    state["max_iterations"] = max_iterations
     _save_loop_state(runtime_root, state)
 
     iterations: list[dict[str, Any]] = []
@@ -829,6 +875,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                 default_phase=current_phase,
                 source=str(pending_action.get("source") or "pending-action"),
             )
+            candidate_action = _canonicalize_action_role(candidate_action, mission_state)
             pending_phase = _optional_string(candidate_action.get("phase"))
             chosen_phase = _optional_string((chosen or {}).get("phase")) or current_phase or None
             chosen_action_id = _optional_string((chosen or {}).get("action_id"))
@@ -856,6 +903,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                         source="mission-next-action",
                         mission_action_index=selected_action_index,
                     )
+                    action = _canonicalize_action_role(action, mission_state)
                 else:
                     chosen = None
             else:
@@ -875,6 +923,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                         default_phase=current_phase,
                         source="initial-task",
                     )
+                    action = _canonicalize_action_role(action, mission_state)
                 else:
                     status = "blocked"
                     current_action = None
@@ -914,6 +963,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                     break
 
         iteration_number = int(state["iterations_completed"]) + 1
+        remaining_after_this_iteration = max_iterations - iteration_number
         action["loop_action_id"] = action.get("loop_action_id") or _loop_action_id(loop_name, iteration_number, action["role"])
         current_action = dict(action)
         if used_initial_task:
@@ -949,8 +999,18 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             decision_record=decision_record,
             result_json_path=result_json_path,
             iteration_number=iteration_number,
+            max_iterations=max_iterations,
         )
         prompt_path.write_text(prompt_text, encoding="utf-8")
+        if remaining_after_this_iteration == 0 and (
+            _optional_string(action.get("phase")) == "execution" or _optional_string(action.get("role")) == "execution-operator"
+        ):
+            print(
+                f"[deeploop] WARNING: routing execution action '{action.get('action_id') or action.get('loop_action_id')}' "
+                f"into final recursive iteration {iteration_number}/{max_iterations}. "
+                "Consider yielding to the outer loop or increasing max_iterations.",
+                file=sys.stderr,
+            )
 
         context = {
             "prompt_path": str(prompt_path),
@@ -1140,11 +1200,12 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             ),
         )
 
+        remaining_iterations = max_iterations - iteration_number
         state["iterations_completed"] = iteration_number
+        state["iterations_remaining"] = remaining_iterations
         state["latest_iteration_path"] = str(iteration_root)
         state["latest_result_path"] = str(summary_json_path)
         latest_outcome = normalized_outcome
-        remaining_iterations = max_iterations - iteration_number
         if remaining_iterations <= max(1, round(max_iterations * 0.20)) and remaining_iterations > 0:
             print(
                 f"[deeploop] WARNING: iteration budget nearly exhausted for loop '{loop_name}': "
@@ -1191,6 +1252,28 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                 status = "max-iterations"
                 state["status"] = status
                 _save_loop_state(runtime_root, state)
+                mission_state = _apply_result_to_mission(
+                    mission_state_path,
+                    mission_state,
+                    runtime_root=runtime_root,
+                    loop_name=loop_name,
+                    state=state,
+                    current_action=current_action,
+                    latest_outcome=latest_outcome,
+                    status="running",
+                )
+                break
+            if _should_yield_before_execution(latest_outcome, action=action, remaining_iterations=remaining_iterations):
+                state["pending_action"] = dict(continuation)
+                status = "max-iterations"
+                state["status"] = status
+                _save_loop_state(runtime_root, state)
+                print(
+                    f"[deeploop] WARNING: execution handoff reached with only "
+                    f"{remaining_iterations}/{max_iterations} recursive iterations remaining; "
+                    "yielding to the outer loop before starting execution.",
+                    file=sys.stderr,
+                )
                 mission_state = _apply_result_to_mission(
                     mission_state_path,
                     mission_state,
@@ -1258,8 +1341,13 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         "mission_id": mission_state["mission_id"],
         "loop_name": loop_name,
         "status": status,
+        "max_iterations": max_iterations,
         "iterations_completed": state["iterations_completed"],
+<<<<<<< HEAD
         "max_iterations": state.get("max_iterations"),
+=======
+        "iterations_remaining": max(0, max_iterations - int(state["iterations_completed"])),
+>>>>>>> 1c779bc (Changes before error encountered)
         "consecutive_failures": state["consecutive_failures"],
         "runtime_root": str(runtime_root),
         "memory_path": str(_memory_path(runtime_root)),
@@ -1286,8 +1374,13 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     )
     return {
         "status": status,
+        "max_iterations": max_iterations,
         "iterations_completed": state["iterations_completed"],
+<<<<<<< HEAD
         "max_iterations": state.get("max_iterations"),
+=======
+        "iterations_remaining": max(0, max_iterations - int(state["iterations_completed"])),
+>>>>>>> 1c779bc (Changes before error encountered)
         "consecutive_failures": state["consecutive_failures"],
         "runtime_root": runtime_root,
         "memory_path": _memory_path(runtime_root),

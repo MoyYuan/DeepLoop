@@ -595,6 +595,37 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         self.assertEqual(normalized["continuation"]["task"], "Review the bounded result.")
         self.assertEqual(normalized["action_result"]["mission_action_id"], "legacy-action")
 
+    def test_runtime_aliases_executor_continuation_to_declared_execution_operator(self) -> None:
+        payload = {
+            "status": "continue",
+            "summary": "Execution handoff emitted with legacy role alias.",
+            "continuation": {
+                "role": "executor",
+                "task": "Run the bounded execution plan.",
+                "phase": "execution",
+            },
+        }
+        normalized = _normalized_result_outcome(
+            payload,
+            {
+                "role": "experiment-designer",
+                "task": "Design the bounded experiment.",
+                "artifacts": [],
+                "action_id": "design-action",
+                "loop_action_id": "demo-loop-iter-04-experiment-designer",
+                "kind": "phase-transition",
+                "phase": "experiment-design",
+                "branch_id": None,
+                "decision_id": None,
+                "notes": [],
+                "source": "test",
+                "mission_action_index": 0,
+            },
+            mission_state={"roles": ["experiment-designer", "execution-operator"]},
+        )
+
+        self.assertEqual(normalized["continuation"]["role"], "execution-operator")
+
     def test_validate_result_accepts_string_list_like_handoff_fields(self) -> None:
         payload = {
             "status": "continue",
@@ -1024,6 +1055,106 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         )
 
         self.assertEqual(resolved, "literature-review")
+
+    def test_runtime_yields_before_starting_execution_on_final_recursive_iteration(self) -> None:
+        mission_id = "recursive-agent-execution-yield"
+        sandbox_root = SANDBOXES_DIR / mission_id
+        test_root = _fresh_test_root("recursive-agent-execution-yield")
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "mission_id": mission_id,
+                    "mode": "sandboxed-yolo",
+                    "title": "Recursive runtime execution-yield handoff",
+                    "summary": "Ensure execution is not started with only one recursive iteration left.",
+                    "objective": "Design the experiment, then yield before execution if budget is nearly exhausted.",
+                    "current_phase": "experiment-design",
+                    "next_phase": "execution",
+                    "status": "initialized",
+                    "target_repo": str(REPO_ROOT),
+                    "roles": ["experiment-designer", "execution-operator"],
+                    "next_actions": {"actions": []},
+                    "autonomy_status": {"state": "initialized", "reason": "test"},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        fake_agent = test_root / "execution_handoff_agent.py"
+        fake_agent.write_text(
+            "\n".join(
+                [
+                    "from __future__ import annotations",
+                    "import argparse",
+                    "import json",
+                    "from pathlib import Path",
+                    "parser = argparse.ArgumentParser()",
+                    "parser.add_argument('--prompt', required=True)",
+                    "parser.add_argument('--result-json', required=True)",
+                    "args = parser.parse_args()",
+                    "payload = {",
+                    "    'status': 'continue',",
+                    "    'summary': 'Experiment design is ready for execution.',",
+                    "    'continuation': {",
+                    "        'role': 'executor',",
+                    "        'task': 'Execute the full locked evaluation plan.',",
+                    "        'phase': 'execution',",
+                    "    },",
+                    "    'action_result': {'status': 'completed', 'phase': 'experiment-design'},",
+                    "    'phase_control': {'current_phase': 'experiment-design', 'next_phase': 'execution'},",
+                    "}",
+                    "Path(args.result_json).write_text(json.dumps(payload), encoding='utf-8')",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config_path = test_root / "recursive-runtime.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "mission_state": str(mission_state_path),
+                    "loop_name": "execution-yield-loop",
+                    "max_iterations": 2,
+                    "initial_task": "Finalize the bounded experiment design.",
+                    "default_role": "experiment-designer",
+                    "agent": {
+                        "command": [
+                            sys.executable,
+                            str(fake_agent),
+                            "--prompt",
+                            "{prompt_path}",
+                            "--result-json",
+                            "{result_json_path}",
+                        ],
+                        "cwd": str(REPO_ROOT),
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        result = run_recursive_agent_loop(config_path)
+
+        self.assertEqual(result["status"], "max-iterations")
+        self.assertEqual(result["iterations_completed"], 1)
+        self.assertEqual(result["iterations_remaining"], 1)
+        self.assertFalse((result["runtime_root"] / "iteration-02-execution-operator").exists())
+        first_prompt = (result["runtime_root"] / "iteration-01-experiment-designer" / "prompt.md").read_text(encoding="utf-8")
+        self.assertIn("recursive_iteration_budget: `1/2`", first_prompt)
+        mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
+        self.assertEqual(mission_state["current_phase"], "execution")
+        self.assertEqual(mission_state["agent_driver"]["pending_action"]["role"], "execution-operator")
+        self.assertEqual(mission_state["agent_driver"]["iterations_remaining"], 1)
+
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        shutil.rmtree(test_root, ignore_errors=True)
 
 
 class AnalyzeBudgetTests(unittest.TestCase):
