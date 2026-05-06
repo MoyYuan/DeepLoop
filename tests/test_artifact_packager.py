@@ -427,6 +427,137 @@ class ArtifactPackagerTests(unittest.TestCase):
             self.assertGreater(len(result["package"]["artifacts"]), 0)
             self.assertEqual(validate_package_manifest(result["package"]), [])
 
+    def test_packager_includes_recorded_recursive_agent_outputs(self) -> None:
+        runs_root = WORKSPACE_ROOT / "runs"
+        runs_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=runs_root) as tmpdir:
+            test_root = Path(tmpdir)
+            mission_root = test_root / "mission"
+            mission_root.mkdir(parents=True, exist_ok=True)
+            target_repo = test_root / "plain-project"
+            target_repo.mkdir(parents=True, exist_ok=True)
+            findings_dir = mission_root / "findings"
+            findings_dir.mkdir(parents=True, exist_ok=True)
+            runtime_dir = mission_root / "runtime" / "mission_outer_runtime"
+            runtime_dir.mkdir(parents=True, exist_ok=True)
+            smoke_dir = mission_root / "runtime" / "plain_folder_followups" / "runs" / "replication-baseline"
+            smoke_dir.mkdir(parents=True, exist_ok=True)
+            agent_runtime = mission_root / "runtime" / "recursive-agent"
+            agent_runtime.mkdir(parents=True, exist_ok=True)
+            scratch_outputs = test_root / "sandboxes" / "recursive-output-package-mission" / "execution-operator" / "outputs"
+            scout_outputs = test_root / "sandboxes" / "recursive-output-package-mission" / "literature-scout" / "outputs"
+            scratch_outputs.mkdir(parents=True, exist_ok=True)
+            scout_outputs.mkdir(parents=True, exist_ok=True)
+
+            task_metrics = scratch_outputs / "metrics.json"
+            task_metrics.write_text('{"test_mae":81.045,"raw_pred_improvement_pct":10.7}\n', encoding="utf-8")
+            run_log = scratch_outputs / "run-log.txt"
+            run_log.write_text("trained direct history_48 model\n", encoding="utf-8")
+            stability_notes = scratch_outputs / "stability-notes.txt"
+            stability_notes.write_text("residual correction was less stable\n", encoding="utf-8")
+            predictions = scratch_outputs / "test-predictions.jsonl"
+            predictions.write_text('{"y":1,"prediction":1.2}\n', encoding="utf-8")
+            prior_art = scout_outputs / "prior-art-memo.md"
+            prior_art.write_text("# Prior art\n", encoding="utf-8")
+            hypotheses = scout_outputs / "hypotheses-and-evaluation-targets.json"
+            hypotheses.write_text('{"primary_metric":"test_mae"}\n', encoding="utf-8")
+            missing_output = scratch_outputs / "missing-task-output.json"
+
+            mission_state_path = mission_root / "mission_state.json"
+            memory_path = agent_runtime / "memory.jsonl"
+            mission_state = {
+                "mission_id": "recursive-output-package-mission",
+                "title": "Recursive output package test",
+                "objective": "Package recursive-agent task outputs before smoke metadata.",
+                "current_phase": "final-report",
+                "status": "completed",
+                "target_repo": str(target_repo),
+                "roles": ["literature-scout", "execution-operator", "report-synthesizer"],
+                "artifacts": {"docs": [], "configs": []},
+                "next_actions": {
+                    "actions": [
+                        {
+                            "action_id": "execute-forecast",
+                            "phase": "execution",
+                            "status": "completed",
+                            "output_paths": [str(task_metrics), str(run_log), str(missing_output)],
+                        }
+                    ],
+                    "generated_configs": [],
+                },
+                "agent_driver": {
+                    "memory_path": str(memory_path),
+                    "latest_outcome": {
+                        "produced_artifacts": [str(stability_notes), str(predictions)],
+                        "action_result": {
+                            "phase": "execution",
+                            "output_paths": [str(task_metrics), str(run_log), str(stability_notes), str(predictions)],
+                        },
+                    },
+                },
+            }
+            mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+            memory_path.write_text(
+                json.dumps(
+                    {
+                        "phase": "literature-review",
+                        "produced_artifacts": [str(prior_art)],
+                        "action_result": {"output_paths": [str(hypotheses)]},
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (mission_root / "mission_summary.md").write_text("# Summary\n", encoding="utf-8")
+            (mission_root / "mission_decisions.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_branches.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_memory.json").write_text("{}\n", encoding="utf-8")
+            (mission_root / "mission_experiments.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "ledger.jsonl").write_text("", encoding="utf-8")
+            (findings_dir / "finding.md").write_text("- Forecasting execution found chronology-safe evidence.\n", encoding="utf-8")
+            (runtime_dir / "runtime_state.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+            (smoke_dir / "metrics.json").write_text('{"accuracy":1.0}\n', encoding="utf-8")
+            smoke_manifest = {
+                "mission_id": "recursive-output-package-mission",
+                "loop_id": "plain-folder-replication-baseline",
+                "claim_state": "exploratory",
+                "run": {"status": "completed"},
+                "metrics": {"accuracy": 1.0},
+                "artifacts": {
+                    "output_dir": str(smoke_dir),
+                    "report_paths": [],
+                },
+                "notes": ["Generated plain-folder replication smoke evidence."],
+            }
+            (smoke_dir / "run_manifest.json").write_text(json.dumps(smoke_manifest, indent=2) + "\n", encoding="utf-8")
+
+            result = package_mission_artifacts(mission_state_path, output_root=test_root / "packages")
+            package = result["package"]
+            artifact_paths = {Path(artifact["source_path"]).name: artifact for artifact in package["artifacts"]}
+
+            self.assertIn("metrics.json", artifact_paths)
+            self.assertIn("run-log.txt", artifact_paths)
+            self.assertIn("stability-notes.txt", artifact_paths)
+            self.assertIn("test-predictions.jsonl", artifact_paths)
+            self.assertIn("prior-art-memo.md", artifact_paths)
+            self.assertIn("hypotheses-and-evaluation-targets.json", artifact_paths)
+            self.assertEqual(len(package["artifact_map"]["task_metrics"]), 1)
+            self.assertEqual(len(package["artifact_map"]["task_predictions"]), 1)
+            self.assertEqual(len(package["artifact_map"]["task_run_logs"]), 2)
+            self.assertGreaterEqual(len(package["artifact_map"]["task_method_artifacts"]), 2)
+            self.assertEqual(len(package["artifact_map"]["plain_folder_smoke_metadata"]), 1)
+            self.assertFalse(package["checks"]["all_required_artifacts_present"])
+            self.assertTrue(
+                any(str(missing_output) in item for item in package["checks"]["missing_required_artifacts"])
+            )
+            self.assertEqual(package["checks"]["missing_recorded_output_artifacts"][0]["source_path"], str(missing_output))
+            summary_text = result["summary_path"].read_text(encoding="utf-8")
+            self.assertLess(
+                summary_text.index("Task metric: metrics.json"),
+                summary_text.index("Plain-folder smoke metadata (not task evidence): metrics.json"),
+            )
+            self.assertEqual(validate_package_manifest(package), [])
+
     def test_packager_overwrites_existing_package_directory_without_crashing(self) -> None:
         runs_root = WORKSPACE_ROOT / "runs"
         runs_root.mkdir(parents=True, exist_ok=True)
