@@ -169,6 +169,29 @@ class _FakePopen:
 
 
 class MissionManagementTests(unittest.TestCase):
+    def test_export_subcommand_routes_to_submission_export(self) -> None:
+        with patch("deeploop.mission.mission_management._export_mission", return_value=0) as mock_export:
+            result = manage_mission_main(
+                [
+                    "export",
+                    "--mission-state",
+                    "/tmp/mission_state.json",
+                    "--output",
+                    "/tmp/submission",
+                    "--format",
+                    "github-repo",
+                    "--force",
+                ]
+            )
+
+        self.assertEqual(result, 0)
+        mock_export.assert_called_once()
+        args = mock_export.call_args.args[0]
+        self.assertEqual(args.mission_state, "/tmp/mission_state.json")
+        self.assertEqual(args.output, "/tmp/submission")
+        self.assertEqual(args.format, "github-repo")
+        self.assertTrue(args.force)
+
     def test_start_launches_canonical_runtime_and_writes_metadata(self) -> None:
         test_root = _fresh_test_root("start_launches_runtime")
         mission_state_path = test_root / "mission" / "mission_state.json"

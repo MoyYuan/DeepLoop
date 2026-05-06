@@ -20,6 +20,7 @@ from deeploop.mission.mission_state import load_mission_state
 from deeploop.cli.run_project import _add_run_args, _run_project
 from deeploop.cli.init_mission import _add_init_args, _init_mission
 from deeploop.cli.package_mission import _add_package_args, _package_mission
+from deeploop.cli.export_mission import _add_export_args, _export_mission
 from deeploop.cli.analyze import _add_analyze_args, _analyze
 from deeploop.runtime.recursive_agent_runtime import analyze_budget
 
@@ -1237,6 +1238,10 @@ def _handle_package(args: argparse.Namespace) -> int:
     return _package_mission(args)
 
 
+def _handle_export(args: argparse.Namespace) -> int:
+    return _export_mission(args)
+
+
 def _handle_analyze(args: argparse.Namespace) -> int:
     return _analyze(args)
 
@@ -1441,6 +1446,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_package_args(package_p)
     package_p.set_defaults(handler=_handle_package)
 
+    export_p = subparsers.add_parser(
+        "export",
+        help="Export a completed mission into a clean self-contained submission repository.",
+        description="Materialize a README-first, GitHub-ready mission handoff folder from the mission artifact package.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_export_args(export_p)
+    export_p.set_defaults(handler=_handle_export)
+
     analyze_p = subparsers.add_parser(
         "analyze",
         help="Analyze the current mission state by routing a prompt to the configured provider.",
@@ -1481,7 +1495,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.handler(args))
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+    except (FileExistsError, FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

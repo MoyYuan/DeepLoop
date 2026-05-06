@@ -18,6 +18,7 @@ from deeploop.artifacts.artifact_packager import (
     package_mission_artifacts,
     validate_package_manifest,
 )
+from deeploop.artifacts.submission_export import export_submission_repository
 from deeploop.core.paths import WORKSPACE_ROOT
 
 
@@ -618,5 +619,95 @@ class ArtifactPackagerTests(unittest.TestCase):
 
             self.assertTrue(result["manifest_path"].exists())
             self.assertTrue(result["summary_path"].exists())
+
+    def test_submission_export_materializes_clean_repo_layout(self) -> None:
+        runs_root = WORKSPACE_ROOT / "runs"
+        runs_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=runs_root) as tmpdir:
+            test_root = Path(tmpdir)
+            mission_root = test_root / "mission"
+            mission_root.mkdir(parents=True, exist_ok=True)
+            target_repo = test_root / "plain-project"
+            target_repo.mkdir(parents=True, exist_ok=True)
+            (target_repo / "docs").mkdir(parents=True, exist_ok=True)
+            project_facts = target_repo / "project-facts.yaml"
+            method_doc = target_repo / "docs" / "method.md"
+            project_facts.write_text("dataset: demo\n", encoding="utf-8")
+            method_doc.write_text("# Method\nBounded forecasting baseline.\n", encoding="utf-8")
+            findings_dir = mission_root / "findings"
+            findings_dir.mkdir(parents=True, exist_ok=True)
+            runtime_dir = mission_root / "runtime" / "mission_outer_runtime"
+            runtime_dir.mkdir(parents=True, exist_ok=True)
+            run_dir = mission_root / "runtime" / "plain_folder_followups" / "runs" / "forecast-baseline"
+            run_dir.mkdir(parents=True, exist_ok=True)
+
+            mission_state_path = mission_root / "mission_state.json"
+            mission_state = {
+                "mission_id": "submission-export-mission",
+                "title": "Submission export test",
+                "objective": "Export a completed forecasting mission into a GitHub-ready folder.",
+                "current_phase": "final-report",
+                "status": "completed",
+                "target_repo": str(target_repo),
+                "roles": ["execution-operator", "report-synthesizer"],
+                "artifacts": {"docs": [str(method_doc)], "configs": [str(project_facts)]},
+                "next_actions": {"actions": [], "generated_configs": []},
+            }
+            mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+            (mission_root / "mission_summary.md").write_text("# Summary\nForecasting completed.\n", encoding="utf-8")
+            (mission_root / "mission_decisions.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_branches.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "mission_memory.json").write_text("{}\n", encoding="utf-8")
+            (mission_root / "mission_experiments.jsonl").write_text("", encoding="utf-8")
+            (mission_root / "ledger.jsonl").write_text("", encoding="utf-8")
+            (findings_dir / "caveat.md").write_text("- Limited to the demo split.\n", encoding="utf-8")
+            (runtime_dir / "runtime_state.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+            (run_dir / "metrics.json").write_text('{"mape": 0.12}\n', encoding="utf-8")
+            (run_dir / "predictions.csv").write_text("timestamp,yhat\n2026-01-01,1.0\n", encoding="utf-8")
+            (run_dir / "run-log.txt").write_text("completed\n", encoding="utf-8")
+            (run_dir / "stability-notes.txt").write_text("No observed instability.\n", encoding="utf-8")
+            manifest = {
+                "mission_id": "submission-export-mission",
+                "loop_id": "forecast-baseline",
+                "claim_state": "replicated",
+                "run": {"status": "completed"},
+                "metrics": {"accuracy": 0.88},
+                "artifacts": {
+                    "output_dir": str(run_dir),
+                    "log_path": str(run_dir / "run-log.txt"),
+                    "report_paths": [],
+                },
+                "stage_context": {
+                    "artifacts": {
+                        "metrics_json": str(run_dir / "metrics.json"),
+                        "predictions_csv": str(run_dir / "predictions.csv"),
+                        "stability_notes": str(run_dir / "stability-notes.txt"),
+                    }
+                },
+                "notes": ["Final report claim references metrics and predictions."],
+            }
+            (run_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+            output_root = test_root / "submission repo"
+            result = export_submission_repository(mission_state_path, output_root, force=True)
+
+            self.assertTrue(result["readme_path"].exists())
+            self.assertTrue((output_root / "submission_manifest.json").exists())
+            self.assertTrue((output_root / "provenance.json").exists())
+            self.assertTrue((output_root / "caveats-and-limitations.md").exists())
+            self.assertTrue((output_root / "project-input" / "project-facts.yaml").exists())
+            self.assertTrue((output_root / "project-input" / "docs" / "method.md").exists())
+            self.assertTrue((output_root / "results" / "metrics" / "metrics.json").exists())
+            self.assertTrue((output_root / "results" / "predictions" / "predictions.csv").exists())
+            self.assertTrue((output_root / "results" / "logs" / "run-log.txt").exists())
+            self.assertTrue((output_root / "results" / "stability-notes" / "stability-notes.txt").exists())
+            self.assertTrue((output_root / "manifests" / "run_manifest.json").exists())
+            self.assertTrue((output_root / "bookkeeping" / "deeploop" / "mission_artifact_package.json").exists())
+            submission_manifest = json.loads((output_root / "submission_manifest.json").read_text(encoding="utf-8"))
+            self.assertTrue(submission_manifest["checks"]["all_package_artifacts_copied"])
+            readme = (output_root / "README.md").read_text(encoding="utf-8")
+            self.assertIn(f"--output '{output_root}'", readme)
+            self.assertFalse((output_root / "runs").exists())
+            self.assertFalse((output_root / "scratch").exists())
 if __name__ == "__main__":
     unittest.main()
