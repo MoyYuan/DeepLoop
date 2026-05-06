@@ -112,6 +112,11 @@ def operator_console_snapshot(
     mission_status = str(mission.get("status") or "unknown")
     runtime = outer_loop.get("runtime") if isinstance(outer_loop.get("runtime"), Mapping) else None
     runtime_status = str(runtime.get("status") or "") if isinstance(runtime, Mapping) else ""
+    recursive_agent = (
+        runtime.get("recursive_agent")
+        if isinstance(runtime, Mapping) and isinstance(runtime.get("recursive_agent"), Mapping)
+        else None
+    )
     process_status = str(launch.get("process_status") or "unknown") if isinstance(launch, Mapping) else "unknown"
     process_is_running = process_status == "running"
     runtime_is_running = runtime_status == "running" and process_status != "exited"
@@ -345,7 +350,8 @@ def operator_console_snapshot(
         is_running = True
         headline = "RUNNING — DeepLoop is still working."
         summary = str(
-            mission.get("next_actions_summary")
+            (recursive_agent.get("summary") if isinstance(recursive_agent, Mapping) else None)
+            or mission.get("next_actions_summary")
             or failures.get("completion_reason")
             or "Autopilot still owns the current mission step."
         )
@@ -423,6 +429,7 @@ def operator_console_snapshot(
     )
     inner_loop = observability.get("inner_loop") if isinstance(observability, Mapping) else None
     eta = observability.get("eta") if isinstance(observability, Mapping) else None
+    recursive_budget = observability.get("recursive_agent") if isinstance(observability, Mapping) else None
 
     return {
         "state": "running" if is_running else ("blocked" if requires_action else mission_status or "stopped"),
@@ -448,6 +455,11 @@ def operator_console_snapshot(
         "budget_summary": observability.get("summary") if isinstance(observability, Mapping) else None,
         "inner_loop_summary": inner_loop.get("summary") if isinstance(inner_loop, Mapping) else None,
         "eta_summary": eta.get("summary") if isinstance(eta, Mapping) else None,
+        "current_recursive_iteration": (
+            recursive_budget.get("summary")
+            if isinstance(recursive_budget, Mapping)
+            else (recursive_agent.get("summary") if isinstance(recursive_agent, Mapping) else None)
+        ),
         "alternatives": alternatives,
         "next_commands": next_commands,
         "request_id": current_request.get("request_id") if isinstance(current_request, Mapping) else None,

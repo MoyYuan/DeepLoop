@@ -916,6 +916,88 @@ class MissionMonitorTests(unittest.TestCase):
         self.assertEqual(snapshot["operator_console"]["headline"], "STOPPED — DeepLoop is not currently running.")
         self.assertEqual(snapshot["operator_console"]["process_status"], "exited")
 
+    def test_recursive_agent_progress_replaces_completed_outer_action_as_active_work(self) -> None:
+        test_root = _fresh_test_root("recursive_agent_progress_replaces_completed_outer_action")
+        mission_root = test_root / "mission"
+        runtime_root = mission_root / "runtime" / "mission_outer_runtime"
+        runtime_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+
+        _write_json(
+            runtime_root / "mission_runtime_state.json",
+            {
+                "schema_version": 1,
+                "mission_id": "demo-recursive-progress",
+                "runtime_root": str(runtime_root),
+                "status": "running",
+                "iterations_completed": 0,
+                "max_iterations": 16,
+                "last_action_id": "demo-idea-intake",
+                "last_executor_id": "recursive-agent",
+                "terminal_reason": None,
+                "history_path": str(runtime_root / "mission_runtime_history.jsonl"),
+                "summary_json_path": str(runtime_root / "mission_runtime_summary.json"),
+                "summary_markdown_path": str(runtime_root / "mission_runtime_summary.md"),
+            },
+        )
+        _write_json(
+            mission_state_path,
+            {
+                "mission_id": "demo-recursive-progress",
+                "title": "Recursive progress mission",
+                "current_phase": "experiment-design",
+                "next_phase": "execution",
+                "status": "running",
+                "mode": "sandboxed-yolo",
+                "autonomy_status": {
+                    "state": "recursive-agent-running",
+                    "reason": "The recursive agent loop is advancing the mission.",
+                },
+                "next_actions": {
+                    "summary": "Dispatch demo-idea-intake through executor recursive-agent to close missing idea-intake outputs.",
+                    "actions": [
+                        {
+                            "action_id": "demo-idea-intake",
+                            "role": "planner",
+                            "task": "Close the remaining idea-intake outputs.",
+                            "kind": "artifact-edit",
+                            "status": "completed",
+                            "phase": "idea-intake",
+                            "executor": {"id": "recursive-agent", "params": {"config_path": "recursive-loop.yaml"}},
+                        }
+                    ],
+                },
+                "agent_driver": {
+                    "status": "running",
+                    "iterations_completed": 4,
+                    "max_iterations": 5,
+                    "pending_action": {
+                        "role": "experiment-designer",
+                        "task": "Design the next experiment.",
+                        "phase": "experiment-design",
+                        "loop_action_id": "recursive-agent-loop-iter-04-experiment-designer",
+                    },
+                    "current_action": {
+                        "role": "question-designer",
+                        "task": "Finalize question design.",
+                        "phase": "question-design",
+                        "loop_action_id": "recursive-agent-loop-iter-03-question-designer",
+                    },
+                },
+            },
+        )
+
+        snapshot = build_mission_snapshot(mission_state_path, ledger_tail=0)
+        rendered = render_mission_snapshot(snapshot)
+
+        self.assertIsNone(snapshot["outer_loop"]["current_action"])
+        self.assertEqual(snapshot["outer_loop"]["historical_action"]["action_id"], "demo-idea-intake")
+        self.assertIn("Recursive-agent iteration: 4 / 5, role=experiment-designer, phase=experiment-design.", snapshot["operator_console"]["summary"])
+        self.assertIn("Outer-loop iterations: `0` / `16` used. Recursive-agent iterations: `4` / `5` used.", snapshot["budgets"]["summary"])
+        self.assertIn("outer_action_status: `completed` (historical)", rendered)
+        self.assertIn("current_recursive_action: `recursive-agent-loop-iter-04-experiment-designer`", rendered)
+        self.assertIn("current_recursive_iteration: Recursive-agent iteration: 4 / 5, role=experiment-designer, phase=experiment-design.", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

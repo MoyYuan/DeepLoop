@@ -142,6 +142,50 @@ def _summarize_action(action: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _recursive_agent_snapshot(mission_state: Mapping[str, Any]) -> dict[str, Any] | None:
+    agent_driver = mission_state.get("agent_driver")
+    if not isinstance(agent_driver, Mapping):
+        return None
+    current_action = agent_driver.get("current_action")
+    pending_action = agent_driver.get("pending_action")
+    active_action = pending_action if isinstance(pending_action, Mapping) else current_action
+    iterations_completed = agent_driver.get("iterations_completed")
+    max_iterations = agent_driver.get("max_iterations")
+    remaining_iterations = (
+        max(int(max_iterations) - int(iterations_completed), 0)
+        if isinstance(iterations_completed, int) and isinstance(max_iterations, int)
+        else None
+    )
+    role = active_action.get("role") if isinstance(active_action, Mapping) else None
+    phase = (
+        active_action.get("phase")
+        if isinstance(active_action, Mapping) and active_action.get("phase") is not None
+        else mission_state.get("current_phase")
+    )
+    iteration_text = (
+        f"{iterations_completed} / {max_iterations}"
+        if isinstance(iterations_completed, int) and isinstance(max_iterations, int)
+        else str(iterations_completed or "unknown")
+    )
+    summary = f"Recursive-agent iteration: {iteration_text}, role={role or 'unknown'}, phase={phase or 'unknown'}."
+    return {
+        "status": agent_driver.get("status"),
+        "iterations_completed": iterations_completed,
+        "max_iterations": max_iterations,
+        "remaining_iterations": remaining_iterations,
+        "role": role,
+        "phase": phase,
+        "current_action": dict(current_action) if isinstance(current_action, Mapping) else None,
+        "pending_action": dict(pending_action) if isinstance(pending_action, Mapping) else None,
+        "active_action": dict(active_action) if isinstance(active_action, Mapping) else None,
+        "summary": summary,
+        "runtime_root": agent_driver.get("runtime_root"),
+        "state_path": agent_driver.get("state_path"),
+        "latest_iteration_path": agent_driver.get("latest_iteration_path"),
+        "latest_result_path": agent_driver.get("latest_result_path"),
+    }
+
+
 def _summarize_branch(branch: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "branch_id": branch.get("branch_id"),
@@ -218,6 +262,9 @@ def _runtime_snapshot(mission_state_path: Path, mission_state: dict[str, Any]) -
             executor_usage_counts[executor_id] += 1
     merged["executor_usage_counts"] = dict(executor_usage_counts)
     merged["recursive_agent_invocations"] = int(executor_usage_counts.get("recursive-agent", 0))
+    recursive_agent = _recursive_agent_snapshot(mission_state)
+    if recursive_agent is not None:
+        merged["recursive_agent"] = recursive_agent
     merged["runtime_root"] = str(runtime_root)
     merged["state_path"] = str(runtime_state_path)
     merged["history_path"] = str(runtime_history_path)
@@ -1000,6 +1047,7 @@ def _budgets_snapshot(
                 "outer_loop": outer_loop_eta,
             },
             "inner_loop": inner_loop,
+            "recursive_agent": None,
         }
     iterations_completed = runtime.get("iterations_completed")
     max_iterations = runtime.get("max_iterations")
@@ -1056,6 +1104,15 @@ def _budgets_snapshot(
     if inner_loop.get("status") == "tracked":
         tracked_budgets.append("inner-loop progress")
         summary = f"{summary} {inner_loop.get('summary')}"
+    recursive_agent = runtime.get("recursive_agent") if isinstance(runtime.get("recursive_agent"), Mapping) else None
+    if isinstance(recursive_agent, Mapping):
+        tracked_budgets.append("recursive-agent iterations")
+        recursive_iterations = recursive_agent.get("iterations_completed")
+        recursive_max = recursive_agent.get("max_iterations")
+        if isinstance(recursive_iterations, int) and isinstance(recursive_max, int):
+            summary = f"{summary} Recursive-agent iterations: `{recursive_iterations}` / `{recursive_max}` used."
+        elif isinstance(recursive_iterations, int):
+            summary = f"{summary} Recursive-agent iterations: `{recursive_iterations}` used."
     return {
         "iterations_completed": iterations_completed,
         "max_iterations": max_iterations,
@@ -1068,4 +1125,5 @@ def _budgets_snapshot(
         "cost": cost,
         "eta": eta,
         "inner_loop": inner_loop,
+        "recursive_agent": dict(recursive_agent) if isinstance(recursive_agent, Mapping) else None,
     }
