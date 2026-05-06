@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from deeploop.core.ledger import append_jsonl, now_utc
-from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object
+from deeploop.core.structured_io import json_safe_value, load_json_object, load_jsonl_objects, write_json_object
 from deeploop.mission._constants import TERMINAL_BRANCH_STATUSES as _TERMINAL_BRANCH_STATUSES
 from deeploop.research.indexed_memory import (
     ensure_research_memory_contract,
@@ -50,13 +50,7 @@ def _normalize_strings(raw: Any) -> list[str]:
 
 
 def _jsonify(value: Any) -> Any:
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _jsonify(item) for key, item in value.items()}
-    if isinstance(value, list | tuple):
-        return [_jsonify(item) for item in value]
-    return value
+    return json_safe_value(value)
 
 
 def _slug(value: str, *, fallback: str) -> str:
