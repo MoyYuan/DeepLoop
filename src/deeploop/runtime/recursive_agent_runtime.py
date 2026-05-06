@@ -1343,11 +1343,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         "status": status,
         "max_iterations": max_iterations,
         "iterations_completed": state["iterations_completed"],
-<<<<<<< HEAD
-        "max_iterations": state.get("max_iterations"),
-=======
         "iterations_remaining": max(0, max_iterations - int(state["iterations_completed"])),
->>>>>>> 1c779bc (Changes before error encountered)
         "consecutive_failures": state["consecutive_failures"],
         "runtime_root": str(runtime_root),
         "memory_path": str(_memory_path(runtime_root)),
@@ -1376,11 +1372,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         "status": status,
         "max_iterations": max_iterations,
         "iterations_completed": state["iterations_completed"],
-<<<<<<< HEAD
-        "max_iterations": state.get("max_iterations"),
-=======
         "iterations_remaining": max(0, max_iterations - int(state["iterations_completed"])),
->>>>>>> 1c779bc (Changes before error encountered)
         "consecutive_failures": state["consecutive_failures"],
         "runtime_root": runtime_root,
         "memory_path": _memory_path(runtime_root),
