@@ -321,6 +321,97 @@ def _normalized_result_outcome(
     }
 
 
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _resolved_artifact_path(raw_path: str, *, mission_root: Path) -> Path:
+    path = Path(raw_path).expanduser()
+    if not path.is_absolute():
+        path = mission_root / path
+    return path.resolve()
+
+
+def _allowed_artifact_roots(
+    *,
+    sandbox: Mapping[str, Any],
+    mission_root: Path,
+    config: Mapping[str, Any],
+) -> list[Path]:
+    roots = [Path(str(sandbox["outputs_dir"])).expanduser().resolve()]
+    for mission_artifact_root in ("findings", "runtime", "agent_handoffs"):
+        roots.append((mission_root / mission_artifact_root).resolve())
+    for raw_root in _normalize_list(config.get("allowed_mission_artifact_roots")):
+        root = Path(raw_root).expanduser()
+        if not root.is_absolute():
+            root = mission_root / root
+        roots.append(root.resolve())
+    return roots
+
+
+def _validate_artifact_scope(
+    outcome: dict[str, Any],
+    *,
+    action: Mapping[str, Any],
+    sandbox: Mapping[str, Any],
+    mission_root: Path,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    allowed_roots = _allowed_artifact_roots(sandbox=sandbox, mission_root=mission_root, config=config)
+    accepted: list[str] = []
+    rejected: list[str] = []
+    provenance: list[dict[str, Any]] = []
+    produced_by = _optional_string(action.get("loop_action_id")) or _optional_string(action.get("role")) or "recursive-agent"
+    sandbox_root = str(Path(str(sandbox["sandbox_root"])).expanduser().resolve())
+
+    for raw_path in _normalize_list(outcome.get("produced_artifacts")):
+        resolved_path = _resolved_artifact_path(raw_path, mission_root=mission_root)
+        accepted_root = next((root for root in allowed_roots if _is_relative_to(resolved_path, root)), None)
+        is_accepted = accepted_root is not None
+        reason = "under allowed artifact root" if is_accepted else "outside sandbox outputs and mission artifact roots"
+        provenance.append(
+            {
+                "path": raw_path,
+                "resolved_path": str(resolved_path),
+                "produced_by": produced_by,
+                "sandbox_root": sandbox_root,
+                "accepted": is_accepted,
+                "reason": reason,
+            }
+        )
+        if is_accepted:
+            accepted.append(raw_path)
+        else:
+            rejected.append(raw_path)
+
+    sanitized = dict(outcome)
+    sanitized["produced_artifacts"] = accepted
+    sanitized["artifact_provenance"] = provenance
+    if rejected:
+        warnings = _normalize_list(sanitized.get("warnings"))
+        warnings.append(
+            "Rejected provider-returned produced_artifacts outside sandbox outputs or mission artifact roots: "
+            + ", ".join(rejected)
+        )
+        sanitized["warnings"] = warnings
+        action_result = dict(sanitized.get("action_result", {}))
+        output_paths = [path for path in _normalize_list(action_result.get("output_paths")) if path not in rejected]
+        action_result["output_paths"] = output_paths
+        sanitized["action_result"] = action_result
+        continuation = sanitized.get("continuation")
+        if isinstance(continuation, dict):
+            sanitized_continuation = dict(continuation)
+            sanitized_continuation["artifacts"] = [
+                path for path in _normalize_list(sanitized_continuation.get("artifacts")) if path not in rejected
+            ]
+            sanitized["continuation"] = sanitized_continuation
+    return sanitized
+
+
 def _should_yield_to_outer_runtime(
     outcome: dict[str, Any] | None,
     *,
@@ -1101,6 +1192,13 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                 }
         if result_payload is not None and not result_errors:
             normalized_outcome = _normalized_result_outcome(result_payload, action, mission_state=mission_state)
+            normalized_outcome = _validate_artifact_scope(
+                normalized_outcome,
+                action=action,
+                sandbox=sandbox,
+                mission_root=mission_root,
+                config=config,
+            )
         elif result_payload is not None:
             normalized_outcome = _normalized_result_outcome(
                 {
