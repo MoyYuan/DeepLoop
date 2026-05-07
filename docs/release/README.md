@@ -18,6 +18,9 @@ That claim is backed by:
 - `make public-bootstrap-check` on the documented public path
 - fresh-clone / fresh-home onboarding using published docs
 - a repo-owned Docker clean-room validation harness that builds artifacts, installs from a wheel in a fresh container, and runs a deterministic bootstrap smoke
+- that Docker harness now rechecks canonical bootstrap, blocked operator handoff,
+  messy-start clarifications/defaults, discovery-first onboarding, and bounded
+  bootstrap-repair diagnostics in the same clean room
 - an eligible-for-promotion plain-folder proof matrix across 3 materially
   different workflow shapes
 - a real release-candidate review and promotion path with required approvals
@@ -55,6 +58,20 @@ stronger than it was before:
 Those additions and hardening steps improve trust and reduce routine
 babysitting on the documented path, but they do **not** widen the public claim
 beyond bounded-support alpha.
+
+## Current release gate
+
+The public release gate is still intentionally compact:
+
+- `make public-bootstrap-check`
+- `make docker-release-validate`
+- `make docs-build`
+- publish PyPI only from a published GitHub Release whose tag matches
+  `project.version`
+
+That gate is what keeps the public claim aligned with the tested UX: the fast
+plain-folder path, messy-start onboarding/discovery, bounded bootstrap repair,
+and the current release automation boundary.
 
 ## Honest non-claims
 

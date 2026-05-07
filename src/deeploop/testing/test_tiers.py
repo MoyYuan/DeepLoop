@@ -32,8 +32,12 @@ INTEGRATION_MODULES = frozenset(
 SMOKE_TEST_IDS = frozenset(
     {
         "test_end_to_end_smoke.EndToEndSmokeTests.test_canonical_runtime_starts_without_missing_executor_block",
+        "test_end_to_end_smoke.EndToEndSmokeTests.test_discovery_first_plain_folder_flow_handles_rough_notes_without_mutation",
         "test_end_to_end_smoke.EndToEndSmokeTests.test_end_to_end_smoke_runs_followups_and_packages",
+        "test_end_to_end_smoke.EndToEndSmokeTests.test_messy_plain_folder_bootstrap_handles_rough_notes_and_packages_without_mutation",
         "test_end_to_end_smoke.EndToEndSmokeTests.test_mission_advance_generates_runtime_owned_followup_queue",
+        "test_end_to_end_smoke.EndToEndSmokeTests.test_nontranslation_plain_folder_bootstrap_records_operator_blockers_and_packages",
+        "test_end_to_end_smoke.EndToEndSmokeTests.test_partial_project_folder_bootstrap_surfaces_repair_without_mutation",
     }
 )
 

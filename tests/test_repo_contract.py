@@ -494,6 +494,7 @@ class RepoContractTests(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         case_ids = {json.loads(line)["case_id"] for line in completed.stdout.splitlines() if line.strip()}
+        self.assertIn("forecast-rough-notes", case_ids)
         self.assertIn("translation-budget-ladder", case_ids)
         self.assertIn("literature-gap-map", case_ids)
         self.assertIn("replication-heavy-redteam", case_ids)
