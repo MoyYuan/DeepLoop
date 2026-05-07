@@ -107,6 +107,16 @@ class ProjectContractTests(unittest.TestCase):
                         "summary": "Verify project contract discovery.",
                         "objective": "Ingest project-owned DeepLoop metadata.",
                         "target_repo": str(repo_root),
+                        "experiment_coverage": {
+                            "methods": [
+                                {
+                                    "category": "Numeric baselines",
+                                    "name": "demo baseline",
+                                    "status": "proposed",
+                                }
+                            ],
+                            "budget": {"gpu_requested": False},
+                        },
                     },
                     "roles": ["planner", "dataset-strategist", "execution-operator"],
                     "phases": ["idea-intake", "final-report"],
@@ -161,6 +171,10 @@ class ProjectContractTests(unittest.TestCase):
         )
         self.assertIn(str(repo_root.joinpath("AGENTS.md").resolve()), mission_state["rule_sources"])
         self.assertIn(str(repo_root.joinpath(".github", "copilot-instructions.md").resolve()), mission_state["rule_sources"])
+        self.assertEqual(
+            mission_state["experiment_coverage"]["methods"][0]["status"],
+            "proposed",
+        )
 
     def test_initialize_mission_resolves_workspace_root_tokens_in_config_paths(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "workspace_uri_config"

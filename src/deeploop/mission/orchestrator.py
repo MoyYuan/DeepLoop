@@ -472,6 +472,9 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     mission_profile = str(mission_cfg.get("profile") or "").strip()
     if mission_profile:
         state["mission_profile"] = mission_profile
+    experiment_coverage = mission_cfg.get("experiment_coverage")
+    if isinstance(experiment_coverage, dict):
+        state["experiment_coverage"] = _resolve_templates(experiment_coverage, {"target_repo": str(target_repo)})
     state_path = mission_root / "mission_state.json"
     autopilot_cfg = config.get("autopilot") if isinstance(config.get("autopilot"), dict) else {}
     runtime_profiles: dict[str, dict[str, str]] = {}
