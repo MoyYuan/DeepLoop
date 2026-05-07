@@ -1,0 +1,11 @@
+case_id: forecast-rough-notes
+title: Forecast rough notes
+summary: Plain-folder case emphasizing messy notes, mixed docs/data hints, and bounded bootstrap defaults.
+workflow_shape: benchmark-heavy
+expected_focus: rough-note synthesis, data-path reconciliation, and default-safe mission bootstrap
+autonomy_claims:
+  - DeepLoop can bootstrap a rough-note folder without writing runtime state into the substrate tree.
+  - DeepLoop can reconcile doc hints and data hints before launch while keeping follow-up questions bounded.
+  - DeepLoop can package an initialized messy-start mission without over-claiming missing evidence.
+acceptance_thresholds:
+  require_final_report_outputs: false

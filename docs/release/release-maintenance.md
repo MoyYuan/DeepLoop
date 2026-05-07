@@ -57,8 +57,8 @@ publishing:
 1. update `CHANGELOG.md`
 2. run `make public-bootstrap-check`
 3. run `make docker-release-validate` to build sdist/wheel in Docker, install
-   the wheel in a fresh container, and execute the provider-free bootstrap
-   smoke
+   the wheel in a fresh container, and execute the provider-free bootstrap /
+   onboarding smoke matrix
 4. verify a fresh-clone / fresh-home onboarding run still succeeds on the
    documented path
 5. verify the current proof-matrix review is still eligible for promotion
@@ -101,8 +101,10 @@ without widening the public claim.
   manifests, and package validation ignores transient sandbox/runtime scratch
   outputs instead of treating them as durable release artifacts.
 - **Proof / CI:** Post-smoke hardening was revalidated with clean canonical
-  `translation-budget-ladder` smoke reruns, and release-facing docs were
-  rechecked with `make public-bootstrap-check` and `make docs-build`.
+  `translation-budget-ladder` smoke reruns; the Docker clean-room gate now also
+  covers messy-start clarifications/defaults, discovery-first onboarding, and
+  bounded bootstrap-repair diagnostics; and release-facing docs were rechecked
+  with `make public-bootstrap-check` and `make docs-build`.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
   public alpha for the documented Linux path; this release improves safety and
   durability rather than widening autonomy scope.
@@ -142,6 +144,17 @@ The current smoke contract is intentionally narrow and deterministic:
 4. initialize the canonical plain-folder example with a deterministic mission id
 5. confirm the generated mission state stays outside the project folder and the
    example itself remains unchanged
+6. initialize the non-translation `literature-gap-map` proof fixture and verify
+   its readiness contract stops for operator input instead of pretending it is
+   runnable end to end
+7. package that initialized literature mission and confirm the lightweight
+   package surface still materializes with explicit missing-artifact reporting
+8. initialize the messy-start `forecast-rough-notes` fixture and verify the
+   guarded clarifications/defaults handoff still packages cleanly
+9. rerun `forecast-rough-notes` through discovery-first onboarding to keep the
+   confirmed-discovery install story honest
+10. verify a partial project-folder bootstrap fails with bounded repair
+    diagnostics instead of mutating the input project
 
 That gives release signoff a reusable clean-room install proof today, while
 leaving provider-backed mission execution on the normal documented paths until a

@@ -12,8 +12,9 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from deeploop.core.paths import MISSIONS_DIR, SCRATCH_DIR
 from deeploop.testing.acceptance_campaigns import build_acceptance_review, materialize_acceptance_review
-from deeploop.testing.plain_folder_proof_matrix import discover_plain_folder_proof_cases
+from deeploop.testing.plain_folder_proof_matrix import discover_plain_folder_proof_cases, snapshot_project_tree
 from deeploop.testing.proof_matrix_reviews import build_multi_substrate_proof_review
 
 
@@ -43,6 +44,12 @@ class EndToEndSmokeTests(unittest.TestCase):
             "boundary_check": {"project_tree_unchanged": True},
             "run_project_result": {"status": "completed"},
         }
+
+    def _copy_plain_folder_fixture(self, case_id: str) -> Path:
+        source = REPO_ROOT / "tests" / "_proof_fixtures" / "plain_folder" / case_id
+        project_root = self.runtime_root / case_id
+        shutil.copytree(source, project_root)
+        return project_root
 
     def test_mission_advance_generates_runtime_owned_followup_queue(self) -> None:
         cases = {case.case_id: case for case in discover_plain_folder_proof_cases()}
@@ -91,7 +98,251 @@ class EndToEndSmokeTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         listed = [json.loads(line) for line in completed.stdout.splitlines() if line.strip()]
         case_ids = {item["case_id"] for item in listed}
-        self.assertEqual(case_ids, {"translation-budget-ladder", "literature-gap-map", "replication-heavy-redteam"})
+        self.assertEqual(
+            case_ids,
+            {
+                "forecast-rough-notes",
+                "translation-budget-ladder",
+                "literature-gap-map",
+                "replication-heavy-redteam",
+            },
+        )
+
+    def test_nontranslation_plain_folder_bootstrap_records_operator_blockers_and_packages(self) -> None:
+        project_root = self._copy_plain_folder_fixture("literature-gap-map")
+        before_paths = snapshot_project_tree(project_root)
+        mission_id = "end-to-end-smoke-literature"
+        mission_root = MISSIONS_DIR / mission_id
+        package_root = mission_root.parent / "packages" / mission_id
+        shutil.rmtree(mission_root, ignore_errors=True)
+        shutil.rmtree(package_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
+        self.addCleanup(lambda: shutil.rmtree(package_root, ignore_errors=True))
+
+        init_completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/mission/init_mission.py",
+                "--project-root",
+                str(project_root),
+                "--mission-id",
+                mission_id,
+                "--force",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(init_completed.returncode, 0, init_completed.stdout + init_completed.stderr)
+
+        state_path = mission_root / "mission_state.json"
+        self.assertTrue(state_path.exists(), f"missing mission state: {state_path}")
+        mission_state = json.loads(state_path.read_text(encoding="utf-8"))
+        readiness = mission_state.get("mission_contract", {}).get("readiness", {})
+
+        self.assertEqual(mission_state["status"], "initialized")
+        self.assertEqual(mission_state["current_phase"], "idea-intake")
+        self.assertEqual(mission_state["project_contract"]["status"], "plain-artifacts")
+        self.assertEqual(Path(mission_state["target_repo"]).resolve(), project_root.resolve())
+        self.assertEqual(readiness.get("status"), "blocked")
+        self.assertEqual(readiness.get("launch_recommendation"), "stop-for-operator-input")
+
+        summary_text = (mission_root / "mission_summary.md").read_text(encoding="utf-8")
+        self.assertIn("### Blocking prerequisites", summary_text)
+        self.assertIn("Where is the dataset located", summary_text)
+
+        package_completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/mission/package_mission.py",
+                "--mission-state",
+                str(state_path),
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(package_completed.returncode, 0, package_completed.stdout + package_completed.stderr)
+        package_result = json.loads(package_completed.stdout)
+        self.assertEqual(package_result["package"]["mission_id"], mission_id)
+        self.assertTrue(Path(package_result["package_root"]).exists())
+        self.assertTrue(Path(package_result["manifest_path"]).exists())
+        self.assertTrue(Path(package_result["summary_path"]).exists())
+        self.assertFalse(package_result["package"]["checks"]["all_required_artifacts_present"])
+        self.assertTrue(
+            {"category:findings", "category:manifests"}.issubset(
+                set(package_result["package"]["checks"]["missing_required_artifacts"])
+            )
+        )
+        package_summary = Path(package_result["summary_path"]).read_text(encoding="utf-8")
+        self.assertIn("Current phase: idea-intake (initialized)", package_summary)
+
+        self.assertFalse((project_root / ".deeploop").exists())
+        self.assertEqual(before_paths, snapshot_project_tree(project_root))
+
+    def test_messy_plain_folder_bootstrap_handles_rough_notes_and_packages_without_mutation(self) -> None:
+        project_root = self._copy_plain_folder_fixture("forecast-rough-notes")
+        before_paths = snapshot_project_tree(project_root)
+        mission_id = "end-to-end-smoke-forecast-rough-notes"
+        mission_root = MISSIONS_DIR / mission_id
+        package_root = mission_root.parent / "packages" / mission_id
+        shutil.rmtree(mission_root, ignore_errors=True)
+        shutil.rmtree(package_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
+        self.addCleanup(lambda: shutil.rmtree(package_root, ignore_errors=True))
+
+        init_completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/mission/init_mission.py",
+                "--project-root",
+                str(project_root),
+                "--mission-id",
+                mission_id,
+                "--force",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(init_completed.returncode, 0, init_completed.stdout + init_completed.stderr)
+
+        state_path = mission_root / "mission_state.json"
+        self.assertTrue(state_path.exists(), f"missing mission state: {state_path}")
+        mission_state = json.loads(state_path.read_text(encoding="utf-8"))
+        readiness = mission_state.get("mission_contract", {}).get("readiness", {})
+
+        self.assertEqual(mission_state["status"], "initialized")
+        self.assertEqual(mission_state["current_phase"], "idea-intake")
+        self.assertEqual(mission_state["project_contract"]["status"], "plain-artifacts")
+        self.assertEqual(Path(mission_state["target_repo"]).resolve(), project_root.resolve())
+        self.assertEqual(readiness.get("status"), "ready-with-clarifications")
+        self.assertEqual(readiness.get("launch_recommendation"), "launch-with-disclosed-guardrails")
+        self.assertEqual(mission_state["mission_contract"]["data"]["target"], "next_week_units")
+        self.assertIn(
+            "baseline improvement only",
+            "\n".join(mission_state["mission_contract"]["follow_up_questions"]),
+        )
+
+        summary_text = (mission_root / "mission_summary.md").read_text(encoding="utf-8")
+        self.assertIn("### Clarifications", summary_text)
+        self.assertIn("### Defaults applied", summary_text)
+
+        package_completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/mission/package_mission.py",
+                "--mission-state",
+                str(state_path),
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(package_completed.returncode, 0, package_completed.stdout + package_completed.stderr)
+        package_result = json.loads(package_completed.stdout)
+        self.assertEqual(package_result["package"]["mission_id"], mission_id)
+        self.assertTrue(Path(package_result["package_root"]).exists())
+        self.assertTrue(Path(package_result["manifest_path"]).exists())
+        self.assertTrue(Path(package_result["summary_path"]).exists())
+
+        self.assertFalse((project_root / ".deeploop").exists())
+        self.assertEqual(before_paths, snapshot_project_tree(project_root))
+
+    def test_discovery_first_plain_folder_flow_handles_rough_notes_without_mutation(self) -> None:
+        project_root = self._copy_plain_folder_fixture("forecast-rough-notes")
+        before_paths = snapshot_project_tree(project_root)
+        mission_id = "end-to-end-smoke-discovery-forecast"
+        mission_root = MISSIONS_DIR / mission_id
+        discovery_config_path = SCRATCH_DIR / "mission_discovery_configs" / f"{mission_id}.yaml"
+        shutil.rmtree(mission_root, ignore_errors=True)
+        discovery_config_path.unlink(missing_ok=True)
+        self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
+        self.addCleanup(lambda: discovery_config_path.unlink(missing_ok=True))
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/mission/init_mission.py",
+                "--discover",
+                "--project-root",
+                str(project_root),
+                "--mission-id",
+                mission_id,
+                "--force",
+            ],
+            input="\n".join(["", "", "", "", "", "", "", "", "y"]) + "\n",
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("mission-init: used confirmed discovery config", completed.stdout)
+        self.assertTrue(discovery_config_path.exists())
+
+        state_path = mission_root / "mission_state.json"
+        self.assertTrue(state_path.exists(), f"missing mission state: {state_path}")
+        mission_state = json.loads(state_path.read_text(encoding="utf-8"))
+        readiness = mission_state.get("mission_contract", {}).get("readiness", {})
+
+        self.assertEqual(mission_state["status"], "initialized")
+        self.assertEqual(mission_state["project_contract"]["status"], "plain-artifacts")
+        self.assertEqual(Path(mission_state["target_repo"]).resolve(), project_root.resolve())
+        self.assertEqual(readiness.get("status"), "ready-with-defaults")
+        self.assertEqual(readiness.get("launch_recommendation"), "launch-with-disclosed-defaults")
+        self.assertEqual(mission_state["human_inputs"]["mission_discovery"]["mode"], "interactive")
+        self.assertIn(
+            "data/store_demand_sample.csv",
+            mission_state["human_inputs"]["mission_discovery"]["answers"]["available_assets"],
+        )
+
+        self.assertFalse((project_root / ".deeploop").exists())
+        self.assertEqual(before_paths, snapshot_project_tree(project_root))
+
+    def test_partial_project_folder_bootstrap_surfaces_repair_without_mutation(self) -> None:
+        project_root = self.runtime_root / "partial-project-folder"
+        (project_root / "docs").mkdir(parents=True, exist_ok=True)
+        (project_root / "data").mkdir(parents=True, exist_ok=True)
+        (project_root / "docs" / "project-brief.md").write_text(
+            "# Project brief\n\nForecast weekly demand from the retailer export in data/store_snapshot.csv.\n",
+            encoding="utf-8",
+        )
+        (project_root / "data" / "store_snapshot.csv").write_text(
+            "week_start,store_id,next_week_units\n2024-01-01,s1,42\n",
+            encoding="utf-8",
+        )
+        before_paths = snapshot_project_tree(project_root)
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/mission/init_mission.py",
+                "--project-root",
+                str(project_root),
+                "--mission-id",
+                "end-to-end-smoke-partial-bootstrap-repair",
+                "--force",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("project-root bootstrap needs repair", completed.stderr)
+        self.assertIn("missing-bootstrap-contract", completed.stderr)
+        self.assertIn("project-facts.yaml", completed.stderr)
+        self.assertIn("docs/project-brief.md", completed.stderr)
+        self.assertIn("data/store_snapshot.csv", completed.stderr)
+        self.assertFalse((project_root / ".deeploop").exists())
+        self.assertEqual(before_paths, snapshot_project_tree(project_root))
 
     def test_acceptance_campaign_materializes_green_review(self) -> None:
         campaign_root = self.runtime_root / "acceptance"

@@ -39,6 +39,18 @@ class TestTierDefinitionsTests(unittest.TestCase):
             test_ids_for_tier("smoke"),
         )
         self.assertIn(
+            "test_end_to_end_smoke.EndToEndSmokeTests.test_nontranslation_plain_folder_bootstrap_records_operator_blockers_and_packages",
+            test_ids_for_tier("smoke"),
+        )
+        self.assertIn(
+            "test_end_to_end_smoke.EndToEndSmokeTests.test_messy_plain_folder_bootstrap_handles_rough_notes_and_packages_without_mutation",
+            test_ids_for_tier("smoke"),
+        )
+        self.assertIn(
+            "test_end_to_end_smoke.EndToEndSmokeTests.test_discovery_first_plain_folder_flow_handles_rough_notes_without_mutation",
+            test_ids_for_tier("smoke"),
+        )
+        self.assertIn(
             "test_end_to_end_smoke.EndToEndSmokeTests.test_long_run_profile_stages_canonical_followups_with_real_backend",
             test_ids_for_tier("real"),
         )

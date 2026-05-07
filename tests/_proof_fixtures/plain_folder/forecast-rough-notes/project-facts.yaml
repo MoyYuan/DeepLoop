@@ -1,0 +1,33 @@
+project:
+  name: forecast-rough-notes
+  title: Forecast rough notes
+  summary: >
+    Plain minimal researcher folder with rough notes and a tiny sample dataset for
+    bounded messy-start onboarding smoke coverage.
+  objective: >
+    Forecast next_week_units from the sample retailer snapshot using only the
+    artifacts in this folder while keeping the folder researcher-owned input only.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the substrate folder free of DeepLoop runtime state, generated configs, and code.
+    - Stay within 2 GPU-hours total and at most 1 parallel job.
+  human_inputs:
+    ideas:
+      - Weekly demand forecasting from rough retailer notes
+    budgets:
+      max_gpu_hours: 2
+      max_parallel_jobs: 1
+    dataset_path: data/store_demand_sample.csv
+    prediction_target: next_week_units
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/data-and-risks.md
+  data:
+    - path: data/store_demand_sample.csv
+      kind: tabular-timeseries
+      role: primary-dataset
+      read_only: true
+      prompt_safe: header-and-summary-only
+      split_keys:
+        - week_start
