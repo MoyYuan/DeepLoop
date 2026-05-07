@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from deeploop.core.structured_io import json_safe_value, write_json_object
+from deeploop.core.structured_io import json_safe_value, load_jsonl_objects, write_json_object
 from deeploop.core.ledger import append_jsonl, now_utc
 from deeploop.core.paths import REPO_ROOT, RESEARCH_MEMORY_DIR
 
@@ -57,6 +57,26 @@ def _load_json(path: Path, *, repair: bool = False) -> dict[str, Any]:
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     write_json_object(path, payload)
+
+
+def _rebuild_index_from_entries(contract: Mapping[str, Any]) -> dict[str, Any]:
+    registry = load_research_memory_registry(Path(contract["research_memory_registry_path"]))
+    index = _empty_index(contract)
+    active: dict[str, dict[str, Any]] = {}
+    for recorded in load_jsonl_objects(Path(contract["research_memory_events_path"]), missing_ok=True):
+        normalized = _normalize_entry(recorded, registry=registry)
+        created_at = str(recorded.get("created_at") or "").strip()
+        updated_at = str(recorded.get("updated_at") or "").strip()
+        normalized["created_at"] = created_at or str(normalized["provenance"].get("recorded_at") or now_utc())
+        normalized["updated_at"] = updated_at or normalized["created_at"]
+        key = _entry_key(normalized["entity_type"], normalized["entity_id"])
+        existing = active.get(key)
+        if existing and str(existing.get("fingerprint") or "") == normalized["fingerprint"]:
+            continue
+        active[key] = normalized
+        index["active_entries"] = list(active.values())
+        index = _rebuild_indexes(index, registry=registry)
+    return index
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -201,7 +221,12 @@ def ensure_research_memory_contract(
 
 def load_research_memory_index(*, contract: Mapping[str, Any] | None = None, memory_root: Path | None = None) -> dict[str, Any]:
     resolved = ensure_research_memory_contract(contract=dict(contract or {}), memory_root=memory_root)
-    index = _load_json(Path(resolved["research_memory_index_path"]), repair=True)
+    index_path = Path(resolved["research_memory_index_path"])
+    try:
+        index = _load_json(index_path, repair=True)
+    except JSONDecodeError:
+        index = _rebuild_index_from_entries(resolved)
+        _write_json(index_path, index)
     if not index:
         index = _empty_index(resolved)
     if not isinstance(index.get("active_entries"), list):
