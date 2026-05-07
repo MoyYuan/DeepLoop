@@ -81,4 +81,4 @@ class CorePathsTests(unittest.TestCase):
 
         joined = "\n".join(diagnostics)
         self.assertIn("Both", joined)
-        self.assertIn("outside DeepLoop workspace root", joined)
+        self.assertNotIn("outside DeepLoop workspace root", joined)
