@@ -32,9 +32,15 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
 2. **Prepare the workspace and validate the supported path**
 
    ```text
+   export DEEPLOOP_WORKSPACE_ROOT="$HOME/Workspaces"  # optional; choose before init/start
    make setup
    make public-bootstrap-check
    ```
+
+   DeepLoop prints the resolved workspace root during `deeploop init` and
+   `deeploop start`. If `DEEPLOOP_WORKSPACE_ROOT` is unset, it uses an existing
+   unambiguous `~/Workspaces`, `~/workspace`, or `~/workspaces` directory, then
+   falls back to `~/workspaces`.
 
 3. **Prepare a provider**
    - [Provider setup](docs/reference/provider-setup.md)

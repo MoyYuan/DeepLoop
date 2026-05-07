@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
-from deeploop.core.paths import LEDGER_DIR, REPO_ROOT, RUNS_DIR
+from deeploop.core.paths import LEDGER_DIR, REPO_ROOT, RUNS_DIR, resolve_workspace_path
 from deeploop.core.structured_io import load_json_object as _load_json, load_yaml_mapping as _load_yaml
 
 DEFAULT_CONTRACT_PATH = REPO_ROOT / "configs" / "autonomy" / "novelty-refresh.yaml"
@@ -265,7 +265,7 @@ class NoveltyRefreshEvaluator:
 
         try:
             # 1. Load mission artifacts
-            target_repo = Path(mission_ctx["target_repo"]).expanduser()
+            target_repo = resolve_workspace_path(mission_ctx["target_repo"])
             artifacts = self._load_mission_artifacts(target_repo, mission_ctx)
 
             # 2. Extract novelty claims and dimensions

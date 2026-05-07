@@ -3,13 +3,17 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from deeploop.core.paths import SCRATCH_DIR
+from deeploop.core.paths import SCRATCH_DIR, WORKSPACE_ROOT, WORKSPACE_ROOT_ENV_VAR, workspace_root_diagnostics
 from deeploop.core.structured_io import write_text, write_yaml_mapping
 from deeploop.mission.orchestrator import initialize_mission
 from deeploop.mission.project_bootstrap import build_mission_config_from_project_root
 
 
 def _add_init_args(parser: argparse.ArgumentParser) -> None:
+    parser.epilog = (
+        f"Workspace root: set {WORKSPACE_ROOT_ENV_VAR} before init/start to choose where "
+        "DeepLoop writes mission, run, scratch, ledger, and package artifacts."
+    )
     source_group = parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument("--config", help="Path to an explicit mission config YAML.")
     source_group.add_argument("--project-root", help="Path to the plain researcher project folder.")
@@ -18,6 +22,7 @@ def _add_init_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _init_mission(args: argparse.Namespace) -> int:
+    project_root = None
     if getattr(args, "project_root", None):
         project_root = Path(args.project_root).expanduser().resolve()
         generated_config = build_mission_config_from_project_root(project_root, mission_id=getattr(args, "mission_id", None))
@@ -33,6 +38,9 @@ def _init_mission(args: argparse.Namespace) -> int:
     else:
         result = initialize_mission(Path(args.config).expanduser().resolve(), force=getattr(args, "force", False))
 
+    print(f"mission-init: workspace root is {WORKSPACE_ROOT} (override with {WORKSPACE_ROOT_ENV_VAR})")
+    for diagnostic in workspace_root_diagnostics(project_root):
+        print(f"mission-init: WARNING: {diagnostic}")
     print(f"mission-init: wrote state to {result['state_path']}")
     print(f"mission-init: wrote summary to {result['summary_path']}")
     print(f"mission-init: wrote ledger to {result['ledger_path']}")

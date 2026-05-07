@@ -81,8 +81,15 @@ onboarding validate today; outside it, expect gaps.
 2. Prepare the workspace:
 
    ```text
+   export DEEPLOOP_WORKSPACE_ROOT="$HOME/Workspaces"  # optional; choose before init/start
    make setup
    ```
+
+   DeepLoop stores mission state, scratch data, ledgers, and packages under the
+   resolved workspace root. `deeploop init` and `deeploop start` print that root
+   so case-sensitive path splits are visible. If `DEEPLOOP_WORKSPACE_ROOT` is
+   unset, DeepLoop uses an existing unambiguous `~/Workspaces`, `~/workspace`,
+   or `~/workspaces` directory, then falls back to `~/workspaces`.
 
 3. Validate the public bootstrap path:
 

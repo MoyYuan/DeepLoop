@@ -1,4 +1,4 @@
-mission_state: ~/workspaces/runs/deeploop/missions/bounded-support-example-mission/mission_state.json
+mission_state: workspace://runs/deeploop/missions/bounded-support-example-mission/mission_state.json
 loop_name: bounded-support-provider-loop
 max_iterations: 16
 max_consecutive_failures: 2
@@ -31,7 +31,7 @@ provider_selection:
 agent:
   command:
     - python
-    - ~/workspaces/repos/deeploop/scripts/runtime/invoke_provider_prompt.py
+    - workspace://repos/deeploop/scripts/runtime/invoke_provider_prompt.py
     - --prompt-file
     - "{prompt_path}"
     - --result-json-path
@@ -44,7 +44,7 @@ agent:
     - "{target_repo}"
     - --allow-all
     - --no-ask-user
-  cwd: ~/workspaces/repos/target-project
+  cwd: workspace://repos/target-project
 notes:
   - Example config for running the recursive agent runtime against the local `copilot` CLI.
   - The `provider_selection` block declares mission/runtime intent separately from machine setup.

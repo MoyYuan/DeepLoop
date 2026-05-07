@@ -6,7 +6,7 @@ from typing import Any
 
 from deeploop.autonomy.operating_modes import canonical_operating_mode
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
-from deeploop.core.paths import LEDGER_DIR, REPO_ROOT, RUNS_DIR, WORKSPACE_ROOT
+from deeploop.core.paths import LEDGER_DIR, REPO_ROOT, RUNS_DIR, WORKSPACE_ROOT, resolve_workspace_path
 from deeploop.core.structured_io import load_json_object as _load_json, load_yaml_mapping as _load_yaml
 
 DEFAULT_CONTRACT_PATH = REPO_ROOT / "configs" / "autonomy" / "self-correction.yaml"
@@ -73,7 +73,7 @@ def _infer_substrate(contract: dict[str, Any], mission_state: dict[str, Any] | N
     if mission_state is not None:
         target_repo = mission_state.get("target_repo")
         if isinstance(target_repo, str) and target_repo:
-            project = Path(target_repo).expanduser().name
+            project = resolve_workspace_path(target_repo).name
     if project is None and manifests:
         candidate = manifests[0].get("project")
         if isinstance(candidate, str) and candidate:
@@ -103,12 +103,12 @@ def _default_run_roots(contract: dict[str, Any], mission_state: dict[str, Any] |
     substrate_name = _infer_substrate(contract, mission_state, [])
     if substrate_name is not None:
         substrate_cfg = contract.get("substrates", {}).get(substrate_name, {})
-        roots = [Path(raw_root).expanduser() for raw_root in substrate_cfg.get("run_roots", [])]
+        roots = [resolve_workspace_path(raw_root) for raw_root in substrate_cfg.get("run_roots", [])]
         if roots:
             return roots
     target_repo = mission_state.get("target_repo")
     if isinstance(target_repo, str) and target_repo:
-        return [WORKSPACE_ROOT / "runs" / Path(target_repo).expanduser().name]
+        return [WORKSPACE_ROOT / "runs" / resolve_workspace_path(target_repo).name]
     return []
 
 

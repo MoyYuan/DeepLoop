@@ -62,7 +62,7 @@ substrates:
   translation-pilot:
     project: translation-pilot
     run_roots:
-      - ~/workspaces/runs/translation-pilot
+      - workspace://runs/translation-pilot
     preferred_followups:
       weak-baseline: mechanistic-localization
       lexicalization-instability: lexicalization-slice-audit

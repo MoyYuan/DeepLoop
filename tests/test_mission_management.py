@@ -224,9 +224,11 @@ class MissionManagementTests(unittest.TestCase):
         self.assertEqual(metadata["mission_id"], "demo-start")
         self.assertEqual(metadata["pid"], 4312)
         self.assertEqual(metadata["launch_reason"], "start")
+        self.assertIn("workspace_root", metadata)
         self.assertEqual(Path(metadata["command"][1]).resolve(), REPO_ROOT / "scripts" / "mission" / "run_mission.py")
         self.assertEqual(metadata["command"][-1], "7")
         self.assertIn("DeepLoop autopilot started", stdout.getvalue())
+        self.assertIn("workspace_root", stdout.getvalue())
         self.assertIn("manage_mission.py status", stdout.getvalue())
         self.assertIn("deeploop start", log_path.read_text(encoding="utf-8"))
 
