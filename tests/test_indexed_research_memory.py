@@ -151,6 +151,45 @@ class IndexedResearchMemoryTests(unittest.TestCase):
         persisted = json.loads(index_path.read_text(encoding="utf-8"))
         self.assertEqual([entry["entity_id"] for entry in persisted["active_entries"]], ["new"])
 
+    def test_load_research_memory_index_rebuilds_truncated_single_document_from_events(self) -> None:
+        test_root = _fresh_test_root("rebuilds_truncated_index")
+        contract = build_research_memory_contract(memory_root=test_root / "research-memory")
+        recorded = record_research_memory_entry(
+            {
+                "entity_type": "critique",
+                "entity_id": "recoverable-entry",
+                "mission_id": "mission-rebuild",
+                "status": "recorded",
+                "summary": "Recovered from a truncated index by replaying the event ledger.",
+                "payload": {
+                    "critique_id": "recoverable-entry",
+                    "manifest_id": "manifest-rebuild",
+                    "finding": "Recovered from a truncated index by replaying the event ledger.",
+                    "recommendation": "Rebuild the index from entries when the JSON document is truncated.",
+                },
+                "provenance": {
+                    "source_kind": "promoted-finding",
+                    "mission_id": "mission-rebuild",
+                    "recorded_at": "2026-01-01T00:00:00+00:00",
+                    "source_entry_id": "recoverable-entry",
+                },
+                "promotion": {
+                    "status": "promoted",
+                    "promoted_at": "2026-01-01T00:00:00+00:00",
+                    "source_entry_ids": ["recoverable-entry"],
+                },
+            },
+            contract=contract,
+        )
+        index_path = Path(contract["research_memory_index_path"])
+        index_path.write_text('{"schema_version": 1, "active_entries": [', encoding="utf-8")
+
+        rebuilt = load_research_memory_index(contract=contract)
+
+        self.assertEqual([entry["entity_id"] for entry in rebuilt["active_entries"]], [recorded["entity_id"]])
+        persisted = json.loads(index_path.read_text(encoding="utf-8"))
+        self.assertEqual([entry["entity_id"] for entry in persisted["active_entries"]], [recorded["entity_id"]])
+
     def test_rejects_recursive_payload_before_json_serialization(self) -> None:
         test_root = _fresh_test_root("rejects_recursive_payload")
         contract = build_research_memory_contract(memory_root=test_root / "research-memory")
