@@ -343,6 +343,65 @@ class SelfHealingRuntimeTests(unittest.TestCase):
         history_lines = (entry_root / "history.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertTrue(history_lines)
 
+    def test_runtime_normalizes_misplaced_manifest_into_expected_path(self) -> None:
+        output_dir = self.run_root / "normalized-manifest"
+        baseline_config = self._write_baseline_config(
+            name="normalized-manifest-baseline",
+            output_dir=output_dir,
+            backend="mock-entailment",
+        )
+        expected_manifest = self.mission_state_path.parent / "runtime" / "followups" / "normalized-manifest" / "run_manifest.json"
+        outside_manifest = self.fixture_root / "outside" / "run_manifest.json"
+        queue_config = self._write_queue_config(
+            name="normalized-manifest-queue",
+            entry={
+                "id": "normalized-manifest-job",
+                "repo": str(self.fixture_root),
+                "command": [
+                    sys.executable,
+                    str(TESTS_ROOT / "runtime_misplaced_manifest.py"),
+                    "--config",
+                    str(baseline_config),
+                    "--actual-manifest",
+                    str(output_dir / "run_manifest.json"),
+                    "--outside-manifest",
+                    str(outside_manifest),
+                ],
+                "repair": {"max_retries": 0, "max_resumes": 0, "max_reroutes": 0},
+                "expected_manifest": str(expected_manifest),
+            },
+        )
+
+        result = run_self_healing_queue(queue_config)
+        self.assertEqual(result["completed_jobs"], 1)
+        self.assertEqual(result["recovered_jobs"], 1)
+
+        entry_root = (
+            self.mission_state_path.parent
+            / "runtime"
+            / "self_healing_runtime"
+            / "normalized-manifest-queue"
+            / "normalized-manifest-job"
+        )
+        entry_summary = json.loads((entry_root / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(entry_summary["final_status"], "completed")
+        self.assertTrue(entry_summary["recovered"])
+        self.assertEqual(len(entry_summary["attempts"]), 1)
+        self.assertEqual(entry_summary["attempts"][0]["mode"], "primary")
+        self.assertEqual(entry_summary["attempts"][0]["recovery_applied"]["mode"], "normalize-path")
+        self.assertEqual(
+            entry_summary["attempts"][0]["recovery_applied"]["source_manifest"],
+            str(output_dir / "run_manifest.json"),
+        )
+        self.assertEqual(entry_summary["manifest_path"], str(expected_manifest))
+        self.assertTrue(expected_manifest.exists())
+        manifest = json.loads(expected_manifest.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["loop_id"], "normalized-manifest-baseline")
+        history_entries = [json.loads(line) for line in (entry_root / "history.jsonl").read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(history_entries[-1]["event"], "attempt-repaired")
+        mission_state = json.loads(self.mission_state_path.read_text(encoding="utf-8"))
+        self.assertEqual(mission_state["autonomy_status"]["state"], "runtime-self-healed")
+
     def test_runtime_captures_scientific_failure_structurally(self) -> None:
         output_dir = self.run_root / "scientific-failure"
         baseline_config = self._write_baseline_config(

@@ -14,6 +14,11 @@ signal_detection:
     - condaenvnotfounderror
     - no such file or directory
     - command not found
+artifact_search:
+  max_candidates: 24
+  manifest_globs:
+    - "**/run_manifest.json"
+    - "**/study_manifest.json"
 taxonomy:
   command-failure:
     severity: high
