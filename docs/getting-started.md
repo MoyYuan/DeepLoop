@@ -134,17 +134,17 @@ onboarding validate today; outside it, expect gaps.
     [Plain-folder starter](how-to/plain-folder-starter.md) for the public-safe
     plain-folder contract.
 
-   Fastest happy path:
+    Fastest happy path:
 
    ```text
    deeploop run --project-root <project-folder> --until-complete
    ```
 
-    This is the shortest "use DeepLoop on a real project folder" path. It
-    bootstraps the mission from the folder itself, then keeps running until
-    completion, a true operator boundary, or total-iteration exhaustion.
-    If it stops for operator review, use the returned `<mission-state.json>`
-    with the `deeploop` commands below.
+     This is the shortest supported "use DeepLoop on a real project folder"
+     path. It bootstraps the mission from the folder itself, then keeps running
+     until completion, a true operator boundary, or total-iteration exhaustion.
+     If it stops for operator review, use the returned `<mission-state.json>`
+     with the `deeploop` commands below.
 
     > **Important:** `deeploop run` automatically detects explicit mission
     > configs in `<project-folder>/.deeploop/missions/*.yaml`. If one or more
@@ -157,25 +157,42 @@ onboarding validate today; outside it, expect gaps.
     > `deeploop start --mission-state <mission-state.json>` instead of
     > `deeploop run`.
 
-    If you want the explicit operator flow instead, materialize a mission state
-    first:
+     If the folder is rough but still recognizable, `deeploop init` can still
+     materialize a mission state and keep the original project folder unchanged:
 
-   ```text
-   deeploop init --project-root <project-folder> --force
-   ```
+    ```text
+    deeploop init --project-root <project-folder> --force
+    ```
 
-   DeepLoop will synthesize the mission config into the mission runtime and keep
-   the project folder as the only required project-side input. `deeploop init`
-   prints the `<mission-state.json>` path you will use with `deeploop`.
+    On rough starts, the generated readiness summary can come back as
+    `ready-with-clarifications` or `ready-with-defaults` so the handoff stays
+    honest about what DeepLoop inferred. `deeploop init` prints the
+    `<mission-state.json>` path you will use with `deeploop`.
 
-   For the stricter substrate boundary, `<project-folder>` can now be just plain
-   researcher-provided artifacts such as a `project-facts.yaml`, brief docs,
+    If you want the guided discovery/operator flow first, use:
+
+    ```text
+    deeploop init --discover --project-root <project-folder> --force
+    ```
+
+    Discovery mode is the supported path when you want DeepLoop to ask
+    clarifying questions, keep a checklist of missing information, and compile
+    a reviewed mission config before kickoff.
+
+    For the stricter substrate boundary, `<project-folder>` can now be just plain
+    researcher-provided artifacts such as a `project-facts.yaml`, brief docs,
    benchmark notes, metric notes, and budget facts. It does not need a local
    `.deeploop/` contract for this bootstrap path. See
    [Plain-folder starter](how-to/plain-folder-starter.md) for the canonical
    public example contract.
 
-   If you already have an explicit mission config, the config path still works:
+    If DeepLoop cannot bootstrap the project folder safely yet, it exits with
+    bounded repair guidance instead of mutating the folder. The repair output
+    tells you what is missing, points to the target path, and may generate a
+    starter scaffold to copy into place before rerunning `deeploop init` or
+    `deeploop run`.
+
+    If you already have an explicit mission config, the config path still works:
 
    ```text
    deeploop init --config <mission-config.yaml> --force
@@ -234,6 +251,16 @@ personal path from a machine-specific example.
 - when measurable adaptation or recovery signals exist, `status` surfaces the
   ratchet, latest reroute, and temporary-gap telemetry directly instead of
   leaving them buried in raw JSON
+
+## Readiness summary you may see
+
+- `ready` — the folder is explicit enough to launch directly on the supported path
+- `ready-with-clarifications` — DeepLoop found a usable rough start and recorded
+  clarification questions or disclosed assumptions in the mission summary
+- `ready-with-defaults` — discovery mode filled in bounded defaults and kept the
+  confirmed answers in mission state for operator review
+- `blocked` with `repair-bootstrap-input` — the folder is missing required
+  bootstrap inputs, so DeepLoop stops with repair guidance instead of guessing
 
 ## When something goes wrong
 

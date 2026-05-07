@@ -118,6 +118,24 @@ deeploop run --project-root <project-folder> --until-complete
 contract, and plain-folder bootstrap surfaces on a clean Linux + Python 3.11
 environment.
 
+## Messy starts and repair boundaries
+
+DeepLoop does not require every real project folder to look as polished as the
+canonical example on day one.
+
+- if the folder is usable but rough, `deeploop init --project-root
+  <project-folder> --force` can produce a mission state with a readiness summary
+  such as `ready-with-clarifications`
+- if you want DeepLoop to ask follow-up questions first, use
+  `deeploop init --discover --project-root <project-folder> --force`
+- if the folder is missing the plain-folder bootstrap contract entirely,
+  DeepLoop exits with bounded bootstrap-repair guidance, reports the missing
+  inputs, and may generate a starter scaffold path to copy into place before
+  rerunning
+
+In all three cases, keep the public entry point the same: the installed
+`deeploop` CLI.
+
 ## Why this matters
 
 DeepLoop's public-alpha share story depends on a truthful substrate boundary:

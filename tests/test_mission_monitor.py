@@ -322,10 +322,10 @@ class MissionMonitorTests(unittest.TestCase):
             },
             "alternatives": [],
             "next_steps": [
-                f"python scripts/mission/manage_mission.py inbox --mission-state {mission_state_path}",
-                f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}",
+                f"deeploop inbox --mission-state {mission_state_path}",
+                f"deeploop resume --mission-state {mission_state_path}",
             ],
-            "continue_command": f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}",
+            "continue_command": f"deeploop resume --mission-state {mission_state_path}",
         }
         operator_request = {
             "schema_version": 1,
@@ -370,14 +370,14 @@ class MissionMonitorTests(unittest.TestCase):
                     "summary": "Adjust the write target and continue.",
                     "pros": ["Keeps the current mode."],
                     "cons": ["May require a smaller task."],
-                    "next_steps": [f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}"],
+                    "next_steps": [f"deeploop resume --mission-state {mission_state_path}"],
                 }
             ],
             "next_steps": [
-                f"python scripts/mission/manage_mission.py inbox --mission-state {mission_state_path}",
-                f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}",
+                f"deeploop inbox --mission-state {mission_state_path}",
+                f"deeploop resume --mission-state {mission_state_path}",
             ],
-            "continue_command": f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}",
+            "continue_command": f"deeploop resume --mission-state {mission_state_path}",
         }
         _write_jsonl(operator_request_log_path, [prior_operator_request, operator_request])
         _write_json(current_operator_request_path, operator_request)
@@ -580,7 +580,7 @@ class MissionMonitorTests(unittest.TestCase):
         rendered = render_mission_snapshot(snapshot)
         self.assertIn("# DeepLoop operator console", rendered)
         self.assertIn("## Top summary", rendered)
-        self.assertIn("operator_summary: BLOCKED — operator action is required before DeepLoop can continue.", rendered)
+        self.assertIn("operator_summary: BLOCKED — review the request, then resume when ready.", rendered)
         self.assertIn("operator_state: `operator-action-required`", rendered)
         self.assertIn("attention_level: `action-required`", rendered)
         self.assertIn("next_step_owner: `operator`", rendered)
@@ -589,8 +589,8 @@ class MissionMonitorTests(unittest.TestCase):
         self.assertIn("focus_action: `critique-missing-outputs`", rendered)
         self.assertIn("focus_executor: `stage-kernel`", rendered)
         self.assertIn("## Exact next commands", rendered)
-        self.assertIn("manage_mission.py retry", rendered)
-        self.assertIn("manage_mission.py reroute", rendered)
+        self.assertIn("deeploop retry", rendered)
+        self.assertIn("deeploop reroute", rendered)
         self.assertIn("## Mission outer loop", rendered)
         self.assertIn("current_action: `critique-missing-outputs`", rendered)
         self.assertIn("current_branch: `analysis-critique`", rendered)

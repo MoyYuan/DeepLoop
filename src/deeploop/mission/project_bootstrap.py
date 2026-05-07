@@ -4,7 +4,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from deeploop.mission.orchestrator import DEFAULT_OPERATING_MODE
+import yaml
+
+from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
 from deeploop.project_contract import CONTRACT_OPERATIONAL_FIELDS, discover_project_contract
 
 DEFAULT_BOOTSTRAP_ROLES = [
@@ -174,6 +176,151 @@ def _slugify(value: str) -> str:
             pending_dash = True
     slug = "".join(slug_chars).strip("-")
     return slug or "deeploop-project"
+
+
+def _relative_to_project_root(path: Path, project_root: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(project_root.resolve()))
+    except ValueError:
+        return str(path.resolve())
+
+
+def _discover_plain_bootstrap_artifacts(project_root: Path) -> dict[str, list[Any]]:
+    docs: list[str] = []
+    configs: list[str] = []
+    data: list[dict[str, Any]] = []
+    seen_docs: set[str] = set()
+    seen_configs: set[str] = set()
+    seen_data: set[str] = set()
+    data_extensions = {".csv", ".tsv", ".parquet", ".jsonl", ".feather", ".arrow", ".sqlite", ".db"}
+    config_extensions = {".yaml", ".yml", ".json", ".toml"}
+    for path in sorted(project_root.rglob("*")):
+        if not path.is_file():
+            continue
+        if ".deeploop" in path.parts:
+            continue
+        if path.name == "AGENTS.md":
+            continue
+        suffix = path.suffix.lower()
+        relative_path = _relative_to_project_root(path, project_root)
+        if suffix == ".md":
+            if relative_path not in seen_docs:
+                seen_docs.add(relative_path)
+                docs.append(relative_path)
+            continue
+        if suffix in data_extensions:
+            if relative_path not in seen_data:
+                seen_data.add(relative_path)
+                data.append({"path": relative_path, "kind": "dataset", "format": suffix.lstrip(".")})
+            continue
+        if suffix in config_extensions and path.name not in {"project-facts.yaml", "project-facts.yml"}:
+            if relative_path not in seen_configs:
+                seen_configs.add(relative_path)
+                configs.append(relative_path)
+    return {"docs": docs, "configs": configs, "data": data}
+
+
+def _write_bootstrap_starter_scaffold(
+    project_root: Path,
+    *,
+    target_name: str,
+    summary_hint: str,
+) -> Path:
+    from deeploop.core.paths import SCRATCH_DIR
+
+    detected_artifacts = _discover_plain_bootstrap_artifacts(project_root)
+    payload: dict[str, Any] = {
+        "project": {
+            "name": _slugify(project_root.name),
+            "title": f"{project_root.name} bootstrap",
+            "summary": "TODO: describe the project in one sentence.",
+            "objective": "TODO: describe the measurable outcome DeepLoop should pursue.",
+        },
+        "bootstrap_notes": [summary_hint],
+    }
+    artifacts_payload: dict[str, Any] = {}
+    if detected_artifacts["docs"]:
+        artifacts_payload["docs"] = detected_artifacts["docs"]
+    if detected_artifacts["configs"]:
+        artifacts_payload["configs"] = detected_artifacts["configs"]
+    if detected_artifacts["data"]:
+        artifacts_payload["data"] = detected_artifacts["data"]
+    if artifacts_payload:
+        payload["artifacts"] = artifacts_payload
+
+    scaffold_dir = SCRATCH_DIR / "mission_bootstrap_repairs" / _slugify(project_root.name)
+    scaffold_dir.mkdir(parents=True, exist_ok=True)
+    scaffold_path = scaffold_dir / target_name
+    scaffold_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return scaffold_path
+
+
+def _bootstrap_repair_payload(contract: dict[str, Any], project_root: Path) -> dict[str, Any] | None:
+    status = str(contract.get("status") or "").strip().lower()
+    project_path_value = str(contract.get("project_path") or project_root / ".deeploop" / "project.yaml").strip()
+    project_path = Path(project_path_value).expanduser().resolve()
+    plain_facts_path_value = str(contract.get("plain_facts_path") or "").strip()
+    plain_facts_path = Path(plain_facts_path_value).expanduser().resolve() if plain_facts_path_value else None
+    missing_recommended = [str(path) for path in contract.get("missing_recommended_files", [])]
+
+    if status == "missing":
+        scaffold_path = _write_bootstrap_starter_scaffold(
+            project_root,
+            target_name="project-facts.yaml",
+            summary_hint="Fill in the TODO fields, save this file as project-facts.yaml in the project root, then rerun deeploop init/run.",
+        )
+        return {
+            "status": "required",
+            "reason": "missing-bootstrap-contract",
+            "summary": "Project root does not yet contain `project-facts.yaml` or a usable `.deeploop/project.yaml` contract.",
+            "recommendation": "Fill in the generated plain-folder starter scaffold, save it as `project-facts.yaml`, then rerun the project-root bootstrap command.",
+            "actions": [
+                f"Copy `{scaffold_path}` to `{project_root / 'project-facts.yaml'}` and replace the TODO fields.",
+                "Keep artifact paths relative to the project root so DeepLoop can reuse them deterministically.",
+            ],
+            "starter_scaffold_path": str(scaffold_path),
+            "starter_target_path": str((project_root / "project-facts.yaml").resolve()),
+            "detected_inputs": _discover_plain_bootstrap_artifacts(project_root),
+        }
+    if status == "available" and not project_path.exists():
+        if plain_facts_path is not None and plain_facts_path.exists():
+            return {
+                "status": "required",
+                "reason": "ambiguous-bootstrap-root",
+                "summary": "Project root mixes a partial `.deeploop/` contract with `project-facts.yaml`, so `--project-root` cannot tell which bootstrap path you intend.",
+                "recommendation": "Choose one bootstrap surface: either finish the `.deeploop/` contract or remove the partial `.deeploop/` directory and keep `project-facts.yaml` as the source of truth.",
+                "actions": [
+                    f"Either add `{project_path}` or remove the partial `{project_root / '.deeploop'}` directory before rerunning bootstrap.",
+                    f"If you want plain-folder bootstrap, keep `{plain_facts_path}` and remove the incomplete `.deeploop/` contract.",
+                ],
+                "starter_scaffold_path": None,
+                "starter_target_path": str(project_path),
+                "detected_inputs": {
+                    "plain_facts_path": str(plain_facts_path),
+                    "missing_recommended_files": missing_recommended,
+                },
+            }
+        scaffold_path = _write_bootstrap_starter_scaffold(
+            project_root,
+            target_name="project.yaml",
+            summary_hint="Save this file as .deeploop/project.yaml or remove the partial .deeploop directory and switch to project-facts.yaml.",
+        )
+        return {
+            "status": "required",
+            "reason": "partial-deeploop-contract",
+            "summary": "Project root already has `.deeploop/`, but `.deeploop/project.yaml` is missing, so project-root bootstrap has no authoritative contract to compile.",
+            "recommendation": "Complete the `.deeploop/` contract by adding `project.yaml`, or remove the partial contract and use `project-facts.yaml` instead.",
+            "actions": [
+                f"Review `{scaffold_path}` and save an edited copy to `{project_path}`.",
+                "Add the remaining recommended contract files if you need runtime providers or evaluation metadata.",
+            ],
+            "starter_scaffold_path": str(scaffold_path),
+            "starter_target_path": str(project_path),
+            "detected_inputs": {
+                "missing_recommended_files": missing_recommended,
+            },
+        }
+    return None
 
 
 def _preferred_kickoff_docs(docs: list[str]) -> list[Path]:
@@ -658,9 +805,132 @@ def compile_mission_contract(
     }
 
 
+def _stringify_contract_value(value: object, *, max_depth: int = 3) -> str:
+    if max_depth < 0:
+        return "…"
+    if value is None:
+        return "unspecified"
+    if isinstance(value, list):
+        return "[" + ", ".join(_stringify_contract_value(item, max_depth=max_depth - 1) for item in value) + "]"
+    if isinstance(value, dict):
+        return "{" + "; ".join(f"{key}={_stringify_contract_value(item, max_depth=max_depth - 1)}" for key, item in value.items()) + "}"
+    text = str(value).strip()
+    return text or "unspecified"
+
+
+def render_bootstrap_repair_lines(repair: dict[str, Any], *, format: str = "markdown") -> list[str]:
+    if str(repair.get("status") or "").strip().lower() != "required":
+        return []
+    markdown = format == "markdown"
+    lines = [
+        "## Bootstrap repair" if markdown else "bootstrap repair",
+        f"- repair_reason: `{repair.get('reason', 'unknown')}`",
+        f"- summary: {repair.get('summary')}",
+        f"- recommendation: {repair.get('recommendation')}",
+    ]
+    starter_scaffold_path = str(repair.get("starter_scaffold_path") or "").strip()
+    starter_target_path = str(repair.get("starter_target_path") or "").strip()
+    if starter_scaffold_path:
+        lines.append(f"- starter_scaffold: `{starter_scaffold_path}`")
+    if starter_target_path:
+        lines.append(f"- expected_target: `{starter_target_path}`")
+    actions = [str(item).strip() for item in repair.get("actions", []) if str(item).strip()]
+    if actions:
+        lines.extend(["", "### Repair steps" if markdown else "repair steps"])
+        lines.extend(f"- {action}" for action in actions)
+    detected_inputs = repair.get("detected_inputs")
+    if isinstance(detected_inputs, dict) and detected_inputs:
+        lines.extend(["", "### Detected inputs" if markdown else "detected inputs"])
+        for key, value in detected_inputs.items():
+            lines.append(f"- {key}: {_stringify_contract_value(value)}")
+    return lines
+
+
+def render_mission_contract_summary_lines(
+    mission_contract: dict[str, object],
+    *,
+    format: str = "markdown",
+) -> list[str]:
+    readiness = mission_contract.get("readiness") if isinstance(mission_contract.get("readiness"), dict) else {}
+    objective = mission_contract.get("objective") if isinstance(mission_contract.get("objective"), dict) else {}
+    data = mission_contract.get("data") if isinstance(mission_contract.get("data"), dict) else {}
+    evaluation = mission_contract.get("evaluation") if isinstance(mission_contract.get("evaluation"), dict) else {}
+    artifacts = mission_contract.get("artifacts") if isinstance(mission_contract.get("artifacts"), dict) else {}
+    budget = mission_contract.get("budget") if isinstance(mission_contract.get("budget"), dict) else {}
+    boundaries = mission_contract.get("boundaries") if isinstance(mission_contract.get("boundaries"), dict) else {}
+    prerequisites = [item for item in mission_contract.get("prerequisites", []) if isinstance(item, dict)]
+
+    def _section_line(label: str, values: dict[str, object]) -> str:
+        rendered = "; ".join(f"{key}={_stringify_contract_value(item)}" for key, item in values.items())
+        return f"- {label}: {rendered}"
+
+    markdown = format == "markdown"
+    summary_lines = [
+        "## Readiness summary" if markdown else "readiness summary",
+        f"- readiness_status: `{readiness.get('status', 'unknown')}`",
+        f"- launch_recommendation: `{readiness.get('launch_recommendation', 'unknown')}`",
+        f"- task_type: `{objective.get('task_type', 'research')}`",
+        f"- objective_contract: {_stringify_contract_value(objective.get('text'))}",
+        _section_line(
+            "data_contract",
+            {
+                "dataset": data.get("dataset"),
+                "target": data.get("target"),
+                "split_policy": data.get("split_policy"),
+            },
+        ),
+        _section_line(
+            "evaluation_contract",
+            {
+                "benchmark": evaluation.get("benchmark_expectations"),
+                "success": evaluation.get("success_criteria"),
+                "novelty": evaluation.get("novelty_target"),
+            },
+        ),
+        _section_line("artifact_contract", {"deliverables": artifacts.get("deliverables")}),
+        _section_line(
+            "budget_contract",
+            {
+                "compute": budget.get("compute_budget"),
+                "stop_rules": budget.get("stop_rules"),
+            },
+        ),
+        _section_line(
+            "boundary_contract",
+            {
+                "leakage": boundaries.get("leakage_policy"),
+                "publication": boundaries.get("publication_boundary"),
+            },
+        ),
+    ]
+    blocking_items = [item for item in prerequisites if item.get("status") == "blocking"]
+    if blocking_items:
+        summary_lines.extend(["", "### Blocking prerequisites" if markdown else "blocking prerequisites"])
+        summary_lines.extend(f"- {item.get('question')} ({item.get('reason')})" for item in blocking_items)
+    clarification_items = [item for item in prerequisites if item.get("status") == "needs-clarification"]
+    if clarification_items:
+        summary_lines.extend(["", "### Clarifications" if markdown else "clarifications"])
+        summary_lines.extend(
+            f"- {item.get('question')} (guardrail: {_stringify_contract_value(item.get('assumed_default'))})"
+            for item in clarification_items
+        )
+    defaulted_items = [item for item in prerequisites if item.get("status") == "defaulted"]
+    if defaulted_items:
+        summary_lines.extend(["", "### Defaults applied" if markdown else "defaults applied"])
+        summary_lines.extend(
+            f"- {item.get('section')}: {_stringify_contract_value(item.get('assumed_default'))}"
+            for item in defaulted_items
+        )
+    bootstrap_repair = mission_contract.get("bootstrap_repair")
+    if isinstance(bootstrap_repair, dict):
+        summary_lines.extend(["", *render_bootstrap_repair_lines(bootstrap_repair, format=format)])
+    return summary_lines
+
+
 def build_mission_config_from_project_root(project_root: Path, *, mission_id: str | None = None) -> dict[str, Any]:
     repo_root = project_root.expanduser().resolve()
     contract = discover_project_contract(repo_root)
+    bootstrap_repair = _bootstrap_repair_payload(contract, repo_root)
     project_metadata = contract.get("project_metadata") if isinstance(contract.get("project_metadata"), dict) else {}
     project_name = _clean_text(project_metadata.get("name"), fallback=repo_root.name)
     mission_slug = _slugify(project_name)
@@ -736,6 +1006,35 @@ def build_mission_config_from_project_root(project_root: Path, *, mission_id: st
         },
         autopilot=merged_autopilot,
     )
+    if bootstrap_repair:
+        readiness = mission_contract.get("readiness") if isinstance(mission_contract.get("readiness"), dict) else {}
+        prerequisites = [dict(item) for item in mission_contract.get("prerequisites", []) if isinstance(item, dict)]
+        prerequisites.insert(
+            0,
+            {
+                "id": "bootstrap-repair",
+                "section": "bootstrap",
+                "status": "blocking",
+                "question": bootstrap_repair["recommendation"],
+                "reason": bootstrap_repair["summary"],
+            },
+        )
+        mission_contract = {
+            **mission_contract,
+            "prerequisites": prerequisites,
+            "follow_up_questions": [
+                str(item).strip()
+                for item in [bootstrap_repair["recommendation"], *mission_contract.get("follow_up_questions", [])]
+                if str(item).strip()
+            ],
+            "bootstrap_repair": bootstrap_repair,
+            "readiness": {
+                **readiness,
+                "status": "blocked",
+                "launch_recommendation": "repair-bootstrap-input",
+                "blocking_count": int(readiness.get("blocking_count", 0) or 0) + 1,
+            },
+        }
     contract_requirements = _promoted_contract_requirements_for_config(contract, project_metadata)
     mission_payload: dict[str, Any] = {
         "id": resolved_mission_id,
@@ -763,4 +1062,5 @@ def build_mission_config_from_project_root(project_root: Path, *, mission_id: st
         },
         "autopilot": merged_autopilot,
         "mission_contract": mission_contract,
+        **({"bootstrap_repair": bootstrap_repair} if bootstrap_repair else {}),
     }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,31 @@ def _soft_recovery_resume_allowed(snapshot: dict[str, Any] | None) -> bool:
     return gate_class == "soft-gate" and resume_policy in {"resume-optional", "not-needed"}
 
 
+def _resume_summary_from_state(mission_state_path: Path) -> dict[str, Any]:
+    if not mission_state_path.exists():
+        return {
+            "resumed_existing_mission": False,
+            "initial_runtime_status": None,
+            "initial_iterations_completed": 0,
+        }
+    try:
+        mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {
+            "resumed_existing_mission": False,
+            "initial_runtime_status": None,
+            "initial_iterations_completed": 0,
+        }
+    mission_runtime = mission_state.get("mission_runtime") if isinstance(mission_state.get("mission_runtime"), dict) else {}
+    runtime_status = str(mission_runtime.get("status") or "").strip() or None
+    iterations_completed = int(mission_runtime.get("iterations_completed", 0) or 0)
+    return {
+        "resumed_existing_mission": iterations_completed > 0 or runtime_status is not None,
+        "initial_runtime_status": runtime_status,
+        "initial_iterations_completed": iterations_completed,
+    }
+
+
 def run_project_until_complete(
     project_root: Path,
     *,
@@ -55,8 +81,16 @@ def run_project_until_complete(
         mission_id=mission_id,
         force=force,
     )
+    if init_result.get("status") == "bootstrap-repair-required":
+        return {
+            "status": "bootstrap-repair-required",
+            "project_root": resolved_project_root,
+            "bootstrap_repair": init_result.get("bootstrap_repair"),
+        }
     mission_state_path = Path(init_result["state_path"]).expanduser().resolve()
+    resume_summary = _resume_summary_from_state(mission_state_path)
     runtime_passes = 0
+    soft_recovery_resume_passes = 0
     latest_result: dict[str, Any] | None = None
     latest_snapshot: dict[str, Any] | None = None
     runtime_limit = min(resolved_chunk_iterations, resolved_max_total_iterations)
@@ -77,6 +111,8 @@ def run_project_until_complete(
         if latest_status == "completed":
             break
         if requires_action and not soft_recovery_resume:
+            resume_summary["bounded_resume_passes"] = max(runtime_passes - 1, 0)
+            resume_summary["soft_recovery_resume_passes"] = soft_recovery_resume_passes
             return {
                 "status": "operator-review-required",
                 "project_root": resolved_project_root,
@@ -86,10 +122,13 @@ def run_project_until_complete(
                 "runtime_iteration_limit": runtime_limit,
                 "runtime_result": latest_result,
                 "snapshot": latest_snapshot,
+                "resume_summary": resume_summary,
             }
         if latest_status not in {"max-iterations", "blocked", "failed"} or (
             latest_status in {"blocked", "failed"} and not soft_recovery_resume
         ):
+            resume_summary["bounded_resume_passes"] = max(runtime_passes - 1, 0)
+            resume_summary["soft_recovery_resume_passes"] = soft_recovery_resume_passes
             return {
                 "status": latest_status or "stopped",
                 "project_root": resolved_project_root,
@@ -99,10 +138,15 @@ def run_project_until_complete(
                 "runtime_iteration_limit": runtime_limit,
                 "runtime_result": latest_result,
                 "snapshot": latest_snapshot,
+                "resume_summary": resume_summary,
             }
+        if soft_recovery_resume:
+            soft_recovery_resume_passes += 1
 
         iterations_completed = int(latest_result.get("iterations_completed", 0) or 0)
         if iterations_completed >= resolved_max_total_iterations:
+            resume_summary["bounded_resume_passes"] = max(runtime_passes - 1, 0)
+            resume_summary["soft_recovery_resume_passes"] = soft_recovery_resume_passes
             return {
                 "status": "max-total-iterations",
                 "project_root": resolved_project_root,
@@ -112,9 +156,12 @@ def run_project_until_complete(
                 "runtime_iteration_limit": runtime_limit,
                 "runtime_result": latest_result,
                 "snapshot": latest_snapshot,
+                "resume_summary": resume_summary,
             }
         runtime_limit = min(max(iterations_completed, runtime_limit) + resolved_chunk_iterations, resolved_max_total_iterations)
 
+    resume_summary["bounded_resume_passes"] = max(runtime_passes - 1, 0)
+    resume_summary["soft_recovery_resume_passes"] = soft_recovery_resume_passes
     return {
         "status": "completed",
         "project_root": resolved_project_root,
@@ -124,6 +171,7 @@ def run_project_until_complete(
         "runtime_iteration_limit": runtime_limit,
         "runtime_result": latest_result,
         "snapshot": latest_snapshot,
+        "resume_summary": resume_summary,
     }
 
 
@@ -172,6 +220,15 @@ def initialize_mission_from_project_root(
         return initialize_mission(selected_config, force=force)
 
     generated_config = build_mission_config_from_project_root(resolved_project_root, mission_id=mission_id)
+    bootstrap_repair = (
+        generated_config.get("bootstrap_repair") if isinstance(generated_config.get("bootstrap_repair"), dict) else None
+    )
+    if isinstance(bootstrap_repair, dict) and str(bootstrap_repair.get("status") or "").strip().lower() == "required":
+        return {
+            "status": "bootstrap-repair-required",
+            "project_root": resolved_project_root,
+            "bootstrap_repair": bootstrap_repair,
+        }
     resolved_mission_id = str(generated_config["mission"]["id"])
     mission_root = MISSIONS_DIR / resolved_mission_id
     state_path = mission_root / "mission_state.json"

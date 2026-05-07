@@ -110,14 +110,14 @@ def _operator_request(mission_state_path: Path, *, mission_id: str, request_id: 
                 "summary": "Keep the action inside the sandbox.",
                 "pros": ["Preserves sandboxed-yolo."],
                 "cons": ["May require a smaller change."],
-                "next_steps": [f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}"],
+                    "next_steps": [f"deeploop resume --mission-state {mission_state_path}"],
             }
         ],
         "next_steps": [
-            f"python scripts/mission/manage_mission.py inbox --mission-state {mission_state_path}",
-            f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}",
+            f"deeploop inbox --mission-state {mission_state_path}",
+            f"deeploop resume --mission-state {mission_state_path}",
         ],
-        "continue_command": f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}",
+        "continue_command": f"deeploop resume --mission-state {mission_state_path}",
     }
 
 
@@ -155,8 +155,8 @@ def _managed_blocked_request(mission_state_path: Path, *, mission_id: str) -> di
     request["context"]["blocked_entries"] = request["blocker"]["details"]["blocked_entries"]
     request["recommendation"]["summary"] = "Inspect the blocked entry, optionally run bounded triage, then choose retry or reroute."
     request["next_steps"] = [
-        f"python scripts/mission/manage_mission.py inbox --mission-state {mission_state_path}",
-        f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}",
+        f"deeploop inbox --mission-state {mission_state_path}",
+        f"deeploop resume --mission-state {mission_state_path}",
     ]
     return request
 
@@ -229,7 +229,7 @@ class MissionManagementTests(unittest.TestCase):
         self.assertEqual(metadata["command"][-1], "7")
         self.assertIn("DeepLoop autopilot started", stdout.getvalue())
         self.assertIn("workspace_root", stdout.getvalue())
-        self.assertIn("manage_mission.py status", stdout.getvalue())
+        self.assertIn("deeploop status", stdout.getvalue())
         self.assertIn("deeploop start", log_path.read_text(encoding="utf-8"))
 
     def test_start_uses_configured_launch_env_when_present(self) -> None:
@@ -656,7 +656,7 @@ class MissionManagementTests(unittest.TestCase):
         ledger_lines = (mission_root / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertTrue(any('"kind": "operator-feedback"' in line for line in ledger_lines))
         self.assertIn("DeepLoop operator decision recorded", stdout.getvalue())
-        self.assertIn("manage_mission.py resume", stdout.getvalue())
+        self.assertIn("deeploop resume", stdout.getvalue())
         self.assertIn("operator_feedback: `retry`", stdout.getvalue())
 
     def test_resume_surfaces_recorded_operator_feedback(self) -> None:
@@ -687,7 +687,7 @@ class MissionManagementTests(unittest.TestCase):
             "action": "reroute",
             "recorded_at": "2026-04-12T20:05:00Z",
             "note": "downscope to the in-sandbox path",
-            "command": f"python scripts/mission/manage_mission.py reroute --mission-state {mission_state_path}",
+            "command": f"deeploop reroute --mission-state {mission_state_path}",
         }
         _write_jsonl(operator_request_log_path, [operator_request])
         _write_json(current_operator_request_path, operator_request)
@@ -777,7 +777,7 @@ class MissionManagementTests(unittest.TestCase):
         with redirect_stdout(inbox_stdout):
             inbox_result = manage_mission_main(["inbox", "--mission-state", str(mission_state_path)])
         self.assertEqual(inbox_result, 0)
-        self.assertIn("manage_mission.py triage", inbox_stdout.getvalue())
+        self.assertIn("deeploop triage", inbox_stdout.getvalue())
 
     def test_triage_rejects_non_zero_subprocess_even_with_result_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

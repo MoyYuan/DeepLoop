@@ -57,6 +57,8 @@ class PublicBootstrapTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         self.assertIn("bootstrapped mission config from project folder", completed.stdout)
+        self.assertIn("mission-init: readiness summary", completed.stdout)
+        self.assertIn("mission-init: - readiness_status:", completed.stdout)
         state_path = mission_root / "mission_state.json"
         self.assertTrue(state_path.exists(), f"missing mission state: {state_path}")
         mission_state = json.loads(state_path.read_text(encoding="utf-8"))
