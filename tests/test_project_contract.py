@@ -14,13 +14,20 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from deeploop.core.paths import MISSIONS_DIR
+from deeploop.core.paths import MISSIONS_DIR, WORKSPACE_ROOT
 from deeploop.mission.orchestrator import initialize_mission
 from deeploop.mission.project_bootstrap import build_mission_config_from_project_root
 from deeploop.project_contract import discover_project_contract, resolve_runtime_provider
 
 
 class ProjectContractTests(unittest.TestCase):
+    def test_mission_template_uses_workspace_uri_for_target_repo(self) -> None:
+        template = yaml.safe_load(
+            (REPO_ROOT / "examples" / "templates" / "mission-config.template.yaml").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(template["mission"]["target_repo"], "workspace://repos/TODO_REPO")
+
     def test_discover_project_contract_reports_missing_contract(self) -> None:
         repo_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "missing_repo"
         shutil.rmtree(repo_root, ignore_errors=True)
@@ -154,6 +161,61 @@ class ProjectContractTests(unittest.TestCase):
         )
         self.assertIn(str(repo_root.joinpath("AGENTS.md").resolve()), mission_state["rule_sources"])
         self.assertIn(str(repo_root.joinpath(".github", "copilot-instructions.md").resolve()), mission_state["rule_sources"])
+
+    def test_initialize_mission_resolves_workspace_root_tokens_in_config_paths(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "workspace_uri_config"
+        shutil.rmtree(test_root, ignore_errors=True)
+        test_root.mkdir(parents=True, exist_ok=True)
+
+        repo_name = "workspace-uri-config-project"
+        repo_root = WORKSPACE_ROOT / "repos" / repo_name
+        queue_path = WORKSPACE_ROOT / "runs" / "deeploop" / "queues" / "workspace-uri-config.yaml"
+        shutil.rmtree(repo_root, ignore_errors=True)
+        repo_root.mkdir(parents=True, exist_ok=True)
+        queue_path.parent.mkdir(parents=True, exist_ok=True)
+        queue_path.write_text("entries: []\n", encoding="utf-8")
+        self.addCleanup(lambda: shutil.rmtree(repo_root, ignore_errors=True))
+        self.addCleanup(lambda: queue_path.unlink(missing_ok=True))
+
+        config_path = test_root / "mission.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "mission": {
+                        "id": "workspace-uri-config-test",
+                        "mode": "sandboxed-yolo",
+                        "title": "Workspace URI config test",
+                        "summary": "Verify workspace-root-aware mission config paths.",
+                        "objective": "Resolve workspace:// paths during mission initialization.",
+                        "target_repo": f"workspace://repos/{repo_name}",
+                        "bootstrap": {
+                            "baseline_queue_config": "workspace://runs/deeploop/queues/workspace-uri-config.yaml",
+                        },
+                    },
+                    "roles": ["planner"],
+                    "phases": ["idea-intake", "final-report"],
+                    "autopilot": {
+                        "recursive_agent": {
+                            "agent": {
+                                "cwd": f"workspace://repos/{repo_name}",
+                            }
+                        }
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        result = initialize_mission(config_path, force=True)
+        self.addCleanup(lambda: shutil.rmtree(Path(result["mission_root"]), ignore_errors=True))
+        mission_state = json.loads(Path(result["state_path"]).read_text(encoding="utf-8"))
+        recursive_profile_path = Path(mission_state["runtime_profiles"]["recursive_agent"]["config_path"])
+        recursive_profile = yaml.safe_load(recursive_profile_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(mission_state["target_repo"], str(repo_root.resolve()))
+        self.assertEqual(mission_state["bootstrap"]["baseline_queue_config"], str(queue_path.resolve()))
+        self.assertEqual(recursive_profile["agent"]["cwd"], str(repo_root.resolve()))
 
     def test_discover_project_contract_supports_plain_project_facts(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "plain_artifacts"

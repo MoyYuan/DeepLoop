@@ -18,7 +18,7 @@ from deeploop.autonomy.mission_autonomy import build_outer_loop_contract
 from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
 from deeploop.autonomy.operator_inbox import ensure_operator_inbox_contract
 from deeploop.core.ledger import append_jsonl, make_ledger_entry
-from deeploop.core.paths import MISSIONS_DIR, REPO_ROOT
+from deeploop.core.paths import MISSIONS_DIR, REPO_ROOT, resolve_workspace_path
 from deeploop.core.structured_io import write_json_object, write_markdown, write_text, write_yaml_mapping
 from deeploop.mission.mission_memory import sync_mission_memory
 from deeploop.mission.plain_folder_followup import materialize_plain_folder_followups
@@ -110,16 +110,14 @@ def _materialize_recursive_agent_profile(
         "max_iterations": int(recursive_cfg.get("max_iterations", 2) or 2),
         "max_consecutive_failures": int(recursive_cfg.get("max_consecutive_failures", 2) or 2),
         "policy_path": str(
-            Path(
+            resolve_workspace_path(
                 recursive_cfg.get("policy_path")
                 or (REPO_ROOT / "configs" / "runtime" / "recursive-agent-runtime.yaml")
             )
-            .expanduser()
-            .resolve()
         ),
         "agent": {
             "command": _resolve_templates(command, context),
-            "cwd": str(Path(str(agent_cfg.get("cwd") or target_repo)).expanduser().resolve()),
+            "cwd": str(resolve_workspace_path(agent_cfg.get("cwd") or target_repo)),
         },
     }
     if agent_cfg.get("env_name") is not None:
@@ -202,7 +200,7 @@ def _bootstrap_state(config: dict, *, context: dict[str, str]) -> dict[str, obje
     bootstrap = {str(key): value for key, value in resolved.items()}
     queue_path = bootstrap.get("baseline_queue_config")
     if isinstance(queue_path, str) and queue_path.strip():
-        resolved_queue_path = Path(queue_path).expanduser().resolve()
+        resolved_queue_path = resolve_workspace_path(queue_path)
         if not resolved_queue_path.exists():
             raise FileNotFoundError(f"Bootstrap baseline queue config not found: {resolved_queue_path}")
         bootstrap["baseline_queue_config"] = str(resolved_queue_path)
@@ -274,7 +272,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     mission_cfg = config["mission"]
     requested_mode = str(mission_cfg.get("mode") or DEFAULT_OPERATING_MODE)
     mission_id = mission_cfg["id"]
-    target_repo = Path(mission_cfg["target_repo"]).expanduser()
+    target_repo = resolve_workspace_path(mission_cfg["target_repo"])
     project_contract = discover_project_contract(target_repo)
     mission_artifacts = _merge_artifacts(config.get("artifacts"), project_contract, target_repo=target_repo)
     data_artifact_paths = _data_artifact_paths(mission_artifacts["data"])
