@@ -17,6 +17,8 @@ RESEARCH_MEMORY_REGISTRY_PATH = REPO_ROOT / "configs" / "memory" / "registry.yam
 RESEARCH_MEMORY_ENTRY_SCHEMA_PATH = REPO_ROOT / "schemas" / "research-memory-entry.schema.json"
 DEFAULT_RESEARCH_MEMORY_EVENTS_FILE = "research_memory_entries.jsonl"
 DEFAULT_RESEARCH_MEMORY_INDEX_FILE = "research_memory_index.json"
+_MAX_REASONABLE_INDEX_BYTES = 64 * 1024 * 1024
+_MAX_INDEX_TO_EVENTS_RATIO = 8
 
 
 def _recover_last_json_object(raw: str) -> dict[str, Any] | None:
@@ -76,6 +78,11 @@ def _rebuild_index_from_entries(contract: Mapping[str, Any]) -> dict[str, Any]:
         active[key] = normalized
         index["active_entries"] = list(active.values())
         index = _rebuild_indexes(index, registry=registry)
+        active = {
+            _entry_key(str(item.get("entity_type") or ""), str(item.get("entity_id") or "")): dict(item)
+            for item in index.get("active_entries", [])
+            if isinstance(item, Mapping)
+        }
     return index
 
 
@@ -222,11 +229,22 @@ def ensure_research_memory_contract(
 def load_research_memory_index(*, contract: Mapping[str, Any] | None = None, memory_root: Path | None = None) -> dict[str, Any]:
     resolved = ensure_research_memory_contract(contract=dict(contract or {}), memory_root=memory_root)
     index_path = Path(resolved["research_memory_index_path"])
-    try:
-        index = _load_json(index_path, repair=True)
-    except JSONDecodeError:
+    events_path = Path(resolved["research_memory_events_path"])
+    if (
+        events_path.exists()
+        and events_path.stat().st_size > 0
+        and index_path.exists()
+        and index_path.stat().st_size > _MAX_REASONABLE_INDEX_BYTES
+        and index_path.stat().st_size > events_path.stat().st_size * _MAX_INDEX_TO_EVENTS_RATIO
+    ):
         index = _rebuild_index_from_entries(resolved)
         _write_json(index_path, index)
+    else:
+        try:
+            index = _load_json(index_path, repair=True)
+        except JSONDecodeError:
+            index = _rebuild_index_from_entries(resolved)
+            _write_json(index_path, index)
     if not index:
         index = _empty_index(resolved)
     if not isinstance(index.get("active_entries"), list):
@@ -423,6 +441,21 @@ def _rebuild_indexes(index: dict[str, Any], *, registry: Mapping[str, Any]) -> d
             str(item.get("entity_id") or ""),
         ),
     )
+    active_fingerprints = {
+        str(entry.get("fingerprint") or "")
+        for entry in active_entries
+        if str(entry.get("fingerprint") or "").strip()
+    }
+    deduped_archived: list[dict[str, Any]] = []
+    seen_archived: set[str] = set()
+    for entry in reversed(archived_entries):
+        fingerprint = str(entry.get("fingerprint") or "").strip()
+        if fingerprint:
+            if fingerprint in active_fingerprints or fingerprint in seen_archived:
+                continue
+            seen_archived.add(fingerprint)
+        deduped_archived.append(entry)
+    archived_entries = list(reversed(deduped_archived))
     term_index: dict[str, list[str]] = {}
     mission_index: dict[str, list[str]] = {}
     entity_type_index: dict[str, list[str]] = {}

@@ -4,6 +4,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
@@ -189,6 +190,91 @@ class IndexedResearchMemoryTests(unittest.TestCase):
         self.assertEqual([entry["entity_id"] for entry in rebuilt["active_entries"]], [recorded["entity_id"]])
         persisted = json.loads(index_path.read_text(encoding="utf-8"))
         self.assertEqual([entry["entity_id"] for entry in persisted["active_entries"]], [recorded["entity_id"]])
+
+    def test_load_research_memory_index_deduplicates_archived_entries_when_rebuilding_from_events(self) -> None:
+        test_root = _fresh_test_root("deduplicates_archived_entries")
+        contract = build_research_memory_contract(memory_root=test_root / "research-memory")
+
+        for index in range(10):
+            record_research_memory_entry(
+                {
+                    "entity_type": "experiment",
+                    "entity_id": f"experiment-{index}",
+                    "mission_id": "mission-dedup",
+                    "status": "completed",
+                    "summary": f"Completed bounded run {index}.",
+                    "payload": {
+                        "manifest_id": f"manifest-{index}",
+                        "hypothesis_id": "hypothesis-main",
+                        "resource_tier": "bounded",
+                        "execution_profile": "stage-kernel",
+                        "result_state": "completed",
+                    },
+                    "provenance": {
+                        "source_kind": "experiment-run",
+                        "mission_id": "mission-dedup",
+                        "recorded_at": f"2026-01-01T00:00:{index:02d}+00:00",
+                        "source_entry_id": f"experiment-{index}",
+                    },
+                    "promotion": {"status": "candidate", "source_entry_ids": [f"experiment-{index}"]},
+                },
+                contract=contract,
+            )
+
+        index_path = Path(contract["research_memory_index_path"])
+        index_path.write_text('{"schema_version": 1, "active_entries": [', encoding="utf-8")
+
+        rebuilt = load_research_memory_index(contract=contract)
+
+        self.assertEqual(len(rebuilt["active_entries"]), 8)
+        self.assertEqual({entry["entity_id"] for entry in rebuilt["archived_entries"]}, {"experiment-0", "experiment-1"})
+        self.assertEqual(len(rebuilt["archived_entries"]), 2)
+
+    def test_load_research_memory_index_rebuilds_oversized_index_from_events_before_parsing(self) -> None:
+        test_root = _fresh_test_root("rebuilds_oversized_index")
+        contract = build_research_memory_contract(memory_root=test_root / "research-memory")
+        recorded = record_research_memory_entry(
+            {
+                "entity_type": "critique",
+                "entity_id": "oversized-index-entry",
+                "mission_id": "mission-oversized",
+                "status": "recorded",
+                "summary": "Replay events instead of parsing a pathologically bloated index.",
+                "payload": {
+                    "critique_id": "oversized-index-entry",
+                    "manifest_id": "manifest-oversized",
+                    "finding": "Replay events instead of parsing a pathologically bloated index.",
+                    "recommendation": "Rebuild from the authoritative event ledger when the index is implausibly large.",
+                },
+                "provenance": {
+                    "source_kind": "promoted-finding",
+                    "mission_id": "mission-oversized",
+                    "recorded_at": "2026-01-01T00:00:00+00:00",
+                    "source_entry_id": "oversized-index-entry",
+                },
+                "promotion": {
+                    "status": "promoted",
+                    "promoted_at": "2026-01-01T00:00:00+00:00",
+                    "source_entry_ids": ["oversized-index-entry"],
+                },
+            },
+            contract=contract,
+        )
+        index_path = Path(contract["research_memory_index_path"])
+        index_path.write_text(
+            json.dumps({"schema_version": 1, "active_entries": [{"entity_id": "stale"}], "archived_entries": []}, indent=2)
+            + ("\n" * 512),
+            encoding="utf-8",
+        )
+
+        with (
+            patch("deeploop.research.indexed_memory._MAX_REASONABLE_INDEX_BYTES", 1),
+            patch("deeploop.research.indexed_memory._MAX_INDEX_TO_EVENTS_RATIO", 0),
+            patch("deeploop.research.indexed_memory._load_json", side_effect=AssertionError("oversized index should rebuild")),
+        ):
+            rebuilt = load_research_memory_index(contract=contract)
+
+        self.assertEqual([entry["entity_id"] for entry in rebuilt["active_entries"]], [recorded["entity_id"]])
 
     def test_rejects_recursive_payload_before_json_serialization(self) -> None:
         test_root = _fresh_test_root("rejects_recursive_payload")
