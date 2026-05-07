@@ -361,6 +361,151 @@ class ProviderLauncherTests(unittest.TestCase):
         process.terminate.assert_called_once()
         process.kill.assert_not_called()
 
+    @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
+    @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
+    def test_run_provider_prompt_recovers_outputs_after_invalid_result_payload(self, mock_popen, _mock_sleep) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            prompt_file = root / "prompt.md"
+            result_json_path = root / "iteration-04" / "agent_result.json"
+            sandbox_root = root / "sandbox"
+            mission_state_path = root / "mission" / "mission_state.json"
+            mission_state_path.parent.mkdir(parents=True, exist_ok=True)
+            mission_state_path.write_text(json.dumps({"current_phase": "literature-review"}), encoding="utf-8")
+            (sandbox_root / "outputs").mkdir(parents=True, exist_ok=True)
+            prompt_file.write_text(
+                "\n".join(
+                    [
+                        "# DeepLoop recursive agent iteration",
+                        "",
+                        "- loop_action_id: `demo-loop-04`",
+                        "- mission_action_id: `demo-lit-review`",
+                        "- action_phase: `literature-review`",
+                        "- current_phase: `literature-review`",
+                        "",
+                        "## Current task",
+                        "",
+                        "Produce the prior-art memo and benchmark watchlist.",
+                        "",
+                        "## Phase constraints",
+                        "",
+                        "Required phase outputs:",
+                        "- prior-art memo",
+                        "- benchmark and method watchlist",
+                        "",
+                        "Allowed next transitions:",
+                        "- `question-design`",
+                        "",
+                        "Transition metadata:",
+                        "- `question-design` via `phase-transition` (branch_status=`active`, recovery_status=`not-needed`): Convert prior-art coverage into concrete hypotheses and targets.",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            result_json_path.parent.mkdir(parents=True, exist_ok=True)
+            result_json_path.write_text(json.dumps({"status": "continue"}), encoding="utf-8")
+            (sandbox_root / "outputs" / "prior-art-memo.md").write_text("# Prior art\n", encoding="utf-8")
+            (sandbox_root / "outputs" / "benchmark-method-watchlist.yaml").write_text("benchmark: wmt19\n", encoding="utf-8")
+
+            process = MagicMock()
+            process.poll.side_effect = [None, None]
+            process.communicate.return_value = ("partial stdout", "partial stderr")
+            mock_popen.return_value = process
+
+            completed = run_provider_prompt(
+                prompt_file,
+                result_json_path=result_json_path,
+                sandbox_root=sandbox_root,
+                mission_state_path=mission_state_path,
+                cwd=root,
+                idle_timeout_seconds=0,
+            )
+            synthesized = json.loads(result_json_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(synthesized["status"], "continue")
+        self.assertEqual(len(synthesized["warnings"]), len(set(synthesized["warnings"])))
+        self.assertTrue(any("result.summary must be a non-empty string" in warning for warning in synthesized["warnings"]))
+        self.assertTrue(any("synthesized a canonical phase result" in warning for warning in synthesized["warnings"]))
+        process.terminate.assert_called_once()
+        process.kill.assert_not_called()
+
+    @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
+    @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
+    def test_run_provider_prompt_materializes_execution_gap_failure_with_artifacts(
+        self, mock_popen, _mock_sleep
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            prompt_file = root / "prompt.md"
+            result_json_path = root / "iteration-05" / "agent_result.json"
+            sandbox_root = root / "sandbox"
+            mission_state_path = root / "mission" / "mission_state.json"
+            runtime_root = root / "runtime" / "execution"
+            prompt_file.write_text("hello world", encoding="utf-8")
+            mission_state_path.parent.mkdir(parents=True, exist_ok=True)
+            mission_state_path.write_text(json.dumps({"current_phase": "execution"}), encoding="utf-8")
+            (sandbox_root / "outputs").mkdir(parents=True, exist_ok=True)
+            (runtime_root / "logs").mkdir(parents=True, exist_ok=True)
+            (sandbox_root / "outputs" / "baseline_execution_summary.json").write_text(
+                json.dumps({"runtime_root": str(runtime_root), "selected_direction": "en-zh"}),
+                encoding="utf-8",
+            )
+            (runtime_root / "direction_selection.json").write_text(
+                json.dumps({"selected_direction": "en-zh"}),
+                encoding="utf-8",
+            )
+            (runtime_root / "logs" / "baseline-wave-1.log").write_text("still running\n", encoding="utf-8")
+
+            process = MagicMock()
+            process.poll.side_effect = [None, None]
+            process.communicate.return_value = ("partial stdout", "partial stderr")
+            mock_popen.return_value = process
+
+            completed = run_provider_prompt(
+                prompt_file,
+                result_json_path=result_json_path,
+                sandbox_root=sandbox_root,
+                mission_state_path=mission_state_path,
+                cwd=root,
+                idle_timeout_seconds=0,
+            )
+            synthesized = json.loads(result_json_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(synthesized["status"], "failed")
+        self.assertIn("baseline_execution_summary.json", "\n".join(synthesized["produced_artifacts"]))
+        self.assertIn("baseline-wave-1.log", "\n".join(synthesized["produced_artifacts"]))
+        self.assertTrue(any("baseline_stage_scoreboard.json" in warning for warning in synthesized["warnings"]))
+        self.assertEqual(len(synthesized["warnings"]), len(set(synthesized["warnings"])))
+        process.terminate.assert_called_once()
+        process.kill.assert_not_called()
+
+    @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
+    @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
+    def test_run_provider_prompt_materializes_failure_when_provider_exits_before_ready_payload(
+        self, mock_popen, _mock_sleep
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            prompt_file = root / "prompt.md"
+            result_json_path = root / "iteration-06" / "agent_result.json"
+            prompt_file.write_text("hello world", encoding="utf-8")
+
+            process = MagicMock()
+            process.poll.side_effect = [17]
+            process.communicate.return_value = ("partial stdout", "partial stderr")
+            mock_popen.return_value = process
+
+            completed = run_provider_prompt(prompt_file, result_json_path=result_json_path, cwd=root)
+            synthesized = json.loads(result_json_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 17)
+        self.assertEqual(synthesized["status"], "failed")
+        self.assertIn("ready agent_result.json", synthesized["summary"])
+        self.assertTrue(any("returncode 17" in warning for warning in synthesized["warnings"]))
+        self.assertEqual(synthesized["produced_artifacts"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

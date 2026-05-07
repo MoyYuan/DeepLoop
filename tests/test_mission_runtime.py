@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import shutil
 import subprocess
@@ -16,12 +17,14 @@ if str(SRC_ROOT) not in sys.path:
 if str(TESTS_ROOT) not in sys.path:
     sys.path.insert(0, str(TESTS_ROOT))
 
+from deeploop.autonomy.mission_autonomy import build_outer_loop_contract
 from deeploop.mission.mission_runtime import (
     _apply_phase_change,
     _mission_state_updates_from_executor,
     run_mission,
 )
 from deeploop.project_contract import discover_project_contract
+from deeploop.research.indexed_memory import build_research_memory_contract
 from deeploop.runtime.mission_executor_registry import MissionExecutionResult, MissionExecutorId
 from deeploop.runtime.stage_kernels import KernelRunResult
 from runtime_artifact_helpers import fresh_test_root, write_json
@@ -34,7 +37,23 @@ def _fresh_test_root(name: str) -> Path:
 
 
 def _write_json(path: Path, payload: dict) -> None:
-    write_json(path, payload)
+    normalized_payload = payload
+    if path.name == "mission_state.json" and isinstance(payload.get("mission_id"), str):
+        normalized_payload = deepcopy(payload)
+        mission_root = path.parent
+        outer_loop = build_outer_loop_contract(
+            mission_root,
+            mode=str(normalized_payload.get("mode") or "sandboxed-yolo"),
+        )
+        existing_outer_loop = (
+            dict(normalized_payload.get("outer_loop"))
+            if isinstance(normalized_payload.get("outer_loop"), dict)
+            else {}
+        )
+        outer_loop.update(existing_outer_loop)
+        outer_loop.update(build_research_memory_contract(memory_root=mission_root / "research_memory"))
+        normalized_payload["outer_loop"] = outer_loop
+    write_json(path, normalized_payload)
 
 
 def _base_state(*, mission_id: str, current_phase: str, next_phase: str, actions: list[dict]) -> dict:
@@ -1709,7 +1728,7 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertEqual(operator_request["blocker"]["risk_class"], "sandbox-boundary")
         self.assertEqual(
             operator_request["continue_command"],
-            f"python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}",
+            f"deeploop resume --mission-state {mission_state_path}",
         )
         operator_history = [
             json.loads(line)
@@ -2030,7 +2049,7 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertIn("automatic bounded triage recommends `reroute`", operator_request["recommendation"]["summary"])
         self.assertIn("Managed mode staged `reroute`", operator_request["recommendation"]["summary"])
         self.assertIn("run-followup-queue-reroute-managed-recovery", operator_request["explanation"])
-        self.assertIn("manage_mission.py triage", operator_request["next_steps"][0])
+        self.assertIn("deeploop triage", operator_request["next_steps"][0])
         self.assertEqual(operator_request["alternatives"][0]["option_id"], "bounded-triage")
         updated_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
         self.assertEqual(

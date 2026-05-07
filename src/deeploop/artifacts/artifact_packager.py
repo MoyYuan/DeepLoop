@@ -850,6 +850,39 @@ def _artifact_bullets(artifacts: list[dict[str, Any]], artifact_ids: list[str], 
     return bullets
 
 
+def _mission_runtime_handoff_bullets(mission_state: dict[str, Any], *, ledger_entries: int) -> list[str]:
+    mission_runtime = mission_state.get("mission_runtime") if isinstance(mission_state.get("mission_runtime"), dict) else {}
+    if not mission_runtime:
+        return [f"Ledger entries captured: {ledger_entries}."]
+    bullets = [
+        "Mission runtime: "
+        f"{mission_runtime.get('status', 'unknown')} after "
+        f"{int(mission_runtime.get('iterations_completed', 0) or 0)} bounded iteration(s)."
+    ]
+    telemetry = (
+        mission_runtime.get("autonomy_gap_telemetry")
+        if isinstance(mission_runtime.get("autonomy_gap_telemetry"), dict)
+        else {}
+    )
+    counts = telemetry.get("counts") if isinstance(telemetry.get("counts"), dict) else {}
+    if counts:
+        bullets.append(
+            "Recovery telemetry: "
+            f"soft_gates={int(counts.get('soft_gates_total', 0) or 0)}, "
+            f"bounded_recoveries={int(counts.get('bounded_recovery_outcomes', 0) or 0)}, "
+            f"operator_requests={int(counts.get('operator_requests_total', 0) or 0)}."
+        )
+        auto_recovered = int(counts.get("temporary_gap_auto_recovered", 0) or 0)
+        escalated = int(counts.get("temporary_gap_escalated", 0) or 0)
+        if auto_recovered or escalated:
+            bullets.append(
+                "Temporary gaps: "
+                f"auto_recovered={auto_recovered}, escalated={escalated}."
+            )
+    bullets.append(f"Ledger entries captured: {ledger_entries}.")
+    return bullets
+
+
 def _data_artifact_reference_only(metadata: dict[str, Any]) -> bool:
     return metadata.get("package") is False or str(
         metadata.get("packaging_policy") or metadata.get("package_policy") or ""
@@ -1155,9 +1188,11 @@ def package_mission_artifacts(
         register_artifact(report_path, category=category, metadata=metadata)
 
     ledger_path = mission_root / "ledger.jsonl"
+    ledger_entries: list[dict[str, Any]] = []
     if ledger_path.exists():
         ledger_artifact_id = register_artifact(ledger_path, category="ledgers")
-        for entry in _load_jsonl(ledger_path):
+        ledger_entries = _load_jsonl(ledger_path)
+        for entry in ledger_entries:
             related_paths = entry.get("related_paths", [])
             for raw_path in related_paths:
                 if not isinstance(raw_path, str):
@@ -1382,6 +1417,7 @@ def package_mission_artifacts(
         f"Current phase: {mission_state.get('current_phase')} ({mission_state.get('status')})",
         f"Packaged {len(artifacts)} artifacts across {len(run_bundles)} manifest bundles.",
     ]
+    operator_bullets.extend(_mission_runtime_handoff_bullets(mission_state, ledger_entries=len(ledger_entries)))
     if missing_required_artifacts_summary:
         operator_bullets.append(missing_required_artifacts_summary)
     next_actions = mission_state.get("next_actions", {})

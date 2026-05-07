@@ -62,6 +62,55 @@ def _load_json_file(path: Path) -> dict[str, object] | None:
     return loaded if isinstance(loaded, dict) else None
 
 
+def _normalize_list_like(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, (str, Path)):
+        return [str(raw)]
+    if isinstance(raw, list):
+        return [str(item) for item in raw]
+    return []
+
+
+def _dedupe_messages(messages: Sequence[str]) -> list[str]:
+    deduped: list[str] = []
+    for message in messages:
+        text = str(message).strip()
+        if text and text not in deduped:
+            deduped.append(text)
+    return deduped
+
+
+def _provider_result_validation_errors(payload: dict[str, object]) -> list[str]:
+    errors: list[str] = []
+    status = str(payload.get("status") or "").strip().lower()
+    if status not in {"continue", "complete", "completed", "blocked", "failed", "fail", "error", "success", "successful", "succeeded", "ok", "done"}:
+        errors.append("result.status must be a recognized recursive-agent status")
+    summary = payload.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        errors.append("result.summary must be a non-empty string")
+    for key in ("produced_artifacts", "findings", "warnings"):
+        value = payload.get(key)
+        if value is not None and not isinstance(value, (str, list)):
+            errors.append(f"result.{key} must be list-like when present")
+    continuation = payload.get("continuation")
+    if continuation is not None:
+        if not isinstance(continuation, dict):
+            errors.append("result.continuation must be an object when present")
+        else:
+            role = continuation.get("role")
+            task = continuation.get("task")
+            if (role is None) != (task is None):
+                errors.append("result.continuation.role and result.continuation.task must be provided together")
+    action_result = payload.get("action_result")
+    if action_result is not None and not isinstance(action_result, dict):
+        errors.append("result.action_result must be an object when present")
+    phase_control = payload.get("phase_control")
+    if phase_control is not None and not isinstance(phase_control, dict):
+        errors.append("result.phase_control must be an object when present")
+    return errors
+
+
 _OUTPUT_NAME_STOPWORDS = {"a", "an", "and", "for", "of", "or", "the", "to", "with"}
 
 
@@ -449,11 +498,29 @@ def _materialize_execution_summary_from_completed_runs(
     return execution_summary
 
 
+def _required_execution_paths_for(summary: dict[str, object] | None) -> tuple[Path, dict[str, Path]] | None:
+    if not isinstance(summary, dict):
+        return None
+    runtime_root_raw = summary.get("runtime_root")
+    if not isinstance(runtime_root_raw, str) or not runtime_root_raw.strip():
+        return None
+    runtime_root = Path(runtime_root_raw).expanduser().resolve()
+    required = {
+        "baseline_stage_scoreboard": runtime_root / "baseline_stage_scoreboard.json",
+        "direction_scoreboard": runtime_root / "direction_scoreboard.json",
+        "direction_selection": runtime_root / "direction_selection.json",
+        "prompt_decode_stage_release": runtime_root / "prompt_decode_stage_release.json",
+        "crash_stability_notes": runtime_root / "crash_stability_notes.json",
+    }
+    return runtime_root, required
+
+
 def _maybe_materialize_execution_phase_result(
     *,
     result_json_path: Path,
     sandbox_root: Path | None,
     mission_state_path: Path | None,
+    warnings: Sequence[str] = (),
 ) -> dict[str, object] | None:
     if sandbox_root is None or mission_state_path is None:
         return None
@@ -466,29 +533,13 @@ def _maybe_materialize_execution_phase_result(
     execution_summary_path = sandbox_root / "outputs" / "baseline_execution_summary.json"
     execution_summary = _load_json_file(execution_summary_path)
 
-    def _required_paths_for(summary: dict[str, object] | None) -> tuple[Path, dict[str, Path]] | None:
-        if not isinstance(summary, dict):
-            return None
-        runtime_root_raw = summary.get("runtime_root")
-        if not isinstance(runtime_root_raw, str) or not runtime_root_raw.strip():
-            return None
-        runtime_root = Path(runtime_root_raw).expanduser().resolve()
-        required = {
-            "baseline_stage_scoreboard": runtime_root / "baseline_stage_scoreboard.json",
-            "direction_scoreboard": runtime_root / "direction_scoreboard.json",
-            "direction_selection": runtime_root / "direction_selection.json",
-            "prompt_decode_stage_release": runtime_root / "prompt_decode_stage_release.json",
-            "crash_stability_notes": runtime_root / "crash_stability_notes.json",
-        }
-        return runtime_root, required
-
-    resolved = _required_paths_for(execution_summary)
+    resolved = _required_execution_paths_for(execution_summary)
     if resolved is None or any(not path.exists() for path in resolved[1].values()):
         execution_summary = _materialize_execution_summary_from_completed_runs(
             sandbox_root=sandbox_root,
             mission_state_path=mission_state_path,
         )
-        resolved = _required_paths_for(execution_summary)
+        resolved = _required_execution_paths_for(execution_summary)
     if resolved is None or any(not path.exists() for path in resolved[1].values()):
         return None
     runtime_root, required_paths = resolved
@@ -561,6 +612,12 @@ def _maybe_materialize_execution_phase_result(
             "current_phase": "critique",
             "next_phase": "critique",
         },
+        "warnings": _dedupe_messages(
+            list(warnings)
+            + [
+                "Provider result payload was unavailable, so the launcher synthesized a canonical execution result from persisted artifacts."
+            ]
+        ),
     }
     result_json_path.parent.mkdir(parents=True, exist_ok=True)
     result_json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -574,6 +631,7 @@ def _maybe_materialize_phase_result_from_outputs(
     result_json_path: Path,
     sandbox_root: Path | None,
     mission_state_path: Path | None,
+    warnings: Sequence[str] = (),
 ) -> dict[str, object] | None:
     if sandbox_root is None or mission_state_path is None:
         return None
@@ -629,6 +687,12 @@ def _maybe_materialize_phase_result_from_outputs(
             "recovery_status": recovery_status,
             "summary": summary,
         },
+        "warnings": _dedupe_messages(
+            list(warnings)
+            + [
+                "Provider result payload was unavailable, so the launcher synthesized a canonical phase result from sandbox outputs."
+            ]
+        ),
     }
     if next_phase:
         continuation_task = (
@@ -652,36 +716,120 @@ def _maybe_materialize_phase_result_from_outputs(
     return payload
 
 
-def _materialize_idle_failure_result(
+def _materialize_provider_failure_result(
     *,
     prompt_text: str,
     result_json_path: Path,
+    summary: str,
+    warnings: Sequence[str],
+    existing_payload: dict[str, object] | None = None,
+    produced_artifacts: Sequence[str] = (),
+    findings: Sequence[str] = (),
 ) -> dict[str, object]:
     current_phase = _extract_prompt_scalar(prompt_text, "current_phase") or _extract_prompt_scalar(prompt_text, "action_phase")
     loop_action_id = _extract_prompt_scalar(prompt_text, "loop_action_id")
     mission_action_id = _extract_prompt_scalar(prompt_text, "mission_action_id")
-    summary = "provider subprocess stayed idle without producing recoverable outputs or agent_result.json."
+    base_action_result = existing_payload.get("action_result") if isinstance(existing_payload, dict) else None
+    base_phase_control = existing_payload.get("phase_control") if isinstance(existing_payload, dict) else None
+    base_findings = _normalize_list_like(existing_payload.get("findings")) if isinstance(existing_payload, dict) else []
+    base_artifacts = _normalize_list_like(existing_payload.get("produced_artifacts")) if isinstance(existing_payload, dict) else []
+    if isinstance(base_action_result, dict):
+        base_artifacts.extend(_normalize_list_like(base_action_result.get("output_paths")))
     payload: dict[str, object] = {
         "status": "failed",
         "summary": summary,
-        "findings": [
-            "Launcher ended an idle provider subprocess to avoid an infinite mission hang.",
-        ],
+        "findings": _dedupe_messages(base_findings + list(findings)),
         "action_result": {
             "mission_action_id": mission_action_id,
             "loop_action_id": loop_action_id,
-            "status": "failed",
             "phase": current_phase,
-            "notes": [summary],
+            "kind": base_action_result.get("kind") if isinstance(base_action_result, dict) else None,
+            "branch_id": base_action_result.get("branch_id") if isinstance(base_action_result, dict) else None,
+            "decision_id": base_action_result.get("decision_id") if isinstance(base_action_result, dict) else None,
+            "output_paths": _dedupe_messages(base_artifacts + list(produced_artifacts)),
+            "notes": _dedupe_messages(_normalize_list_like(base_action_result.get("notes")) if isinstance(base_action_result, dict) else []),
         },
         "phase_control": {
             "current_phase": current_phase,
+            "next_phase": base_phase_control.get("next_phase") if isinstance(base_phase_control, dict) else None,
+            "decision_type": base_phase_control.get("decision_type") if isinstance(base_phase_control, dict) else None,
+            "branch_status": base_phase_control.get("branch_status") if isinstance(base_phase_control, dict) else None,
+            "recovery_status": base_phase_control.get("recovery_status") if isinstance(base_phase_control, dict) else None,
             "summary": summary,
         },
+        "produced_artifacts": _dedupe_messages(base_artifacts + list(produced_artifacts)),
+        "warnings": _dedupe_messages(
+            (_normalize_list_like(existing_payload.get("warnings")) if isinstance(existing_payload, dict) else [])
+            + list(warnings)
+        ),
     }
     result_json_path.parent.mkdir(parents=True, exist_ok=True)
     result_json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return payload
+
+
+def _materialize_idle_failure_result(
+    *,
+    prompt_text: str,
+    result_json_path: Path,
+    warnings: Sequence[str] = (),
+    existing_payload: dict[str, object] | None = None,
+) -> dict[str, object]:
+    summary = "provider subprocess stayed idle without producing recoverable outputs or a ready agent_result.json."
+    return _materialize_provider_failure_result(
+        prompt_text=prompt_text,
+        result_json_path=result_json_path,
+        summary=summary,
+        warnings=list(warnings)
+        + ["Launcher ended an idle provider subprocess to avoid an infinite mission hang."],
+        existing_payload=existing_payload,
+        findings=["Launcher ended an idle provider subprocess to avoid an infinite mission hang."],
+    )
+
+
+def _execution_gap_artifacts_and_warnings(
+    *,
+    sandbox_root: Path | None,
+    mission_state_path: Path | None,
+) -> tuple[list[str], list[str]] | None:
+    if sandbox_root is None or mission_state_path is None:
+        return None
+    mission_state = _load_json_file(mission_state_path)
+    if not isinstance(mission_state, dict) or str(mission_state.get("current_phase") or "") != "execution":
+        return None
+    execution_summary_path = sandbox_root / "outputs" / "baseline_execution_summary.json"
+    execution_summary = _load_json_file(execution_summary_path)
+    resolved = _required_execution_paths_for(execution_summary)
+    if resolved is None:
+        return None
+    runtime_root, required_paths = resolved
+    missing = [path.name for path in required_paths.values() if not path.exists()]
+    if not missing:
+        return None
+    available = [str(execution_summary_path)] if execution_summary_path.exists() else []
+    available.extend(str(path) for path in required_paths.values() if path.exists())
+    available.extend(str(path) for path in sorted((runtime_root / "logs").glob("*.log")))
+    return (
+        _dedupe_messages(available),
+        [
+            "Execution artifacts are only partially materialized; waiting on: " + ", ".join(sorted(missing)),
+        ],
+    )
+
+
+def _read_result_payload_state(result_json_path: Path) -> tuple[dict[str, object] | None, list[str]]:
+    if not result_json_path.exists():
+        return None, ["provider did not write agent_result.json"]
+    try:
+        loaded = json.loads(result_json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None, ["provider wrote malformed agent_result.json"]
+    if not isinstance(loaded, dict):
+        return None, ["provider agent_result.json must contain a JSON object"]
+    validation_errors = _provider_result_validation_errors(loaded)
+    if validation_errors:
+        return loaded, [f"provider result payload not ready: {error}" for error in validation_errors]
+    return loaded, []
 
 
 def run_provider_prompt(
@@ -746,23 +894,82 @@ def run_provider_prompt(
     mission_state = _load_json_file(mission_state_path) if mission_state_path is not None else None
     if isinstance(mission_state, dict) and str(mission_state.get("current_phase") or "") == "execution":
         idle_watch_roots.append(mission_state_path.parent / "runtime" / "execution")
+    degraded_payload: dict[str, object] | None = None
+    degraded_warnings: list[str] = []
     while True:
-        returncode = process.poll()
-        if returncode is not None:
-            stdout, stderr = process.communicate()
-            return subprocess.CompletedProcess(command, returncode, stdout, stderr)
         if result_json_path is not None:
             _maybe_materialize_execution_phase_result(
                 result_json_path=result_json_path,
                 sandbox_root=sandbox_root,
                 mission_state_path=mission_state_path,
+                warnings=degraded_warnings,
             )
+            degraded_payload, payload_warnings = _read_result_payload_state(result_json_path)
+            degraded_warnings = _dedupe_messages(degraded_warnings + payload_warnings)
+            if degraded_payload is not None and not payload_warnings:
+                process.terminate()
+                try:
+                    stdout, stderr = process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    stdout, stderr = process.communicate()
+                return subprocess.CompletedProcess(command, 0, stdout, stderr)
+        returncode = process.poll()
+        if returncode is not None:
+            stdout, stderr = process.communicate()
+            if result_json_path is not None:
+                degraded_payload, payload_warnings = _read_result_payload_state(result_json_path)
+                degraded_warnings = _dedupe_messages(
+                    degraded_warnings
+                    + payload_warnings
+                    + [f"Provider subprocess exited with returncode {returncode} before emitting a ready result payload."]
+                )
+                if degraded_payload is None or payload_warnings:
+                    recovered = _maybe_materialize_execution_phase_result(
+                        result_json_path=result_json_path,
+                        sandbox_root=sandbox_root,
+                        mission_state_path=mission_state_path,
+                        warnings=degraded_warnings,
+                    )
+                    if recovered is None:
+                        recovered = _maybe_materialize_phase_result_from_outputs(
+                            prompt_text=prompt_text,
+                            prompt_started_at=prompt_started_at,
+                            result_json_path=result_json_path,
+                            sandbox_root=sandbox_root,
+                            mission_state_path=mission_state_path,
+                            warnings=degraded_warnings,
+                        )
+                    if recovered is None:
+                        execution_gap = _execution_gap_artifacts_and_warnings(
+                            sandbox_root=sandbox_root,
+                            mission_state_path=mission_state_path,
+                        )
+                        if execution_gap is not None:
+                            artifacts, gap_warnings = execution_gap
+                            _materialize_provider_failure_result(
+                                prompt_text=prompt_text,
+                                result_json_path=result_json_path,
+                                summary="provider exited before execution artifacts finished materializing into a ready result payload.",
+                                warnings=degraded_warnings + gap_warnings,
+                                existing_payload=degraded_payload,
+                                produced_artifacts=artifacts,
+                                findings=["Execution artifacts were partially materialized when the provider exited."],
+                            )
+                        else:
+                            _materialize_provider_failure_result(
+                                prompt_text=prompt_text,
+                                result_json_path=result_json_path,
+                                summary="provider subprocess exited before producing a ready agent_result.json.",
+                                warnings=degraded_warnings,
+                                existing_payload=degraded_payload,
+                                findings=["Launcher preserved the degraded provider payload so the outer runtime can retry safely."],
+                            )
+            return subprocess.CompletedProcess(command, returncode, stdout, stderr)
         if result_json_path.exists():
-            try:
-                loaded = json.loads(result_json_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                loaded = None
-            if isinstance(loaded, dict):
+            degraded_payload, payload_warnings = _read_result_payload_state(result_json_path)
+            degraded_warnings = _dedupe_messages(degraded_warnings + payload_warnings)
+            if degraded_payload is not None and not payload_warnings:
                 process.terminate()
                 try:
                     stdout, stderr = process.communicate(timeout=5)
@@ -783,7 +990,29 @@ def run_provider_prompt(
                 result_json_path=result_json_path,
                 sandbox_root=sandbox_root,
                 mission_state_path=mission_state_path,
+                warnings=degraded_warnings,
             )
-            if recovered is None and not result_json_path.exists():
-                _materialize_idle_failure_result(prompt_text=prompt_text, result_json_path=result_json_path)
+            if recovered is None:
+                execution_gap = _execution_gap_artifacts_and_warnings(
+                    sandbox_root=sandbox_root,
+                    mission_state_path=mission_state_path,
+                )
+                if execution_gap is not None:
+                    artifacts, gap_warnings = execution_gap
+                    _materialize_provider_failure_result(
+                        prompt_text=prompt_text,
+                        result_json_path=result_json_path,
+                        summary="provider stayed idle while execution artifacts remained partially materialized.",
+                        warnings=degraded_warnings + gap_warnings,
+                        existing_payload=degraded_payload,
+                        produced_artifacts=artifacts,
+                        findings=["Execution artifacts were partially materialized when the provider stopped making progress."],
+                    )
+                else:
+                    _materialize_idle_failure_result(
+                        prompt_text=prompt_text,
+                        result_json_path=result_json_path,
+                        warnings=degraded_warnings,
+                        existing_payload=degraded_payload,
+                    )
         time.sleep(1)
