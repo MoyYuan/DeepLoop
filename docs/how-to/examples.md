@@ -30,24 +30,31 @@ deeploop run --project-root <project-folder> --until-complete
 That is the fastest happy path for trying DeepLoop on the canonical public
 example.
 
-If you want the explicit operator flow first, use the installed CLI surfaces
-directly:
+If your own folder is rougher than the canonical example, stay on the installed
+CLI surfaces:
 
 ```text
-deeploop init --discover --mission-idea "I have a dataset and a rough research direction"
 deeploop init --project-root <project-folder> --force
+deeploop init --discover --project-root <project-folder> --force
 deeploop start --mission-state <mission-state.json>
 deeploop status --mission-state <mission-state.json>
 ```
 
-Use discovery mode when you want DeepLoop to ask clarifying questions, keep a
-checklist of missing pieces, and compile the mission before kickoff.
+Use plain `deeploop init --project-root ...` when the folder already has enough
+signal for DeepLoop to disclose clarifications/defaults and continue without
+rewriting the project. Use `--discover` when you want DeepLoop to ask
+clarifying questions, keep a checklist of missing pieces, and compile the
+mission before kickoff.
+
+If the folder is too incomplete for either path, DeepLoop exits with
+bootstrap-repair guidance instead of mutating the example or your project root.
 
 If `deeploop run` stops for operator review instead of finishing, reuse
 the printed `<mission-state.json>` with `deeploop status`, `deeploop inbox`,
 and `deeploop resume`.
 
-Lower-level repo scripts remain available as fallback surfaces when useful:
+Lower-level repo scripts remain available as fallback surfaces when you are
+debugging repo internals rather than using the public CLI:
 
 ```text
 python scripts/mission/init_mission.py --discover --mission-idea "I have a dataset and a rough goal"

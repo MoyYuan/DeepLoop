@@ -10,6 +10,8 @@ import unittest
 from contextlib import redirect_stderr
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
@@ -95,8 +97,11 @@ class MissionDiscoveryTests(unittest.TestCase):
         self.assertIn("mission-discovery: starting interactive mission formulation", completed.stdout)
         self.assertIn("mission-discovery: current missing checklist", completed.stdout)
         self.assertIn("mission-discovery: compiled mission summary", completed.stdout)
+        self.assertIn("readiness summary", completed.stdout)
+        self.assertIn("defaults applied", completed.stdout)
         self.assertIn("Proceed with mission kickoff?", completed.stdout)
         self.assertIn("mission-init: used confirmed discovery config", completed.stdout)
+        self.assertIn("mission-init: readiness summary", completed.stdout)
         self.assertTrue(mission_root.joinpath("mission_state.json").exists())
         self.assertTrue(discovery_config_path.exists())
 
@@ -268,6 +273,63 @@ class MissionDiscoveryTests(unittest.TestCase):
         checklist = result["config"]["mission"]["human_inputs"]["mission_discovery"]["checklist"]
         success_criteria = next(item for item in checklist if item["id"] == "success_criteria")
         self.assertEqual(success_criteria["status"], "missing")
+
+    def test_run_interactive_discovery_prefills_answers_from_project_context(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "mission_discovery" / "project_context"
+        shutil.rmtree(test_root, ignore_errors=True)
+        repo_root = test_root / "housing-pilot"
+        (repo_root / "docs").mkdir(parents=True, exist_ok=True)
+        (repo_root / "docs" / "project-brief.md").write_text(
+            "\n".join(
+                [
+                    "# Kickoff",
+                    "Build a regression baseline using /datasets/housing/train.csv to predict sale_price.",
+                    "Keep a strict holdout split and avoid neighborhood leakage.",
+                    "Compare against the current linear baseline.",
+                    "Deliver run manifests, metrics, and a final report.",
+                    "Cap compute at 4 GPU hours and stop after two failed attempts.",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (repo_root / "project-facts.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "project": {"name": "housing-regression-pilot"},
+                    "artifacts": {"docs": ["docs/project-brief.md"]},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        prompts: list[str] = []
+        responses = iter(["", "", "", "", "", "", "", "", "n"])
+        printed: list[str] = []
+
+        result = run_interactive_discovery(
+            mission_id="interactive-discovery-context-test",
+            project_root=repo_root,
+            reader=lambda prompt: prompts.append(prompt) or next(responses),
+            printer=printed.append,
+        )
+
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        self.addCleanup(lambda: Path(result["config_path"]).unlink(missing_ok=True))
+
+        self.assertFalse(result["confirmed"])
+        self.assertIn("keep detected objective", prompts[0])
+        self.assertTrue(any("keep detected" in prompt for prompt in prompts[1:]))
+        self.assertEqual(
+            result["config"]["mission"]["objective"],
+            "Build a regression baseline using /datasets/housing/train.csv to predict sale_price.",
+        )
+        self.assertEqual(result["config"]["mission_contract"]["data"]["target"], "sale_price")
+        self.assertEqual(result["config"]["mission_contract"]["budget"]["compute_budget"], "4 GPU hours")
+        self.assertEqual(result["config"]["mission_contract"]["readiness"]["status"], "ready-with-defaults")
+        self.assertTrue(any("readiness summary" in line for line in printed))
+        self.assertTrue(any("defaults applied" in line for line in printed))
 
 
 if __name__ == "__main__":

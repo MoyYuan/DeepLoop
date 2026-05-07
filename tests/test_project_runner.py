@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import argparse
+import io
 import json
 import shutil
 import sys
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,10 +18,59 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from deeploop.core.paths import MISSIONS_DIR
+from deeploop.cli.run_project import _add_run_args, _noncompleted_summary_lines, _run_project
 from deeploop.mission.project_runner import _find_explicit_mission_configs, initialize_mission_from_project_root, run_project_until_complete
 
 
 class ProjectRunnerTests(unittest.TestCase):
+    def test_run_project_surfaces_handoff_summary_on_stderr(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        args = argparse.Namespace(
+            project_root="/repo/demo",
+            mission_id=None,
+            force=False,
+            until_complete=True,
+            chunk_iterations=4,
+            max_total_iterations=12,
+        )
+        result = {
+            "status": "operator-review-required",
+            "mission_state_path": Path("/repo/demo/.deeploop/mission_state.json"),
+            "snapshot": {
+                "operator_console": {
+                    "headline": "BLOCKED — review the request, then resume when ready.",
+                    "summary": "Autopilot paused at `sandbox-boundary`: attempted write outside mutable roots.",
+                    "recommendation": "Review the hard gate, keep the mission inside the current safety boundary if possible, then resume autopilot.",
+                    "next_commands": [
+                        {
+                            "command": "deeploop inbox --mission-state /repo/demo/.deeploop/mission_state.json",
+                        }
+                    ],
+                }
+            },
+        }
+
+        with patch("deeploop.cli.run_project.run_project_until_complete", return_value=result):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = _run_project(args)
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(json.loads(stdout.getvalue())["status"], "operator-review-required")
+        self.assertIn("DeepLoop did not complete this run.", stderr.getvalue())
+        self.assertIn("BLOCKED — review the request", stderr.getvalue())
+        self.assertIn("deeploop inbox --mission-state /repo/demo/.deeploop/mission_state.json", stderr.getvalue())
+
+    def test_run_project_help_explains_until_complete_and_manual_flow(self) -> None:
+        parser = argparse.ArgumentParser()
+        _add_run_args(parser)
+
+        help_text = parser.format_help()
+
+        self.assertIn("bootstraps or reuses the mission", help_text)
+        self.assertIn("deeploop init", help_text)
+        self.assertIn("deeploop start", help_text)
+
     def test_initialize_mission_from_project_root_reuses_existing_state_without_force(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "resume-existing"
         shutil.rmtree(test_root, ignore_errors=True)
@@ -151,6 +203,116 @@ class ProjectRunnerTests(unittest.TestCase):
         self.assertEqual(result["runtime_passes"], 2)
         self.assertEqual(mock_run_mission.call_args_list[0].kwargs["max_iterations"], 3)
         self.assertEqual(mock_run_mission.call_args_list[1].kwargs["max_iterations"], 6)
+
+    def test_run_project_until_complete_tracks_existing_state_and_repeated_resumes(self) -> None:
+        project_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "resume-stress"
+        shutil.rmtree(project_root, ignore_errors=True)
+        project_root.mkdir(parents=True, exist_ok=True)
+        mission_root = project_root / "mission-root"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "mission_id": "resume-stress-mission",
+                    "current_phase": "execution",
+                    "status": "paused",
+                    "mission_runtime": {
+                        "status": "paused",
+                        "iterations_completed": 5,
+                    },
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        with (
+            patch("deeploop.mission.project_runner.initialize_mission_from_project_root") as mock_init,
+            patch("deeploop.mission.project_runner.run_mission") as mock_run_mission,
+            patch("deeploop.mission.project_runner.build_mission_snapshot") as mock_snapshot,
+        ):
+            mock_init.return_value = {
+                "mission_root": mission_root,
+                "state_path": mission_state_path,
+            }
+            mock_run_mission.side_effect = [
+                {"status": "max-iterations", "iterations_completed": 6},
+                {"status": "blocked", "iterations_completed": 8},
+                {"status": "completed", "iterations_completed": 10},
+            ]
+            mock_snapshot.side_effect = [
+                {"operator_console": {"requires_action": False}},
+                {
+                    "operator_console": {
+                        "requires_action": True,
+                        "gate_class": "soft-gate",
+                        "resume_policy": "resume-optional",
+                    }
+                },
+                {"operator_console": {"requires_action": False}},
+            ]
+
+            result = run_project_until_complete(project_root, chunk_iterations=2, max_total_iterations=12)
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["runtime_passes"], 3)
+        self.assertEqual(
+            result["resume_summary"],
+            {
+                "resumed_existing_mission": True,
+                "initial_runtime_status": "paused",
+                "initial_iterations_completed": 5,
+                "bounded_resume_passes": 2,
+                "soft_recovery_resume_passes": 1,
+            },
+        )
+        self.assertEqual(mock_run_mission.call_args_list[0].kwargs["max_iterations"], 2)
+        self.assertEqual(mock_run_mission.call_args_list[1].kwargs["max_iterations"], 8)
+        self.assertEqual(mock_run_mission.call_args_list[2].kwargs["max_iterations"], 10)
+
+    def test_noncompleted_summary_lines_include_resume_context(self) -> None:
+        lines = _noncompleted_summary_lines(
+            {
+                "status": "max-total-iterations",
+                "mission_state_path": Path("/repo/demo/.deeploop/mission_state.json"),
+                "snapshot": {"operator_console": {"requires_action": False}},
+                "resume_summary": {
+                    "resumed_existing_mission": True,
+                    "initial_runtime_status": "paused",
+                    "initial_iterations_completed": 5,
+                    "bounded_resume_passes": 2,
+                    "soft_recovery_resume_passes": 1,
+                },
+            }
+        )
+
+        rendered = "\n".join(lines)
+        self.assertIn("reused prior mission state (5 recorded iteration(s), status `paused`)", rendered)
+        self.assertIn("auto-resumed 2 bounded pass(es)", rendered)
+        self.assertIn("1 via soft-gate recovery", rendered)
+
+    def test_noncompleted_summary_lines_include_bootstrap_repair_guidance(self) -> None:
+        lines = _noncompleted_summary_lines(
+            {
+                "status": "bootstrap-repair-required",
+                "bootstrap_repair": {
+                    "status": "required",
+                    "reason": "missing-bootstrap-contract",
+                    "summary": "Project root is missing project-facts.yaml.",
+                    "recommendation": "Create project-facts.yaml and rerun deeploop run.",
+                    "starter_scaffold_path": "/repo/demo/starter/project-facts.yaml",
+                    "starter_target_path": "/repo/demo/project-facts.yaml",
+                    "actions": ["Copy the starter scaffold into place."],
+                },
+            }
+        )
+
+        rendered = "\n".join(lines)
+        self.assertIn("DeepLoop could not bootstrap this project root yet.", rendered)
+        self.assertIn("missing-bootstrap-contract", rendered)
+        self.assertIn("/repo/demo/project-facts.yaml", rendered)
 
     def test_run_project_until_complete_stops_at_total_iteration_budget(self) -> None:
         project_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "budget"
@@ -474,6 +636,30 @@ class ProjectRunnerTests(unittest.TestCase):
 
         mock_build_config.assert_called_once()
         self.assertIn("generated_config_path", result)
+
+    def test_initialize_mission_from_project_root_returns_repair_result_without_initializing(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "repair-required-init"
+        shutil.rmtree(test_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        test_root.mkdir(parents=True, exist_ok=True)
+
+        with (
+            patch("deeploop.mission.project_runner.initialize_mission") as mock_init_mission,
+            patch("deeploop.mission.project_bootstrap.build_mission_config_from_project_root") as mock_build_config,
+        ):
+            mock_build_config.return_value = {
+                "mission": {"id": "repair-required-mission"},
+                "bootstrap_repair": {
+                    "status": "required",
+                    "reason": "missing-bootstrap-contract",
+                    "summary": "Project root needs project-facts.yaml.",
+                    "recommendation": "Create project-facts.yaml.",
+                },
+            }
+            result = initialize_mission_from_project_root(test_root, force=False)
+
+        mock_init_mission.assert_not_called()
+        self.assertEqual(result["status"], "bootstrap-repair-required")
 
     def test_initialize_mission_from_project_root_prints_notice_for_explicit_config(self) -> None:
         import io

@@ -108,8 +108,7 @@ def _management_command(subcommand: str, mission_state_path: Path, *extra: str) 
 def _management_command_text(subcommand: str, mission_state_path: Path, *extra: str) -> str:
     return shlex.join(
         [
-            "python",
-            "scripts/mission/manage_mission.py",
+            "deeploop",
             subcommand,
             "--mission-state",
             str(mission_state_path),
@@ -269,11 +268,11 @@ def _render_launch_summary(payload: dict[str, Any], *, launch_reason: str) -> st
             "",
             "## Next commands",
             "",
-            f"- status: `python scripts/mission/manage_mission.py status --mission-state {mission_state_path}`",
-            f"- logs: `python scripts/mission/manage_mission.py logs --mission-state {mission_state_path}`",
-            f"- decisions: `python scripts/mission/manage_mission.py decisions --mission-state {mission_state_path}`",
-            f"- inbox: `python scripts/mission/manage_mission.py inbox --mission-state {mission_state_path}`",
-            f"- stop: `python scripts/mission/manage_mission.py stop --mission-state {mission_state_path}`",
+            f"- status: `{_management_command_text('status', Path(mission_state_path))}`",
+            f"- logs: `{_management_command_text('logs', Path(mission_state_path))}`",
+            f"- decisions: `{_management_command_text('decisions', Path(mission_state_path))}`",
+            f"- inbox: `{_management_command_text('inbox', Path(mission_state_path))}`",
+            f"- stop: `{_management_command_text('stop', Path(mission_state_path))}`",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -427,9 +426,9 @@ def _render_operator_feedback_summary(
     lines.extend(
         [
             "",
-            "## Suggested continue command",
+            "## Resume command",
             "",
-            f"- `python scripts/mission/manage_mission.py resume --mission-state {mission_state_path}`",
+            f"- `{_management_command_text('resume', mission_state_path)}`",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -1183,7 +1182,8 @@ def _handle_stop(args: argparse.Namespace) -> int:
     metadata = _load_launch_metadata(metadata_path)
     if metadata is None:
         print(
-            f"No launch metadata found at {metadata_path}. Start the mission with `manage_mission.py start` first.",
+            f"No launch metadata found at {metadata_path}. Start the mission with "
+            f"`{_management_command_text('start', Path(args.mission_state).expanduser().resolve())}` first.",
             file=sys.stderr,
         )
         return 1
@@ -1300,12 +1300,17 @@ def build_parser() -> argparse.ArgumentParser:
             name,
             help=help_text,
             description=(
-                f"{help_text} The resolved workspace root is printed at launch; set "
-                f"{WORKSPACE_ROOT_ENV_VAR} before init/start to choose artifact placement."
+                f"{help_text} Use a mission_state.json created by `deeploop init` or a previous `deeploop run`. "
+                f"The resolved workspace root is printed at launch; set {WORKSPACE_ROOT_ENV_VAR} before init/start "
+                f"to choose artifact placement."
             ),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
-        command.add_argument("--mission-state", required=True, help="Path to mission_state.json.")
+        command.add_argument(
+            "--mission-state",
+            required=True,
+            help="Path to mission_state.json from `deeploop init` or an existing mission root.",
+        )
         command.add_argument(
             "--max-iterations",
             type=int,
@@ -1436,7 +1441,11 @@ def build_parser() -> argparse.ArgumentParser:
     run_p = subparsers.add_parser(
         "run",
         help="Run a plain project folder through DeepLoop until completion or an operator boundary.",
-        description="Run a plain researcher project folder through DeepLoop until completion or a true operator boundary.",
+        description=(
+            "Run a plain researcher project folder through DeepLoop until completion or a true operator boundary. "
+            "Unlike `deeploop init` + `deeploop start`, this one-shot flow bootstraps or reuses mission state and "
+            "keeps extending bounded runtime passes for you."
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_run_args(run_p)
@@ -1445,7 +1454,11 @@ def build_parser() -> argparse.ArgumentParser:
     init_p = subparsers.add_parser(
         "init",
         help="Initialise a DeepLoop mission from a project folder or explicit config.",
-        description="Bootstrap a mission state from a plain-folder project or an explicit mission config.",
+        description=(
+            "Bootstrap a mission state from a plain-folder project or an explicit mission config. "
+            "Use this when you want to inspect or edit the mission before `deeploop start`; otherwise `deeploop run` "
+            "handles init + bounded execution for you."
+        ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_init_args(init_p)

@@ -54,26 +54,35 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
      cp -R examples/translation-budget-ladder PROJECT_FOLDER
      ```
 
-   - fastest path:
+    - fastest path:
 
      ```text
      deeploop run --project-root examples/translation-budget-ladder --until-complete
      ```
 
-     > **Note:** If `<project-folder>/.deeploop/missions/*.yaml` files exist, `deeploop run`
-     > automatically uses the first one instead of bootstrapping a blank mission.
-     > For a plain folder with no existing config, it bootstraps from the folder's facts.
-     > To target a specific explicit config directly, use
-     > `deeploop init --config <mission-config.yaml>` followed by
-     > `deeploop start --mission-state <mission-state.json>`.
+      > **Note:** If `<project-folder>/.deeploop/missions/*.yaml` files exist, `deeploop run`
+      > automatically uses the first one instead of bootstrapping a blank mission.
+      > For a plain folder with no existing config, it bootstraps from the folder's facts.
+      > If the folder is rough but still recognizable, DeepLoop can initialize with
+      > disclosed clarifications/defaults and keep the project folder unchanged. To
+      > target a specific explicit config directly, use `deeploop init --config
+      > <mission-config.yaml>` followed by `deeploop start --mission-state
+      > <mission-state.json>`.
 
-   - explicit operator path:
+    - discovery / operator path:
 
-     ```text
-     deeploop init --project-root examples/translation-budget-ladder --force
-     ```
+      ```text
+      deeploop init --project-root PROJECT_FOLDER --force
+      deeploop init --discover --project-root PROJECT_FOLDER --force
+      ```
 
-   On a copied folder, substitute `PROJECT_FOLDER` in the commands above.
+      Use plain `deeploop init --project-root ...` when the folder is rough but
+      already recognizable. Add `--discover` when you want DeepLoop to ask
+      clarifying questions before kickoff.
+
+    On a copied folder, substitute `PROJECT_FOLDER` in the commands above. If
+    DeepLoop cannot safely bootstrap the folder yet, it stops with bounded
+    bootstrap-repair guidance instead of mutating the project.
 
 5. **Use the operator CLI when a run pauses**
 
@@ -84,6 +93,13 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
    ```
 
 The `deeploop` CLI is the single entry point — `run`, `init`, `status`, `inbox`, `resume`, and more are all subcommands.
+
+## Readiness at a glance
+
+- **Fastest supported path:** Linux, Python 3.11+, `pip install deeploop`, `make setup`, `make public-bootstrap-check`, then `deeploop run --project-root <project-folder> --until-complete`
+- **Messy starts are supported:** rough plain-folder projects can initialize with disclosed clarifications/defaults, or you can use `deeploop init --discover ...` for a guided kickoff
+- **Repair stays bounded:** if the folder is missing the plain-folder bootstrap contract, DeepLoop exits with bootstrap-repair guidance and suggested starter inputs instead of silently rewriting project files
+- **Current release gate:** `make public-bootstrap-check`, `make docker-release-validate`, and `make docs-build`, with PyPI publish only from a published GitHub Release whose tag matches `project.version`
 
 ## Best fit today
 

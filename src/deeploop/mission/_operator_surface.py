@@ -7,7 +7,7 @@ from typing import Any, Mapping
 def management_commands(mission_state_path: Path) -> dict[str, str]:
     mission_state_arg = str(mission_state_path)
     return {
-        name: f"python scripts/mission/manage_mission.py {name} --mission-state {mission_state_arg}"
+        name: f"deeploop {name} --mission-state {mission_state_arg}"
         for name in ("status", "logs", "decisions", "inbox", "resume", "retry", "reroute", "triage", "stop")
     }
 
@@ -130,8 +130,8 @@ def operator_console_snapshot(
 
     headline = "STOPPED — DeepLoop is not currently running."
     summary = "No operator-facing mission summary is available yet."
-    recommendation = "Run status and logs to inspect the current mission state."
-    continue_summary = "Start or resume the mission once the desired next step is clear."
+    recommendation = "Run `deeploop status` or `deeploop logs` to inspect the current mission state."
+    continue_summary = "Start or resume once the next step is clear."
     gate_class = "none"
     gate_detail = None
     stop_reason = None
@@ -184,15 +184,15 @@ def operator_console_snapshot(
         ] or alternatives
         gate_class = str(blocker.get("kind") or blocker.get("gate") or "operator-review")
         gate_detail = str(blocker.get("risk_class") or blocker.get("label") or gate_class)
-        headline = "BLOCKED — operator action is required before DeepLoop can continue."
+        headline = "BLOCKED — review the request, then resume when ready."
         summary = str(current_request.get("summary") or blocker.get("reason") or "DeepLoop opened the operator inbox.")
         recommendation = str(
             recommendation_payload.get("summary")
-            or "Review the request, make the smallest safe change, then resume autopilot."
+            or "Review the request, make the smallest safe change, then resume."
         )
         stop_reason = str(blocker.get("reason") or failures.get("completion_reason") or summary)
         requires_action = True
-        continue_summary = "Review the inbox, make the requested change, optionally record retry/reroute feedback, then resume."
+        continue_summary = "Open the inbox, fix or reroute the blocked step, optionally record feedback, then resume."
         next_commands = [
             *(
                 [
@@ -234,7 +234,7 @@ def operator_console_snapshot(
         if isinstance(current_response, Mapping):
             action = str(current_response.get("action") or "operator-action")
             continue_summary = (
-                f"Operator feedback `{action}` is already recorded. Finish the requested change, then resume autopilot."
+                f"Operator feedback `{action}` is already recorded. Finish the change, then resume."
             )
             next_commands = [
                 {
@@ -390,7 +390,7 @@ def operator_console_snapshot(
             or failures.get("last_blocker")
             or "The detached mission process exited or has not started yet."
         )
-        recommendation = "Inspect status, logs, and decisions, address the blocker honestly, then resume if more work is needed."
+        recommendation = "Inspect status, logs, and decisions, then resume only after the blocker is understood."
         continue_summary = "Resume only after the blocker is understood and the next step is safe."
         requires_action = mission_status in {"blocked", "failed"}
         next_commands = [

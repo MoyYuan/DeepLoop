@@ -547,6 +547,49 @@ class ProjectContractTests(unittest.TestCase):
             "Expected novelty-target prerequisite to be present",
         )
 
+    def test_build_mission_config_from_project_root_surfaces_repair_scaffold_for_missing_plain_folder_contract(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "missing_plain_contract"
+        shutil.rmtree(test_root, ignore_errors=True)
+        repo_root = test_root / "starter-pilot"
+        (repo_root / "docs").mkdir(parents=True, exist_ok=True)
+        (repo_root / "data").mkdir(parents=True, exist_ok=True)
+        (repo_root / "docs" / "project-brief.md").write_text("# Project brief\n", encoding="utf-8")
+        (repo_root / "data" / "train.csv").write_text("label,value\n1,2\n", encoding="utf-8")
+
+        config = build_mission_config_from_project_root(repo_root)
+        repair = config["bootstrap_repair"]
+        mission_contract = config["mission_contract"]
+        starter_payload = yaml.safe_load(Path(repair["starter_scaffold_path"]).read_text(encoding="utf-8"))
+
+        self.assertEqual(repair["reason"], "missing-bootstrap-contract")
+        self.assertEqual(mission_contract["readiness"]["status"], "blocked")
+        self.assertEqual(mission_contract["readiness"]["launch_recommendation"], "repair-bootstrap-input")
+        self.assertEqual(repair["starter_target_path"], str((repo_root / "project-facts.yaml").resolve()))
+        self.assertIn("docs/project-brief.md", starter_payload["artifacts"]["docs"])
+        self.assertEqual(starter_payload["artifacts"]["data"][0]["path"], "data/train.csv")
+        self.assertTrue(any(item["id"] == "bootstrap-repair" for item in mission_contract["prerequisites"]))
+
+    def test_build_mission_config_from_project_root_surfaces_ambiguous_partial_contract(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "ambiguous_plain_contract"
+        shutil.rmtree(test_root, ignore_errors=True)
+        repo_root = test_root / "ambiguous-pilot"
+        (repo_root / ".deeploop").mkdir(parents=True, exist_ok=True)
+        (repo_root / "project-facts.yaml").write_text(
+            yaml.safe_dump({"project": {"name": "ambiguous-pilot"}}, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        config = build_mission_config_from_project_root(repo_root)
+        repair = config["bootstrap_repair"]
+
+        self.assertEqual(repair["reason"], "ambiguous-bootstrap-root")
+        self.assertIsNone(repair["starter_scaffold_path"])
+        self.assertEqual(
+            repair["starter_target_path"],
+            str((repo_root / ".deeploop" / "project.yaml").resolve()),
+        )
+        self.assertEqual(config["mission_contract"]["readiness"]["launch_recommendation"], "repair-bootstrap-input")
+
     def test_initialize_mission_writes_compiled_mission_contract_summary(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "compiled_contract_summary"
         shutil.rmtree(test_root, ignore_errors=True)
@@ -588,6 +631,32 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("### Blocking prerequisites", mission_summary)
         self.assertIn("Where is the dataset located", mission_summary)
         self.assertIn("What target variable should DeepLoop optimize or predict?", mission_summary)
+
+    def test_init_mission_script_reports_bootstrap_repair_for_missing_plain_folder_contract(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "project_root_repair_cli"
+        shutil.rmtree(test_root, ignore_errors=True)
+        repo_root = test_root / "repair-cli-pilot"
+        (repo_root / "docs").mkdir(parents=True, exist_ok=True)
+        (repo_root / "docs" / "project-brief.md").write_text("# Project brief\n", encoding="utf-8")
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "scripts/mission/init_mission.py",
+                "--project-root",
+                str(repo_root),
+                "--force",
+            ],
+            cwd=REPO_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("project-root bootstrap needs repair", completed.stderr)
+        self.assertIn("missing-bootstrap-contract", completed.stderr)
+        self.assertIn("starter_scaffold", completed.stderr)
 
     def test_resolve_runtime_provider_rejects_malformed_provider_contract(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "malformed_provider"
