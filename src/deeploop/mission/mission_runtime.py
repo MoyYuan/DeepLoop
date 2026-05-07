@@ -25,6 +25,7 @@ from deeploop.autonomy.operator_inbox import (
     load_current_operator_request,
 )
 from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
+from deeploop.mission._operator_surface import management_commands as _public_management_commands
 from deeploop.mission.mission_decision_engine import (
     MissionDecisionDirective,
     MissionEvidence,
@@ -853,11 +854,8 @@ def _record_selected_outcome(
 
 
 def _management_commands(mission_state_path: Path) -> dict[str, str]:
-    mission_state_arg = str(mission_state_path)
-    return {
-        name: f"python scripts/mission/manage_mission.py {name} --mission-state {mission_state_arg}"
-        for name in ("status", "logs", "decisions", "inbox", "resume", "triage")
-    }
+    commands = _public_management_commands(mission_state_path)
+    return {name: commands[name] for name in ("status", "logs", "decisions", "inbox", "resume", "triage")}
 
 
 def _build_runtime_triage_prompt(

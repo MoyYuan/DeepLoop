@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import sys
 import unittest
@@ -544,6 +545,109 @@ class ArtifactPackagerTests(unittest.TestCase):
             self.assertEqual(result["package"]["replication_evidence"]["total_manifests"], 2)
             self.assertEqual(result["package"]["claim_summary"]["paper_candidate_blockers"], ["human approval"])
             self.assertEqual(validate_package_manifest(result["package"]), [])
+
+    def test_packager_summarizes_recovery_state_and_large_ledger_in_operator_handoff(self) -> None:
+        test_root = WORKSPACE_ROOT / "runs" / "artifact-packager-recovery-summary"
+        shutil.rmtree(test_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(test_root, ignore_errors=True))
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        target_repo = test_root / "plain-project"
+        target_repo.mkdir(parents=True, exist_ok=True)
+        findings_dir = mission_root / "findings"
+        findings_dir.mkdir(parents=True, exist_ok=True)
+        runtime_dir = mission_root / "runtime" / "mission_outer_runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        runs_dir = mission_root / "runtime" / "plain_folder_followups" / "runs"
+        execution_dir = runs_dir / "execution-baseline"
+        replication_dir = runs_dir / "replication-baseline"
+        execution_dir.mkdir(parents=True, exist_ok=True)
+        replication_dir.mkdir(parents=True, exist_ok=True)
+
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state = {
+            "mission_id": "recovery-summary-mission",
+            "title": "Recovery summary package test",
+            "objective": "Package a resumed mission without losing runtime/package parity.",
+            "current_phase": "final-report",
+            "status": "completed",
+            "target_repo": str(target_repo),
+            "roles": ["execution-operator", "critic-verifier", "report-synthesizer"],
+            "artifacts": {"docs": [], "configs": []},
+            "next_actions": {"actions": [], "generated_configs": []},
+            "mission_runtime": {
+                "status": "completed",
+                "iterations_completed": 9,
+                "autonomy_gap_telemetry": {
+                    "counts": {
+                        "soft_gates_total": 2,
+                        "bounded_recovery_outcomes": 3,
+                        "operator_requests_total": 1,
+                        "temporary_gap_auto_recovered": 2,
+                        "temporary_gap_escalated": 1,
+                    }
+                },
+            },
+        }
+        mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+        (mission_root / "mission_summary.md").write_text("# Summary\n", encoding="utf-8")
+        (mission_root / "mission_decisions.jsonl").write_text("", encoding="utf-8")
+        (mission_root / "mission_branches.jsonl").write_text("", encoding="utf-8")
+        (mission_root / "mission_memory.json").write_text("{}\n", encoding="utf-8")
+        (mission_root / "mission_experiments.jsonl").write_text("", encoding="utf-8")
+        ledger_path = mission_root / "ledger.jsonl"
+        ledger_path.write_text(
+            "".join(
+                json.dumps({"entry_id": f"ledger-{index}", "related_paths": []}) + "\n"
+                for index in range(120)
+            ),
+            encoding="utf-8",
+        )
+        (findings_dir / "finding.md").write_text("- Recovery stayed within the bounded mission contract.\n", encoding="utf-8")
+        (runtime_dir / "runtime_state.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+        (execution_dir / "runtime_report.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+        (replication_dir / "runtime_report.json").write_text('{"status":"completed"}\n', encoding="utf-8")
+        execution_manifest = {
+            "mission_id": "recovery-summary-mission",
+            "loop_id": "recovery-execution-baseline",
+            "claim_state": "exploratory",
+            "run": {"status": "completed"},
+            "metrics": {"accuracy": 0.82},
+            "artifacts": {
+                "output_dir": str(execution_dir),
+                "report_paths": [str(execution_dir / "runtime_report.json")],
+            },
+            "notes": ["Recovered baseline execution evidence."],
+        }
+        replication_manifest = {
+            "mission_id": "recovery-summary-mission",
+            "loop_id": "recovery-replication-baseline",
+            "claim_state": "exploratory",
+            "run": {"status": "completed"},
+            "metrics": {"accuracy": 0.82},
+            "artifacts": {
+                "output_dir": str(replication_dir),
+                "report_paths": [str(replication_dir / "runtime_report.json")],
+            },
+            "notes": ["Recovered replication evidence after resume."],
+        }
+        (execution_dir / "run_manifest.json").write_text(json.dumps(execution_manifest, indent=2) + "\n", encoding="utf-8")
+        (replication_dir / "run_manifest.json").write_text(json.dumps(replication_manifest, indent=2) + "\n", encoding="utf-8")
+
+        result = package_mission_artifacts(mission_state_path, output_root=test_root / "packages")
+
+        self.assertEqual(result["package"]["mission"]["status"], mission_state["status"])
+        self.assertEqual(result["package"]["mission"]["current_phase"], mission_state["current_phase"])
+        operator_bullets = result["package"]["summary"]["operator_handoff"]["bullets"]
+        self.assertIn("Mission runtime: completed after 9 bounded iteration(s).", operator_bullets)
+        self.assertIn("Recovery telemetry: soft_gates=2, bounded_recoveries=3, operator_requests=1.", operator_bullets)
+        self.assertIn("Temporary gaps: auto_recovered=2, escalated=1.", operator_bullets)
+        self.assertIn("Ledger entries captured: 120.", operator_bullets)
+        summary_text = result["summary_path"].read_text(encoding="utf-8")
+        self.assertIn("Mission runtime: completed after 9 bounded iteration(s).", summary_text)
+        self.assertIn("Recovery telemetry: soft_gates=2, bounded_recoveries=3, operator_requests=1.", summary_text)
+        self.assertIn("Ledger entries captured: 120.", summary_text)
+        self.assertEqual(validate_package_manifest(result["package"]), [])
 
     def test_packager_marks_pending_downstream_references_without_crashing(self) -> None:
         runs_root = WORKSPACE_ROOT / "runs"

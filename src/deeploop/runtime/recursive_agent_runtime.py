@@ -66,6 +66,15 @@ def _normalize_list(raw: Any) -> list[str]:
     raise ValueError(f"Expected list-like value, got {type(raw).__name__}")
 
 
+def _dedupe_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in deduped:
+            deduped.append(text)
+    return deduped
+
+
 def _is_list_like(raw: Any) -> bool:
     return raw is None or isinstance(raw, (str, Path, list))
 
@@ -421,7 +430,46 @@ def _normalized_result_outcome(
         "produced_artifacts": _normalize_list(payload.get("produced_artifacts")),
         "findings": _normalize_list(payload.get("findings")),
         "mission_state_updates": payload.get("mission_state_updates", {}),
+        "warnings": _dedupe_strings(_normalize_list(payload.get("warnings"))),
     }
+
+
+def _degraded_result_outcome(
+    payload: dict[str, Any],
+    action: dict[str, Any],
+    *,
+    mission_state: dict[str, Any] | None = None,
+    result_errors: list[str],
+    fallback_summary: str,
+    extra_warnings: list[str] | None = None,
+) -> dict[str, Any]:
+    raw_action_result = payload.get("action_result")
+    action_output_paths = _normalize_list(raw_action_result.get("output_paths")) if isinstance(raw_action_result, dict) else []
+    produced_artifacts = _dedupe_strings(_normalize_list(payload.get("produced_artifacts")) + action_output_paths)
+    degraded_payload: dict[str, Any] = {
+        "status": "failed",
+        "summary": _optional_string(payload.get("summary")) or fallback_summary,
+        "produced_artifacts": produced_artifacts,
+        "findings": _normalize_list(payload.get("findings")),
+        "mission_state_updates": payload.get("mission_state_updates", {})
+        if isinstance(payload.get("mission_state_updates"), dict)
+        else {},
+        "warnings": _dedupe_strings(
+            _normalize_list(payload.get("warnings"))
+            + [f"Provider result payload issue: {error}" for error in result_errors]
+            + (extra_warnings or [])
+        ),
+    }
+    if isinstance(payload.get("phase_control"), dict):
+        degraded_payload["phase_control"] = dict(payload["phase_control"])
+    if isinstance(raw_action_result, dict):
+        degraded_payload["action_result"] = dict(raw_action_result)
+    elif produced_artifacts:
+        degraded_payload["action_result"] = {"output_paths": produced_artifacts}
+    continuation = _normalize_continuation(payload)
+    if continuation is not None:
+        degraded_payload["continuation"] = continuation
+    return _normalized_result_outcome(degraded_payload, action, mission_state=mission_state)
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:
@@ -495,11 +543,10 @@ def _validate_artifact_scope(
     sanitized["produced_artifacts"] = accepted
     sanitized["artifact_provenance"] = provenance
     if rejected:
-        warnings = _normalize_list(sanitized.get("warnings"))
-        warnings.append(
+        warnings = _dedupe_strings(_normalize_list(sanitized.get("warnings")) + [
             "Rejected provider-returned produced_artifacts outside sandbox outputs or mission artifact roots: "
             + ", ".join(rejected)
-        )
+        ])
         sanitized["warnings"] = warnings
         action_result = dict(sanitized.get("action_result", {}))
         output_paths = [path for path in _normalize_list(action_result.get("output_paths")) if path not in rejected]
@@ -557,6 +604,31 @@ def _should_yield_before_execution(
         return False
     continuation_role = _optional_string(continuation.get("role"))
     return continuation_role in {None, "execution-operator"} or continuation_role in ROLE_ALIASES
+
+
+def _should_warn_iteration_budget_nearly_exhausted(
+    *,
+    iteration_number: int,
+    max_iterations: int,
+    remaining_iterations: int,
+) -> bool:
+    if max_iterations <= 0 or remaining_iterations <= 0:
+        return False
+    return (iteration_number / max_iterations) >= _BUDGET_WARN_THRESHOLD
+
+
+def _execution_handoff_budget_warning(*, remaining_iterations: int, max_iterations: int) -> str:
+    if remaining_iterations <= 0:
+        return (
+            "[deeploop] WARNING: execution handoff arrived after consuming the final recursive "
+            f"iteration ({max_iterations}/{max_iterations}); yielding to the outer loop before starting execution."
+        )
+    iteration_label = "iteration" if remaining_iterations == 1 else "iterations"
+    return (
+        "[deeploop] WARNING: execution handoff reached with only "
+        f"{remaining_iterations} recursive {iteration_label} remaining (max_iterations={max_iterations}); "
+        "yielding to the outer loop before starting execution."
+    )
 
 
 def _effective_outcome(outcome: dict[str, Any] | None, loop_status: str) -> dict[str, Any] | None:
@@ -718,6 +790,9 @@ def _validate_result(payload: dict[str, Any]) -> list[str]:
         value = payload.get(key)
         if not _is_list_like(value):
             errors.append(f"result.{key} must be a list-like value when present")
+    warnings = payload.get("warnings")
+    if not _is_list_like(warnings):
+        errors.append("result.warnings must be a list-like value when present")
     updates = payload.get("mission_state_updates")
     if updates is not None and not isinstance(updates, dict):
         errors.append("result.mission_state_updates must be an object when present")
@@ -1292,14 +1367,18 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             result_errors = ["agent did not produce result_json_path"]
 
         iteration_status = "failed"
+        degradation_warnings: list[str] = []
+        if returncode != 0:
+            degradation_warnings.append(
+                f"Agent subprocess exited with returncode {returncode} before producing a ready result payload."
+            )
         if returncode == 0 and result_payload is not None and not result_errors:
             iteration_status = _canonical_iteration_status(result_payload.get("status")) or str(result_payload["status"])
-        else:
-            if result_payload is None:
-                result_payload = {
-                    "status": "failed",
-                    "summary": "Agent process failed before producing a valid result payload.",
-                }
+        elif result_payload is None:
+            result_payload = {
+                "status": "failed",
+                "summary": "Agent process failed before producing a valid result payload.",
+            }
         if result_payload is not None and not result_errors:
             normalized_outcome = _normalized_result_outcome(result_payload, action, mission_state=mission_state)
             normalized_outcome = _validate_artifact_scope(
@@ -1309,17 +1388,22 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                 mission_root=mission_root,
                 config=config,
             )
-        elif result_payload is not None:
-            normalized_outcome = _normalized_result_outcome(
-                {
-                    "status": "failed",
-                    "summary": str(result_payload.get("summary") or "Agent returned an invalid result payload."),
-                },
+        else:
+            normalized_outcome = _degraded_result_outcome(
+                result_payload or {},
                 action,
                 mission_state=mission_state,
+                result_errors=result_errors,
+                fallback_summary=str(result_payload.get("summary") or "Agent returned an invalid result payload."),
+                extra_warnings=degradation_warnings,
             )
-        else:
-            normalized_outcome = None
+            normalized_outcome = _validate_artifact_scope(
+                normalized_outcome,
+                action=action,
+                sandbox=sandbox,
+                mission_root=mission_root,
+                config=config,
+            )
 
         persisted_result = normalized_outcome if normalized_outcome is not None else result_payload
         if persisted_result is not None:
@@ -1418,7 +1502,16 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         state["latest_iteration_path"] = str(iteration_root)
         state["latest_result_path"] = str(summary_json_path)
         latest_outcome = normalized_outcome
-        if remaining_iterations <= max(1, round(max_iterations * 0.20)) and remaining_iterations > 0:
+        yield_before_execution = _should_yield_before_execution(
+            latest_outcome,
+            action=action,
+            remaining_iterations=remaining_iterations,
+        )
+        if _should_warn_iteration_budget_nearly_exhausted(
+            iteration_number=iteration_number,
+            max_iterations=max_iterations,
+            remaining_iterations=remaining_iterations,
+        ) and not yield_before_execution:
             print(
                 f"[deeploop] WARNING: iteration budget nearly exhausted for loop '{loop_name}': "
                 f"{iteration_number}/{max_iterations} iterations consumed, {remaining_iterations} remaining. "
@@ -1475,15 +1568,16 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                     status="running",
                 )
                 break
-            if _should_yield_before_execution(latest_outcome, action=action, remaining_iterations=remaining_iterations):
+            if yield_before_execution:
                 state["pending_action"] = dict(continuation)
                 status = "max-iterations"
                 state["status"] = status
                 _save_loop_state(runtime_root, state)
                 print(
-                    f"[deeploop] WARNING: execution handoff reached with only "
-                    f"{remaining_iterations}/{max_iterations} recursive iterations remaining; "
-                    "yielding to the outer loop before starting execution.",
+                    _execution_handoff_budget_warning(
+                        remaining_iterations=remaining_iterations,
+                        max_iterations=max_iterations,
+                    ),
                     file=sys.stderr,
                 )
                 mission_state = _apply_result_to_mission(

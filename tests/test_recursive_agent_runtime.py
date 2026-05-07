@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import io
 import json
 import shutil
 import sys
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 import yaml
@@ -23,6 +25,7 @@ from deeploop.runtime.recursive_agent_runtime import (
     _resolve_transitioned_current_phase,
     _select_next_action,
     _should_yield_to_outer_runtime,
+    _should_warn_iteration_budget_nearly_exhausted,
     _timeout_seconds_for_action,
     _validate_result,
     analyze_budget,
@@ -386,7 +389,9 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        result = run_recursive_agent_loop(config_path)
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            result = run_recursive_agent_loop(config_path)
 
         self.assertEqual(result["status"], "max-iterations")
         self.assertEqual(result["iterations_completed"], 4)
@@ -407,6 +412,17 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         self.assertEqual(len(loop_report["iterations"]), 1)
         self.assertEqual(loop_report["iterations"][0]["iteration"], 4)
         self.assertEqual(loop_report["latest_outcome"]["status"], "continue")
+        warning_output = stderr.getvalue()
+        self.assertIn(
+            "routing execution action 'resume-loop-iter-04-execution-operator' into final recursive iteration 4/4.",
+            warning_output,
+        )
+        self.assertIn(
+            "execution handoff arrived after consuming the final recursive iteration (4/4); "
+            "yielding to the outer loop before starting execution.",
+            warning_output,
+        )
+        self.assertNotIn("0/4 recursive iterations remaining", warning_output)
 
         shutil.rmtree(sandbox_root, ignore_errors=True)
         shutil.rmtree(test_root, ignore_errors=True)
@@ -1092,6 +1108,122 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         shutil.rmtree(sandbox_root, ignore_errors=True)
         shutil.rmtree(test_root, ignore_errors=True)
 
+    def test_runtime_preserves_canonical_artifacts_for_degraded_provider_payloads(self) -> None:
+        mission_id = "degraded-provider-canonical-artifacts"
+        sandbox_root = SANDBOXES_DIR / mission_id
+        test_root = _fresh_test_root("degraded-provider-canonical-artifacts")
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "mission_id": mission_id,
+                    "mode": "sandboxed-yolo",
+                    "title": "Degraded provider payloads",
+                    "summary": "Preserve canonical artifacts under degraded provider responses.",
+                    "objective": "Retry safely after malformed provider payloads without losing artifacts.",
+                    "current_phase": "literature-review",
+                    "next_phase": "question-design",
+                    "status": "running",
+                    "target_repo": str(REPO_ROOT),
+                    "roles": ["planner", "literature-scout"],
+                    "next_actions": {
+                        "summary": "Advance to question-design.",
+                        "actions": [
+                            {
+                                "action_id": "literature-handoff",
+                                "role": "literature-scout",
+                                "task": "Summarize prior art and hand off to question design.",
+                                "phase": "literature-review",
+                                "kind": "phase-transition",
+                            }
+                        ],
+                    },
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (mission_root / "mission_decisions.jsonl").write_text("", encoding="utf-8")
+        (mission_root / "mission_branches.jsonl").write_text("", encoding="utf-8")
+        fake_agent = test_root / "fake_degraded_recursive_agent.py"
+        fake_agent.write_text(
+            "\n".join(
+                [
+                    "import argparse, json, os",
+                    "from pathlib import Path",
+                    "parser = argparse.ArgumentParser()",
+                    "parser.add_argument('--prompt')",
+                    "parser.add_argument('--result-json')",
+                    "args = parser.parse_args()",
+                    "outputs_dir = Path(os.environ['DEEPLOOP_SANDBOX_OUTPUTS_DIR'])",
+                    "outputs_dir.mkdir(parents=True, exist_ok=True)",
+                    "artifact = outputs_dir / 'prior-art-memo.md'",
+                    "artifact.write_text('# Prior art\\n', encoding='utf-8')",
+                    "payload = {",
+                    "  'status': 'continue',",
+                    "  'produced_artifacts': [str(artifact)],",
+                    "  'action_result': {'output_paths': [str(artifact)]},",
+                    "  'warnings': ['provider warning', 'provider warning']",
+                    "}",
+                    "Path(args.result_json).write_text(json.dumps(payload), encoding='utf-8')",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config_path = test_root / "recursive-runtime.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "mission_state": str(mission_state_path),
+                    "loop_name": "degraded-provider-loop",
+                    "max_iterations": 1,
+                    "max_consecutive_failures": 1,
+                    "default_role": "literature-scout",
+                    "agent": {
+                        "command": [
+                            sys.executable,
+                            str(fake_agent),
+                            "--prompt",
+                            "{prompt_path}",
+                            "--result-json",
+                            "{result_json_path}",
+                        ],
+                        "cwd": str(REPO_ROOT),
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        result = run_recursive_agent_loop(config_path)
+        runtime_root = result["runtime_root"]
+        persisted_result = json.loads((runtime_root / "iteration-01-literature-scout" / "agent_result.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(persisted_result["status"], "failed")
+        self.assertEqual(len(persisted_result["warnings"]), len(set(persisted_result["warnings"])))
+        self.assertTrue(any("result.summary must be a non-empty string" in warning for warning in persisted_result["warnings"]))
+        self.assertEqual(len(persisted_result["produced_artifacts"]), 1)
+        self.assertTrue(persisted_result["produced_artifacts"][0].endswith("prior-art-memo.md"))
+        self.assertEqual(
+            persisted_result["action_result"]["output_paths"],
+            persisted_result["produced_artifacts"],
+        )
+
+        mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
+        latest_outcome = mission_state["agent_driver"]["latest_outcome"]
+        self.assertEqual(latest_outcome["produced_artifacts"], persisted_result["produced_artifacts"])
+        self.assertEqual(latest_outcome["warnings"], persisted_result["warnings"])
+
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        shutil.rmtree(test_root, ignore_errors=True)
+
     def test_validate_result_accepts_string_list_like_handoff_fields(self) -> None:
         payload = {
             "status": "continue",
@@ -1608,6 +1740,36 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
 
         self.assertEqual(resolved, "literature-review")
 
+    def test_budget_warning_threshold_uses_true_utilization_ratio(self) -> None:
+        self.assertFalse(
+            _should_warn_iteration_budget_nearly_exhausted(
+                iteration_number=1,
+                max_iterations=2,
+                remaining_iterations=1,
+            )
+        )
+        self.assertFalse(
+            _should_warn_iteration_budget_nearly_exhausted(
+                iteration_number=3,
+                max_iterations=4,
+                remaining_iterations=1,
+            )
+        )
+        self.assertTrue(
+            _should_warn_iteration_budget_nearly_exhausted(
+                iteration_number=4,
+                max_iterations=5,
+                remaining_iterations=1,
+            )
+        )
+        self.assertFalse(
+            _should_warn_iteration_budget_nearly_exhausted(
+                iteration_number=4,
+                max_iterations=4,
+                remaining_iterations=0,
+            )
+        )
+
     def test_runtime_yields_before_starting_execution_on_final_recursive_iteration(self) -> None:
         mission_id = "recursive-agent-execution-yield"
         sandbox_root = SANDBOXES_DIR / mission_id
@@ -1692,7 +1854,9 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        result = run_recursive_agent_loop(config_path)
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            result = run_recursive_agent_loop(config_path)
 
         self.assertEqual(result["status"], "max-iterations")
         self.assertEqual(result["iterations_completed"], 1)
@@ -1704,6 +1868,13 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         self.assertEqual(mission_state["current_phase"], "execution")
         self.assertEqual(mission_state["agent_driver"]["pending_action"]["role"], "execution-operator")
         self.assertEqual(mission_state["agent_driver"]["iterations_remaining"], 1)
+        warning_output = stderr.getvalue()
+        self.assertIn(
+            "execution handoff reached with only 1 recursive iteration remaining (max_iterations=2); "
+            "yielding to the outer loop before starting execution.",
+            warning_output,
+        )
+        self.assertNotIn("iteration budget nearly exhausted", warning_output)
 
         shutil.rmtree(sandbox_root, ignore_errors=True)
         shutil.rmtree(test_root, ignore_errors=True)
