@@ -168,6 +168,7 @@ def build_mission_config_from_project_root(project_root: Path, *, mission_id: st
         "artifacts": {
             "docs": [str(path) for path in artifacts.get("docs", [])],
             "configs": [str(path) for path in artifacts.get("configs", [])],
+            "data": [dict(item) for item in artifacts.get("data", []) if isinstance(item, dict)],
         },
         "autopilot": merged_autopilot,
     }

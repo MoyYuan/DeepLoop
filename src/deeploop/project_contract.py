@@ -15,6 +15,8 @@ _PLAIN_PROJECT_FACT_FILES = (
     ("project-facts.yaml", "plain researcher-provided project facts"),
     ("project-facts.yml", "plain researcher-provided project facts"),
 )
+_CONFIG_EXTENSIONS = {".yaml", ".yml", ".json", ".toml"}
+_DATA_EXTENSIONS = {".csv", ".tsv", ".parquet", ".jsonl", ".feather", ".arrow", ".sqlite", ".db"}
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:
@@ -42,6 +44,46 @@ def _normalize_paths(values: Any, *, base_dir: Path) -> list[str]:
         else:
             path = path.resolve()
         normalized.append(str(path))
+    return normalized
+
+
+def _infer_format(path: Path) -> str | None:
+    suffix = path.suffix.lower().lstrip(".")
+    return suffix or None
+
+
+def normalize_data_artifacts(values: Any, *, base_dir: Path) -> list[dict[str, Any]]:
+    if not isinstance(values, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in values:
+        if isinstance(item, dict):
+            raw_path = item.get("path")
+            metadata = {str(key): value for key, value in item.items() if str(key) != "path"}
+        else:
+            raw_path = item
+            metadata = {}
+        text = str(raw_path or "").strip()
+        if not text:
+            continue
+        path = Path(text).expanduser()
+        if not path.is_absolute():
+            path = (base_dir / path).resolve()
+        else:
+            path = path.resolve()
+        record: dict[str, Any] = {
+            "path": str(path),
+            **metadata,
+        }
+        if "kind" not in record:
+            record["kind"] = "dataset"
+        if "format" not in record:
+            inferred_format = _infer_format(path)
+            if inferred_format:
+                record["format"] = inferred_format
+        if path.exists() and path.is_file() and "size_bytes" not in record:
+            record["size_bytes"] = path.stat().st_size
+        normalized.append(record)
     return normalized
 
 
@@ -76,6 +118,19 @@ def _default_plain_artifacts(repo_root: Path) -> dict[str, list[str]]:
         "docs": _dedupe_strings(docs),
         "configs": _dedupe_strings(configs),
     }
+
+
+def _config_extension_warnings(config_paths: list[str], *, source: str) -> list[str]:
+    warnings: list[str] = []
+    for raw_path in config_paths:
+        suffix = Path(raw_path).suffix.lower()
+        if suffix and suffix not in _CONFIG_EXTENSIONS:
+            suggestion = "data" if suffix in _DATA_EXTENSIONS else "the appropriate artifact type"
+            warnings.append(
+                f"{source} declares non-config artifact `{raw_path}` under artifacts.configs; "
+                f"declare it under artifacts.{suggestion} instead."
+            )
+    return warnings
 
 
 def _resolve_provider_value(value: Any, *, base_dir: Path, key: str | None = None) -> Any:
@@ -136,6 +191,7 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
     artifacts_payload = project_payload.get("artifacts") if isinstance(project_payload.get("artifacts"), dict) else {}
     docs = _normalize_paths(artifacts_payload.get("docs"), base_dir=repo_root)
     configs = _normalize_paths(artifacts_payload.get("configs"), base_dir=repo_root)
+    data = normalize_data_artifacts(artifacts_payload.get("data"), base_dir=repo_root)
     mission_files = (
         [str(path.resolve()) for path in sorted(missions_root.glob("*.yaml"))]
         if missions_root.exists()
@@ -166,6 +222,7 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
         fallback_artifacts = _default_plain_artifacts(repo_root)
         plain_docs = _normalize_paths(plain_artifacts_payload.get("docs"), base_dir=repo_root) or fallback_artifacts["docs"]
         plain_configs = _normalize_paths(plain_artifacts_payload.get("configs"), base_dir=repo_root) or fallback_artifacts["configs"]
+        plain_data = normalize_data_artifacts(plain_artifacts_payload.get("data"), base_dir=repo_root)
         return {
             "status": "plain-artifacts",
             "repo_root": str(repo_root),
@@ -176,6 +233,7 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
             "artifacts": {
                 "docs": plain_docs,
                 "configs": plain_configs,
+                "data": plain_data,
             },
             "runtime_providers_path": None,
             "evaluation_contract_path": None,
@@ -183,13 +241,14 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
             "recommended_files": [str(plain_facts_path.resolve())],
             "missing_recommended_files": [],
             "scaffold_recommendations": [],
-            "warnings": [],
+            "warnings": _config_extension_warnings(plain_configs, source=str(plain_facts_path.resolve())),
         }
     warnings: list[str] = []
     if not contract_root.exists():
         warnings.append("Project does not define a `.deeploop/` contract directory yet.")
     elif missing_recommended:
         warnings.append("Project `.deeploop/` contract is partial; recommended contract files are missing.")
+    warnings.extend(_config_extension_warnings(configs, source=str(project_path.resolve())))
     return {
         "status": "available" if contract_root.exists() else "missing",
         "repo_root": str(repo_root),
@@ -200,6 +259,7 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
         "artifacts": {
             "docs": docs,
             "configs": configs,
+            "data": data,
         },
         "runtime_providers_path": str(runtime_providers_path.resolve()) if runtime_providers_path.exists() else None,
         "evaluation_contract_path": str(evaluation_contract_path.resolve()) if evaluation_contract_path.exists() else None,
@@ -251,6 +311,11 @@ def project_contract_input_artifacts(contract: dict[str, Any]) -> list[str]:
     artifact_payload = contract.get("artifacts") if isinstance(contract.get("artifacts"), dict) else {}
     docs = [str(path) for path in artifact_payload.get("docs", [])]
     configs = [str(path) for path in artifact_payload.get("configs", [])]
+    data = [
+        str(item.get("path"))
+        for item in artifact_payload.get("data", [])
+        if isinstance(item, dict) and str(item.get("path") or "").strip()
+    ]
     contract_files = [str(path) for path in contract.get("contract_files", [])]
     mission_files = [str(path) for path in contract.get("mission_files", [])]
-    return _dedupe_strings(contract_files + mission_files + docs + configs)
+    return _dedupe_strings(contract_files + mission_files + docs + configs + data)

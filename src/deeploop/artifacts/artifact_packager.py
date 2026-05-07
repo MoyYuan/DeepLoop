@@ -34,6 +34,7 @@ CLAIM_ORDER = {
 DEFAULT_CATEGORIES = (
     "mission_specs",
     "mission_configs",
+    "mission_datasets",
     "ledgers",
     "findings",
     "manifests",
@@ -46,6 +47,7 @@ DEFAULT_CATEGORIES = (
     "runtime_metadata",
     "plain_folder_smoke_metadata",
 )
+DATA_REFERENCE_POLICIES = {"reference", "reference-only", "external-reference"}
 
 
 def _remove_tree(path: Path) -> None:
@@ -460,6 +462,8 @@ def _artifact_kind_for_path(path: Path, category: str) -> str:
         return "mission-spec"
     if category == "mission_configs":
         return "mission-config"
+    if category == "mission_datasets":
+        return "dataset"
     if category == "manifests":
         return "study-manifest" if name == "study_manifest.json" else "run-manifest"
     if category == "task_metrics":
@@ -503,6 +507,8 @@ def _artifact_label(path: Path, category: str) -> str:
     if category == "critique_reports":
         return path.stem
     if category == "mission_configs" and "repos" in path.parts:
+        return path.relative_to(WORKSPACE_ROOT / "repos").as_posix()
+    if category == "mission_datasets" and "repos" in path.parts:
         return path.relative_to(WORKSPACE_ROOT / "repos").as_posix()
     if category == "mission_specs" and "repos" in path.parts:
         return path.relative_to(WORKSPACE_ROOT / "repos").as_posix()
@@ -601,6 +607,12 @@ def _artifact_bullets(artifacts: list[dict[str, Any]], artifact_ids: list[str], 
     return bullets
 
 
+def _data_artifact_reference_only(metadata: dict[str, Any]) -> bool:
+    return metadata.get("package") is False or str(
+        metadata.get("packaging_policy") or metadata.get("package_policy") or ""
+    ).strip().lower() in DATA_REFERENCE_POLICIES
+
+
 def package_mission_artifacts(
     mission_state_path: Path,
     *,
@@ -638,6 +650,7 @@ def package_mission_artifacts(
         status: str | None = None,
         metadata: dict[str, Any] | None = None,
         lazy: bool = False,
+        reference_only: bool = False,
     ) -> str:
         resolved = path.expanduser().resolve()
         is_file_missing = not resolved.exists() or not resolved.is_file()
@@ -652,11 +665,13 @@ def package_mission_artifacts(
                 "label": _artifact_label(resolved, category),
                 "source_path": str(resolved),
                 "package_path": None,
-                "status": "pending" if is_file_missing else status,
+                "status": "pending" if is_file_missing else ("referenced" if reference_only else status),
                 "claim_state": claim_state,
-                "size_bytes": 0,
+                "size_bytes": resolved.stat().st_size if reference_only and not is_file_missing else 0,
                 "metadata": dict(metadata or {}),
             }
+            if reference_only and not is_file_missing:
+                record["package_path"] = ""
             artifact_registry[resolved] = record
         else:
             if claim_state and not record.get("claim_state"):
@@ -671,11 +686,17 @@ def package_mission_artifacts(
             category_membership.setdefault(category, set()).add(artifact_id)
         return artifact_id
 
-    def maybe_register(path: str | Path, *, category: str, metadata: dict[str, Any] | None = None) -> str | None:
+    def maybe_register(
+        path: str | Path,
+        *,
+        category: str,
+        metadata: dict[str, Any] | None = None,
+        reference_only: bool = False,
+    ) -> str | None:
         resolved = _safe_resolve(path)
         if not resolved.exists() or not resolved.is_file():
             return None
-        return register_artifact(resolved, category=category, metadata=metadata)
+        return register_artifact(resolved, category=category, metadata=metadata, reference_only=reference_only)
 
     artifact_cfg = contract.get("artifact_map", {})
     for category, patterns in artifact_cfg.get("mission_root_sections", {}).items():
@@ -688,6 +709,22 @@ def package_mission_artifacts(
         maybe_register(raw_doc, category="mission_specs", metadata={"declared_by": "mission_state.artifacts.docs"})
     for raw_config in mission_state.get("artifacts", {}).get("configs", []):
         maybe_register(raw_config, category="mission_configs", metadata={"declared_by": "mission_state.artifacts.configs"})
+    for raw_data in mission_state.get("artifacts", {}).get("data", []):
+        if isinstance(raw_data, dict):
+            raw_path = raw_data.get("path")
+            data_metadata = {str(key): value for key, value in raw_data.items() if str(key) != "path"}
+        else:
+            raw_path = raw_data
+            data_metadata = {}
+        if not str(raw_path or "").strip():
+            continue
+        reference_only = _data_artifact_reference_only(data_metadata)
+        maybe_register(
+            raw_path,
+            category="mission_datasets",
+            metadata={"declared_by": "mission_state.artifacts.data", **data_metadata},
+            reference_only=reference_only,
+        )
     for raw_config in mission_state.get("next_actions", {}).get("generated_configs", []):
         maybe_register(raw_config, category="mission_configs", metadata={"declared_by": "mission_state.next_actions.generated_configs"})
     for support_path in contract.get("supporting_contracts", []):
@@ -953,6 +990,10 @@ def package_mission_artifacts(
     for source_path in sorted(artifact_registry):
         if artifact_registry[source_path]["artifact_id"] in pending_artifact_ids:
             continue
+        if artifact_registry[source_path].get("status") == "referenced":
+            digest.update(str(source_path).encode("utf-8"))
+            digest.update(b"\0referenced\0")
+            continue
         digest.update(str(source_path).encode("utf-8"))
         digest.update(b"\0")
         digest.update(source_path.read_bytes())
@@ -961,6 +1002,8 @@ def package_mission_artifacts(
 
     for source_path in sorted(artifact_registry):
         if artifact_registry[source_path]["artifact_id"] in pending_artifact_ids:
+            continue
+        if artifact_registry[source_path].get("status") == "referenced":
             continue
         package_path, size_bytes = _copy_artifact(source_path, package_root, copied_root_name)
         artifact_registry[source_path]["package_path"] = str(package_path.relative_to(package_root))
