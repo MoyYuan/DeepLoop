@@ -118,6 +118,10 @@ class ProjectContractTests(unittest.TestCase):
                             "budget": {"gpu_requested": False},
                         },
                     },
+                    "acceptance_criteria": {
+                        "min_methods_evaluated": 1,
+                        "allow_final_report_only_if_criteria_met": True,
+                    },
                     "roles": ["planner", "dataset-strategist", "execution-operator"],
                     "phases": ["idea-intake", "final-report"],
                     "artifacts": {
@@ -174,6 +178,10 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(
             mission_state["experiment_coverage"]["methods"][0]["status"],
             "proposed",
+        )
+        self.assertEqual(
+            mission_state["acceptance_criteria"]["min_methods_evaluated"],
+            1,
         )
 
     def test_initialize_mission_resolves_workspace_root_tokens_in_config_paths(self) -> None:

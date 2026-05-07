@@ -475,6 +475,11 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     experiment_coverage = mission_cfg.get("experiment_coverage")
     if isinstance(experiment_coverage, dict):
         state["experiment_coverage"] = _resolve_templates(experiment_coverage, {"target_repo": str(target_repo)})
+    acceptance_criteria = config.get("acceptance_criteria")
+    if acceptance_criteria is None:
+        acceptance_criteria = mission_cfg.get("acceptance_criteria")
+    if isinstance(acceptance_criteria, dict) and acceptance_criteria:
+        state["acceptance_criteria"] = acceptance_criteria
     state_path = mission_root / "mission_state.json"
     autopilot_cfg = config.get("autopilot") if isinstance(config.get("autopilot"), dict) else {}
     runtime_profiles: dict[str, dict[str, str]] = {}
