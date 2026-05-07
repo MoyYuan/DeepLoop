@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import argparse
+import io
 import json
 import shutil
 import subprocess
 import sys
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +15,8 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from deeploop.core.paths import MISSIONS_DIR, SCRATCH_DIR
+from deeploop.cli.init_mission import _init_mission
 from deeploop.mission.mission_discovery import compile_discovery_config, run_interactive_discovery
 
 
@@ -47,9 +52,9 @@ class MissionDiscoveryTests(unittest.TestCase):
 
     def test_init_mission_script_supports_interactive_discovery_before_kickoff(self) -> None:
         mission_id = "interactive-discovery-cli-test"
-        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / mission_id
-        discovery_root = Path.home() / "workspaces" / "scratch" / "deeploop" / "mission_discovery_projects" / mission_id
-        discovery_config_path = Path.home() / "workspaces" / "scratch" / "deeploop" / "mission_discovery_configs" / f"{mission_id}.yaml"
+        mission_root = MISSIONS_DIR / mission_id
+        discovery_root = SCRATCH_DIR / "mission_discovery_projects" / mission_id
+        discovery_config_path = SCRATCH_DIR / "mission_discovery_configs" / f"{mission_id}.yaml"
         shutil.rmtree(mission_root, ignore_errors=True)
         shutil.rmtree(discovery_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
@@ -107,9 +112,9 @@ class MissionDiscoveryTests(unittest.TestCase):
 
     def test_init_mission_script_discovery_cancel_keeps_compiled_config_without_launching(self) -> None:
         mission_id = "interactive-discovery-cli-cancel-test"
-        mission_root = Path.home() / "workspaces" / "runs" / "deeploop" / "missions" / mission_id
-        discovery_root = Path.home() / "workspaces" / "scratch" / "deeploop" / "mission_discovery_projects" / mission_id
-        discovery_config_path = Path.home() / "workspaces" / "scratch" / "deeploop" / "mission_discovery_configs" / f"{mission_id}.yaml"
+        mission_root = MISSIONS_DIR / mission_id
+        discovery_root = SCRATCH_DIR / "mission_discovery_projects" / mission_id
+        discovery_config_path = SCRATCH_DIR / "mission_discovery_configs" / f"{mission_id}.yaml"
         shutil.rmtree(mission_root, ignore_errors=True)
         shutil.rmtree(discovery_root, ignore_errors=True)
         self.addCleanup(lambda: shutil.rmtree(mission_root, ignore_errors=True))
@@ -150,6 +155,62 @@ class MissionDiscoveryTests(unittest.TestCase):
         self.assertTrue(discovery_config_path.exists())
         self.assertFalse(mission_root.joinpath("mission_state.json").exists())
 
+    def test_init_mission_rejects_invalid_argument_combinations(self) -> None:
+        cases = [
+            (
+                argparse.Namespace(
+                    config="mission.yaml",
+                    project_root=None,
+                    discover=True,
+                    mission_idea=None,
+                    mission_id=None,
+                    force=False,
+                ),
+                "--discover generates a config interactively",
+            ),
+            (
+                argparse.Namespace(
+                    config=None,
+                    project_root=None,
+                    discover=False,
+                    mission_idea=None,
+                    mission_id=None,
+                    force=False,
+                ),
+                "supply --config or --project-root, or use --discover",
+            ),
+            (
+                argparse.Namespace(
+                    config="mission.yaml",
+                    project_root="project",
+                    discover=False,
+                    mission_idea=None,
+                    mission_id=None,
+                    force=False,
+                ),
+                "--config and --project-root cannot be used together",
+            ),
+            (
+                argparse.Namespace(
+                    config="mission.yaml",
+                    project_root=None,
+                    discover=False,
+                    mission_idea="rough idea",
+                    mission_id=None,
+                    force=False,
+                ),
+                "--mission-idea is only supported with --discover",
+            ),
+        ]
+
+        for args, expected in cases:
+            with self.subTest(args=args):
+                stderr = io.StringIO()
+                with redirect_stderr(stderr):
+                    result = _init_mission(args)
+                self.assertEqual(result, 2)
+                self.assertIn(expected, stderr.getvalue())
+
     def test_run_interactive_discovery_cancels_after_repeated_empty_mission_idea(self) -> None:
         responses = iter(["", "", ""])
         printed: list[str] = []
@@ -164,6 +225,20 @@ class MissionDiscoveryTests(unittest.TestCase):
         self.assertFalse(result["confirmed"])
         self.assertIsNone(result["config_path"])
         self.assertIn("mission-discovery: no mission idea provided; canceling discovery", printed)
+
+    def test_run_interactive_discovery_respects_explicit_cancel_token(self) -> None:
+        printed: list[str] = []
+
+        result = run_interactive_discovery(
+            mission_id="interactive-discovery-quit-test",
+            reader=lambda prompt: "quit",
+            printer=printed.append,
+        )
+
+        self.assertTrue(result["cancelled"])
+        self.assertFalse(result["confirmed"])
+        self.assertIsNone(result["config_path"])
+        self.assertEqual(printed, ["mission-discovery: starting interactive mission formulation"])
 
     def test_run_interactive_discovery_preserves_blank_followup_answers_as_missing(self) -> None:
         responses = iter(
