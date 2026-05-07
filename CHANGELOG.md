@@ -11,6 +11,39 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.3
+
+Patch release focused on making the supported DeepLoop path easier to start,
+easier to recover, and better proven in clean-room validation without widening
+the bounded-support public-alpha claim.
+
+### Changed
+
+- the public `deeploop` CLI now presents a clearer front door: `run`, `init`,
+  `start`, `status`, `inbox`, and `resume` hand off with user-facing
+  `deeploop ...` commands instead of repo-internal script paths
+- `deeploop init --discover` now inspects an optional project folder, reuses
+  detected context, keeps the question flow bounded, and shows readiness/default
+  summaries before kickoff
+- project-root bootstrap now fails early with deterministic repair guidance and a
+  starter scaffold when a plain-folder contract is missing or incomplete
+- provider-free smoke and Docker clean-room validation now cover messy-start
+  clarifications/defaults, discovery-first onboarding, and bounded
+  bootstrap-repair diagnostics in addition to the canonical bootstrap path
+- runtime/package summaries now carry clearer recovery and large-ledger context
+  through resumed/interrupted mission paths
+- release-facing docs now describe the supported CLI-first onboarding path and
+  the expanded clean-room release gate more directly
+
+### Fixed
+
+- degraded provider payloads, readiness failures, and partial execution gaps now
+  synthesize canonical runtime artifacts with deduplicated actionable warnings
+- resumed/runtime-recovery paths now preserve clearer package and operator
+  handoff context instead of leaving those details implicit
+- partial or ambiguous project folders now stop with bounded repair output
+  instead of drifting into opaque bootstrap failures
+
 ## 0.1.2
 
 Patch release focused on post-smoke hardening, operator safety, and clearer
