@@ -97,11 +97,12 @@ The current intended path is:
      - use `configs/runtime/provider-selection-registry.yaml` as the selection registry
      - keep secrets and credential values outside repo config
 6. initialize a mission:
-     - canonical public starter: `examples/translation-budget-ladder/`
-     - optional copy step: `cp -R examples/translation-budget-ladder <project-folder>`
-     - `python scripts/mission/init_mission.py --project-root <project-folder> --force`
-     - `python scripts/mission/init_mission.py --config <mission-config.yaml> --force`
-     - `python scripts/mission/run_project.py --project-root <project-folder> --until-complete`
+      - canonical public starter: `examples/translation-budget-ladder/`
+      - optional copy step: `cp -R examples/translation-budget-ladder <project-folder>`
+      - discovery-first bootstrap: `python scripts/mission/init_mission.py --discover --mission-idea "I have a dataset and a rough goal"`
+      - `python scripts/mission/init_mission.py --project-root <project-folder> --force`
+      - `python scripts/mission/init_mission.py --config <mission-config.yaml> --force`
+      - `python scripts/mission/run_project.py --project-root <project-folder> --until-complete`
 7. start and monitor the mission:
      - `python scripts/mission/manage_mission.py start --mission-state <mission-state.json>`
      - `python scripts/mission/manage_mission.py status --mission-state <mission-state.json>`

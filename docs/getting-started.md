@@ -256,8 +256,13 @@ personal path from a machine-specific example.
 ```text
 python scripts/mission/run_project.py --project-root <project-folder> --until-complete
 python scripts/mission/init_mission.py --project-root <project-folder> --force
+python scripts/mission/init_mission.py --discover --mission-idea "I have a dataset and a rough goal"
 python scripts/mission/manage_mission.py status --mission-state <mission-state.json>
 ```
+
+The discovery path asks clarifying questions, keeps a missing-information
+checklist, writes an inspectable compiled mission config, and asks for kickoff
+confirmation before DeepLoop initializes the mission.
 
 ## Learn more
 

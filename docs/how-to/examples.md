@@ -34,10 +34,14 @@ If you want the explicit operator flow first, use the installed CLI surfaces
 directly:
 
 ```text
+deeploop init --discover --mission-idea "I have a dataset and a rough research direction"
 deeploop init --project-root <project-folder> --force
 deeploop start --mission-state <mission-state.json>
 deeploop status --mission-state <mission-state.json>
 ```
+
+Use discovery mode when you want DeepLoop to ask clarifying questions, keep a
+checklist of missing pieces, and compile the mission before kickoff.
 
 If `deeploop run` stops for operator review instead of finishing, reuse
 the printed `<mission-state.json>` with `deeploop status`, `deeploop inbox`,
@@ -46,6 +50,7 @@ and `deeploop resume`.
 Lower-level repo scripts remain available as fallback surfaces when useful:
 
 ```text
+python scripts/mission/init_mission.py --discover --mission-idea "I have a dataset and a rough goal"
 python scripts/mission/init_mission.py --project-root <project-folder> --force
 python scripts/mission/run_project.py --project-root <project-folder> --until-complete
 python scripts/mission/manage_mission.py status --mission-state <mission-state.json>
