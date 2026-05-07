@@ -217,6 +217,27 @@
         }
       }
     },
+    "acceptance_criteria": {
+      "type": "object",
+      "required": ["schema_version", "status", "rows", "blockers", "counts"],
+      "properties": {
+        "schema_version": { "type": "integer", "minimum": 1 },
+        "status": { "type": "string", "enum": ["not-requested", "met", "unmet"] },
+        "allow_final_report_only_if_criteria_met": { "type": "boolean" },
+        "rows": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/acceptanceCriteriaRow" }
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        }
+      }
+    },
     "run_bundles": {
       "type": "array",
       "items": {
@@ -344,6 +365,17 @@
         "metadata": {
           "type": "object"
         }
+      }
+    },
+    "acceptanceCriteriaRow": {
+      "type": "object",
+      "required": ["criterion", "requested", "achieved", "artifact_path", "status"],
+      "properties": {
+        "criterion": { "type": "string" },
+        "requested": {},
+        "achieved": {},
+        "artifact_path": { "type": "string" },
+        "status": { "type": "string", "enum": ["met", "unmet"] }
       }
     },
     "runBundle": {

@@ -18,6 +18,7 @@ from deeploop.core.structured_io import (
     load_jsonl_objects as _load_jsonl,
     load_yaml_mapping as _load_yaml,
 )
+from deeploop.mission.mission_acceptance import evaluate_mission_acceptance
 from deeploop.core.paths import REPO_ROOT, RUNS_DIR, WORKSPACE_ROOT, resolve_workspace_path
 
 PACKAGE_CONTRACT_PATH = REPO_ROOT / "configs" / "runtime" / "artifact-package-contract.yaml"
@@ -1285,6 +1286,7 @@ def package_mission_artifacts(
         package_claim_state,
         replication_evidence,
     )
+    acceptance_evaluation = evaluate_mission_acceptance(mission_state, mission_state_path=mission_state_path)
     next_state = _next_claim_state(package_claim_state)
     critique_reasons: list[str] = []
     critique_warnings: list[str] = []
@@ -1476,6 +1478,7 @@ def package_mission_artifacts(
         "artifact_map": artifact_map,
         "replication_evidence": replication_evidence,
         "experiment_coverage": experiment_coverage,
+        "acceptance_criteria": acceptance_evaluation,
         "run_bundles": sorted(run_bundles, key=lambda item: item["loop_id"]),
         "cross_links": cross_links,
         "summary": {
@@ -1593,6 +1596,26 @@ def package_mission_artifacts(
     if experiment_coverage["unexplored_space"]:
         markdown_lines.extend(["", "### Unused budget / unexplored space", ""])
         markdown_lines.extend(f"- {item}" for item in experiment_coverage["unexplored_space"])
+    if acceptance_evaluation["status"] != "not-requested":
+        markdown_lines.extend(
+            [
+                "",
+                "## Acceptance criteria",
+                "",
+                "| Criterion | Requested | Achieved | Artifact path | Status |",
+                "| --- | ---: | ---: | --- | --- |",
+            ]
+        )
+        for row in acceptance_evaluation.get("rows", []):
+            markdown_lines.append(
+                "| {criterion} | {requested} | {achieved} | {artifact_path} | {status} |".format(
+                    criterion=row.get("criterion", ""),
+                    requested=row.get("requested", ""),
+                    achieved=row.get("achieved", ""),
+                    artifact_path=row.get("artifact_path", ""),
+                    status=row.get("status", ""),
+                )
+            )
     if operator_key_ids:
         markdown_lines.extend(["", "## Key artifact ids", ""])
         markdown_lines.extend(f"- `{artifact_id}`" for artifact_id in operator_key_ids)

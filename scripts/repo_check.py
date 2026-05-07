@@ -81,6 +81,7 @@ REQUIRED_PATHS = [
     REPO_ROOT / "schemas" / "agent-handoff.schema.json",
     REPO_ROOT / "schemas" / "ledger-entry.schema.json",
     REPO_ROOT / "schemas" / "mission-action.schema.json",
+    REPO_ROOT / "schemas" / "mission-acceptance-criteria.schema.json",
     REPO_ROOT / "schemas" / "mission-artifact-package.schema.json",
     REPO_ROOT / "schemas" / "mission-branch-record.schema.json",
     REPO_ROOT / "schemas" / "mission-decision.schema.json",

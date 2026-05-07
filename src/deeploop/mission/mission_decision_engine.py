@@ -19,6 +19,7 @@ from deeploop.autonomy.mission_autonomy import (
 from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE, is_autonomous_operating_mode, resolve_operating_mode
 from deeploop.core.ledger import now_utc
 from deeploop.core.paths import REPO_ROOT
+from deeploop.mission.mission_acceptance import acceptance_criteria_blockers
 from deeploop.runtime.mission_executor_registry import (
     AdaptationTrainingExecutorAction,
     EvaluationComparisonExecutorAction,
@@ -1116,6 +1117,15 @@ class MissionDecisionEngine:
         role = _default_role_for_phase(to_phase)
         decision_id = _slug(f"{mission_id}-{from_phase}-{to_phase}-{directive.value}", fallback="mission-decision")
         summary = str(transition_meta.get("summary") or f"Advance the mission from {from_phase} to {to_phase}.")
+        if to_phase == "final-report":
+            acceptance_blockers = acceptance_criteria_blockers(mission_state)
+            if acceptance_blockers:
+                return self._blocked_outcome(
+                    mission_state,
+                    decision_type="final-report",
+                    summary="Acceptance criteria are not satisfied; final-report synthesis is blocked.",
+                    extra_notes=acceptance_blockers,
+                )
         resolved_branch = branch_record
         if resolved_branch is None and directive in {MissionDecisionDirective.BRANCH, MissionDecisionDirective.REROUTE}:
             branch_type = _branch_type_for_transition(
@@ -1392,6 +1402,7 @@ class MissionDecisionEngine:
 
     def _completion_contract_blockers(self, mission_state: Mapping[str, Any]) -> tuple[str, ...]:
         blockers: list[str] = []
+        blockers.extend(acceptance_criteria_blockers(mission_state))
         completed_phases = set(_normalize_strings(mission_state.get("completed_phases")))
         operator_inbox = mission_state.get("operator_inbox")
         operator_status = (

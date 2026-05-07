@@ -38,6 +38,19 @@ operator path.
 6. Persist the updated mission state, decision log, branch log, runtime history,
    monitor artifacts, platform handoff artifacts, and package outputs.
 
+## Mission acceptance criteria
+
+Research campaigns may declare `acceptance_criteria` in the mission config or
+mission state. These criteria are evaluated against `acceptance_evidence` and
+the mission experiment ledger before DeepLoop can enter or complete
+`final-report` when `allow_final_report_only_if_criteria_met` is true.
+
+Supported criteria include minimum evaluated method coverage, novel and
+LLM/text method counts, leaderboard/prediction/horizon-metrics artifacts, and a
+failure log when methods are skipped. The mission artifact package includes an
+acceptance table with requested, achieved, artifact path, and status columns so
+partial or blocked research campaigns are visible in the final handoff.
+
 ## Operator control loop
 
 The intended operator experience is:

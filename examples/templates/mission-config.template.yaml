@@ -14,6 +14,15 @@ mission:
     budgets:
       max_gpu_hours: TODO_MAX_GPU_HOURS
       max_parallel_jobs: 1
+acceptance_criteria:
+  min_methods_evaluated: 0
+  min_novel_methods_proposed: 0
+  min_llm_text_methods_evaluated: 0
+  require_leaderboard: false
+  require_prediction_files: false
+  require_horizon_metrics: false
+  require_failure_log_for_skipped_methods: false
+  allow_final_report_only_if_criteria_met: false
 roles:
   - planner
   - literature-scout

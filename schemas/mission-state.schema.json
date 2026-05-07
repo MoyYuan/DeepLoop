@@ -138,6 +138,22 @@
     "branch_closure_mode": { "type": "string" },
     "downstream_execution_authorized": { "type": "boolean" },
     "final_report": { "type": "object" },
+    "acceptance_criteria": {
+      "type": "object",
+      "properties": {
+        "min_methods_evaluated": { "type": "integer", "minimum": 0 },
+        "min_novel_methods_proposed": { "type": "integer", "minimum": 0 },
+        "min_llm_text_methods_evaluated": { "type": "integer", "minimum": 0 },
+        "require_leaderboard": { "type": "boolean" },
+        "require_prediction_files": { "type": "boolean" },
+        "require_horizon_metrics": { "type": "boolean" },
+        "require_failure_log_for_skipped_methods": { "type": "boolean" },
+        "allow_final_report_only_if_criteria_met": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "acceptance_evidence": { "type": "object" },
+    "acceptance_evaluation": { "type": "object" },
     "completion_contract": { "type": "object" },
     "agent_driver": { "type": "object" },
     "outer_loop": {

@@ -263,6 +263,89 @@ class MissionDecisionEngineTests(unittest.TestCase):
         self.assertIn("completion contract requires completed phase `execution`", outcome.notes)
         self.assertIn("completion contract missing `execution` output `run logs`", outcome.notes)
 
+    def test_engine_blocks_final_report_transition_when_acceptance_criteria_are_unmet(self) -> None:
+        mission_state = _base_state(current_phase="replication", next_phase="final-report")
+        mission_state["completed_phases"] = ["execution", "critique"]
+        mission_state["phase_outputs_by_phase"] = {
+            "execution": ["run logs", "metrics", "crash / stability notes"],
+            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "replication": ["repeated-run manifests", "replication summary"],
+        }
+        mission_state["acceptance_criteria"] = {
+            "min_methods_evaluated": 2,
+            "allow_final_report_only_if_criteria_met": True,
+        }
+        mission_state["acceptance_evidence"] = {
+            "methods_evaluated": [{"method_id": "ridge", "family": "linear"}],
+        }
+        evidence = MissionEvidence(produced_outputs=("repeated-run manifests", "replication summary"))
+
+        outcome = self.engine.decide(mission_state, evidence=evidence)
+
+        self.assertEqual(outcome.directive, MissionDecisionDirective.BLOCK)
+        self.assertIn("acceptance criterion `min_methods_evaluated` unmet: requested 2, achieved 1", outcome.notes)
+
+    def test_engine_allows_final_report_transition_when_acceptance_criteria_are_met(self) -> None:
+        mission_state = _base_state(current_phase="replication", next_phase="final-report")
+        mission_state["completed_phases"] = ["execution", "critique"]
+        mission_state["phase_outputs_by_phase"] = {
+            "execution": ["run logs", "metrics", "crash / stability notes"],
+            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "replication": ["repeated-run manifests", "replication summary"],
+        }
+        mission_state["acceptance_criteria"] = {
+            "min_methods_evaluated": 2,
+            "allow_final_report_only_if_criteria_met": True,
+        }
+        mission_state["acceptance_evidence"] = {
+            "methods_evaluated": [
+                {"method_id": "ridge", "family": "linear"},
+                {"method_id": "xgboost", "family": "tree"},
+            ],
+        }
+        evidence = MissionEvidence(produced_outputs=("repeated-run manifests", "replication summary"))
+
+        outcome = self.engine.decide(mission_state, evidence=evidence)
+
+        self.assertEqual(outcome.directive, MissionDecisionDirective.BRANCH)
+        self.assertIsNotNone(outcome.action)
+        assert outcome.action is not None
+        self.assertEqual(outcome.action.phase, "final-report")
+
+    def test_engine_blocks_completion_when_acceptance_criteria_are_unmet(self) -> None:
+        mission_state = _base_state(current_phase="final-report", next_phase="final-report")
+        mission_state["completed_phases"] = [
+            "idea-intake",
+            "literature-review",
+            "question-design",
+            "experiment-design",
+            "execution",
+            "critique",
+            "replication",
+        ]
+        mission_state["phase_outputs_by_phase"] = {
+            "execution": ["run logs", "metrics", "crash / stability notes"],
+            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "replication": ["repeated-run manifests", "replication summary"],
+            "final-report": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
+        }
+        mission_state["operator_inbox"] = {"status": "clear"}
+        mission_state["acceptance_criteria"] = {
+            "min_methods_evaluated": 2,
+            "allow_final_report_only_if_criteria_met": True,
+        }
+        mission_state["acceptance_evidence"] = {
+            "methods_evaluated": [{"method_id": "ridge", "family": "linear"}],
+        }
+        evidence = MissionEvidence(
+            produced_outputs=("findings summary", "paper-candidate recommendation", "artifact readiness notes")
+        )
+
+        outcome = self.engine.decide(mission_state, evidence=evidence)
+
+        self.assertEqual(outcome.directive, MissionDecisionDirective.BLOCK)
+        self.assertIn("acceptance criterion `min_methods_evaluated` unmet: requested 2, achieved 1", outcome.notes)
+
     def test_engine_allows_explicit_replication_waiver_for_completion(self) -> None:
         mission_state = _base_state(current_phase="final-report", next_phase="final-report")
         mission_state["completed_phases"] = ["idea-intake", "literature-review", "question-design", "experiment-design", "execution", "critique"]

@@ -248,6 +248,73 @@ class ArtifactPackagerTests(unittest.TestCase):
             self.assertIn("### Unused budget / unexplored space", summary)
             self.assertEqual(validate_package_manifest(result["package"]), [])
 
+    def test_packager_reports_acceptance_criteria_alongside_experiment_coverage(self) -> None:
+        runs_root = WORKSPACE_ROOT / "runs"
+        runs_root.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=runs_root) as tmpdir:
+            test_root = Path(tmpdir)
+            mission_root = test_root / "mission"
+            mission_root.mkdir(parents=True, exist_ok=True)
+            target_repo = test_root / "forecasting-project"
+            target_repo.mkdir(parents=True, exist_ok=True)
+            leaderboard_path = mission_root / "leaderboard.csv"
+            leaderboard_path.write_text("method,score\nridge,0.1\n", encoding="utf-8")
+
+            mission_state_path = mission_root / "mission_state.json"
+            mission_state = {
+                "mission_id": "acceptance-package-mission",
+                "title": "Acceptance package test",
+                "objective": "Report acceptance gating without replacing experiment coverage reporting.",
+                "current_phase": "final-report",
+                "status": "completed",
+                "target_repo": str(target_repo),
+                "roles": ["report-synthesizer"],
+                "artifacts": {"docs": [], "configs": []},
+                "next_actions": {"actions": [], "generated_configs": []},
+                "experiment_coverage": {
+                    "methods": [
+                        {
+                            "category": "Numeric baselines",
+                            "name": "ridge",
+                            "status": "evaluated",
+                            "artifact": "results/leaderboard.csv",
+                        },
+                        {
+                            "category": "Deep learning models",
+                            "name": "lstm",
+                            "status": "skipped",
+                            "reason": "GPU budget was left unused during the smoke pass.",
+                        },
+                    ],
+                    "budget": {"gpu_requested": True, "gpu_used": False},
+                },
+                "acceptance_criteria": {
+                    "min_methods_evaluated": 2,
+                    "require_leaderboard": True,
+                    "allow_final_report_only_if_criteria_met": True,
+                },
+                "acceptance_evidence": {
+                    "artifacts": {"leaderboard": str(leaderboard_path)},
+                },
+            }
+            mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+            (mission_root / "mission_summary.md").write_text("# Summary\n", encoding="utf-8")
+
+            result = package_mission_artifacts(mission_state_path, output_root=test_root / "packages")
+
+            acceptance = result["package"]["acceptance_criteria"]
+            self.assertEqual(acceptance["status"], "unmet")
+            self.assertEqual(acceptance["counts"]["methods_evaluated"], 1)
+            self.assertIn(
+                "acceptance criterion `min_methods_evaluated` unmet: requested 2, achieved 1",
+                acceptance["blockers"],
+            )
+            summary = result["summary_path"].read_text(encoding="utf-8")
+            self.assertIn("## Experiment coverage", summary)
+            self.assertIn("## Acceptance criteria", summary)
+            self.assertIn("| min_methods_evaluated | 2 | 1 |  | unmet |", summary)
+            self.assertEqual(validate_package_manifest(result["package"]), [])
+
     def test_packager_categorizes_declared_data_separately_from_configs(self) -> None:
         runs_root = WORKSPACE_ROOT / "runs"
         runs_root.mkdir(parents=True, exist_ok=True)
