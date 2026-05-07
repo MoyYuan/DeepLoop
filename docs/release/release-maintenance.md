@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` currently declares `0.1.2`, so
-the publishable tag and GitHub Release tag must be `v0.1.2`.
+For the next public release, `pyproject.toml` currently declares `0.1.3`, so
+the publishable tag and GitHub Release tag must be `v0.1.3`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -39,10 +39,11 @@ Current preflight posture:
 
 - the public claim stays bounded-support public alpha on the documented Linux +
   Python 3.11 path
-- post-smoke hardening was rechecked with clean canonical
-  `translation-budget-ladder` smoke reruns
-- the next release should emphasize runtime/package hardening and release
-  hygiene, not a broader portability or autonomy claim
+- merged `main` has already been rechecked with the integrated release-baseline
+  unittest sweep, `make docs-build`, and `make public-bootstrap-check`
+- the next release should emphasize onboarding/operator clarity, bounded repair,
+  runtime/package hardening, and the strengthened clean-room release gate rather
+  than a broader portability or autonomy claim
 
 Docs-only release-prep edits are ignored by the `push` leg of CI, so release
 maintainers should still run the release-facing checks locally before
@@ -83,31 +84,32 @@ publishing:
      - proof / CI changes
      - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.1.2`)
+## GitHub release notes draft (`v0.1.3`)
 
 ```md
-## DeepLoop v0.1.2
+## DeepLoop v0.1.3
 
-This patch release hardens the documented Linux + Python 3.11 public-alpha path
+This patch release makes the documented Linux + Python 3.11 public-alpha path
+easier to start, easier to recover, and better proven in clean-room validation
 without widening the public claim.
 
-- **Install / bootstrap:** GitHub Release publication remains the only PyPI
-  publish trigger, and the publish workflow rejects tags that do not match
-  `project.version`.
-- **Runtime / operator:** Copilot-backed recursive runs get a longer idle
-  window, cleaner canonical phase handoffs, and better resumed-run bookkeeping
-  on the supported path.
-- **Package / release review:** Completed missions now refresh final package
-  manifests, and package validation ignores transient sandbox/runtime scratch
-  outputs instead of treating them as durable release artifacts.
-- **Proof / CI:** Post-smoke hardening was revalidated with clean canonical
-  `translation-budget-ladder` smoke reruns; the Docker clean-room gate now also
-  covers messy-start clarifications/defaults, discovery-first onboarding, and
-  bounded bootstrap-repair diagnostics; and release-facing docs were rechecked
-  with `make public-bootstrap-check` and `make docs-build`.
+- **Install / bootstrap:** the public `deeploop` CLI is now the clearer entry
+  surface, discovery reuses detected project context, and incomplete plain-folder
+  projects stop with bounded repair guidance instead of opaque failures.
+- **Runtime / operator:** operator handoffs now point to public `deeploop ...`
+  commands, degraded provider paths emit cleaner canonical warnings, and resumed
+  runs preserve better recovery/package context on the supported path.
+- **Package / release review:** runtime/package summaries now expose clearer
+  recovery detail, and the release-candidate packaging/review path remains
+  bounded and explicit.
+- **Proof / CI:** the Docker clean-room gate now rechecks canonical bootstrap,
+  messy-start clarifications/defaults, discovery-first onboarding, and bounded
+  bootstrap-repair diagnostics on the same release path; merged-main release
+  checks were also revalidated with the integrated unittest sweep,
+  `make public-bootstrap-check`, and `make docs-build`.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
-  public alpha for the documented Linux path; this release improves safety and
-  durability rather than widening autonomy scope.
+  public alpha for the documented Linux path; this release improves UX,
+  resilience, and proof discipline rather than widening autonomy scope.
 ```
 
 ## Non-goals
