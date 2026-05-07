@@ -1422,7 +1422,7 @@ class MissionRuntimeTests(unittest.TestCase):
         mission_memory = json.loads((mission_state_path.parent / "mission_memory.json").read_text(encoding="utf-8"))
         self.assertTrue(mock_run_recursive_agent_loop.called)
         self.assertEqual(mock_run_stage_from_config.call_count, 2)
-        mock_package_mission_artifacts.assert_called_once()
+        self.assertEqual(mock_package_mission_artifacts.call_count, 2)
         self.assertEqual(mission_memory["latest_experiment"]["status"], "completed")
 
     @patch("deeploop.runtime.mission_executor_registry.package_mission_artifacts")
@@ -1563,7 +1563,7 @@ class MissionRuntimeTests(unittest.TestCase):
             ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         )
         self.assertGreaterEqual(mock_run_recursive_agent_loop.call_count, 7)
-        mock_package_mission_artifacts.assert_called_once()
+        self.assertEqual(mock_package_mission_artifacts.call_count, 2)
 
     @patch("deeploop.runtime.mission_executor_registry.run_adaptation_training")
     def test_runtime_integrates_adaptation_training_executor(self, mock_run_adaptation_training) -> None:
@@ -2191,12 +2191,25 @@ class MissionRuntimeTests(unittest.TestCase):
             "phase_control": {"current_phase": "final-report", "next_phase": "final-report"},
             "recommendations": [],
         }
-        mock_package_mission_artifacts.return_value = {
-            "package_root": test_root / "package",
-            "manifest_path": test_root / "package" / "mission_artifact_package.json",
-            "summary_path": test_root / "package" / "mission_artifact_package.md",
-            "package": {},
-        }
+        package_state_snapshots: list[tuple[str | None, str | None]] = []
+
+        def _fake_package_refresh(state_path: Path, **_: object) -> dict[str, object]:
+            state_snapshot = json.loads(state_path.read_text(encoding="utf-8"))
+            autonomy = state_snapshot.get("autonomy_status") if isinstance(state_snapshot.get("autonomy_status"), dict) else {}
+            package_state_snapshots.append(
+                (
+                    state_snapshot.get("status"),
+                    autonomy.get("state"),
+                )
+            )
+            return {
+                "package_root": test_root / "package",
+                "manifest_path": test_root / "package" / "mission_artifact_package.json",
+                "summary_path": test_root / "package" / "mission_artifact_package.md",
+                "package": {},
+            }
+
+        mock_package_mission_artifacts.side_effect = _fake_package_refresh
 
         result = run_mission(mission_state_path, max_iterations=5)
 
@@ -2243,6 +2256,13 @@ class MissionRuntimeTests(unittest.TestCase):
         runtime_summary = json.loads(result["summary_json_path"].read_text(encoding="utf-8"))
         self.assertEqual(runtime_summary["mission"]["status"], "completed")
         self.assertEqual(runtime_summary["mission"]["current_phase"], "final-report")
+        self.assertEqual(
+            package_state_snapshots,
+            [
+                ("running", "mission-runtime-running"),
+                ("completed", "mission-runtime-completed"),
+            ],
+        )
 
 
 if __name__ == "__main__":

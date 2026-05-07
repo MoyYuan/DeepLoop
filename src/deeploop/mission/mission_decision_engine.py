@@ -17,6 +17,10 @@ from deeploop.autonomy.mission_autonomy import (
     resolve_phase_contract,
 )
 from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE, is_autonomous_operating_mode, resolve_operating_mode
+from deeploop.core.phase_defaults import (
+    default_kind_for_phase as _default_kind_for_phase,
+    default_role_for_phase as _default_role_for_phase,
+)
 from deeploop.core.ledger import now_utc
 from deeploop.core.paths import REPO_ROOT
 from deeploop.mission.mission_acceptance import acceptance_criteria_blockers
@@ -33,25 +37,6 @@ from deeploop.runtime.mission_executor_registry import (
 )
 
 AUTONOMY_GATES_PATH = REPO_ROOT / "configs" / "autonomy" / "gates.yaml"
-
-_PHASE_ROLE_DEFAULTS = {
-    "idea-intake": "planner",
-    "literature-review": "literature-scout",
-    "question-design": "planner",
-    "benchmark-selection": "dataset-strategist",
-    "experiment-design": "experiment-designer",
-    "execution": "execution-operator",
-    "critique": "critic-verifier",
-    "replication": "execution-operator",
-    "final-report": "report-synthesizer",
-}
-
-_PHASE_ACTION_KIND_DEFAULTS = {
-    "execution": "local-eval",
-    "critique": "critique",
-    "replication": "replication",
-    "final-report": "final-report",
-}
 
 _ACTIONABLE_STATUSES = {"pending", "in_progress"}
 _BLOCKING_STATUSES = {"blocked"}
@@ -93,14 +78,6 @@ def _path_value(payload: Mapping[str, Any], path: str) -> Any:
             return _MISSING
         current = current[part]
     return current
-
-
-def _default_role_for_phase(phase: str) -> str:
-    return _PHASE_ROLE_DEFAULTS.get(phase, "planner")
-
-
-def _default_kind_for_phase(phase: str) -> str:
-    return _PHASE_ACTION_KIND_DEFAULTS.get(phase, "artifact-edit")
 
 
 def _recovery_role_for_missing_outputs(phase: str, *, kind: str, failure_count: int) -> str:

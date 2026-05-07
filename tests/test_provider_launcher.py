@@ -12,7 +12,11 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from deeploop.runtime.provider_launcher import build_provider_prompt_command, run_provider_prompt
+from deeploop.runtime.provider_launcher import (
+    build_provider_prompt_command,
+    resolve_provider_idle_timeout_seconds,
+    run_provider_prompt,
+)
 
 
 class ProviderLauncherTests(unittest.TestCase):
@@ -32,6 +36,11 @@ class ProviderLauncherTests(unittest.TestCase):
     def test_build_command_rejects_unknown_provider_family(self) -> None:
         with self.assertRaises(ValueError):
             build_provider_prompt_command("hello world", provider_family="unknown-provider")
+
+    def test_resolve_provider_idle_timeout_prefers_longer_copilot_window(self) -> None:
+        self.assertEqual(resolve_provider_idle_timeout_seconds("copilot-cli", None), 900.0)
+        self.assertEqual(resolve_provider_idle_timeout_seconds("copilot-cli", 30.0), 30.0)
+        self.assertEqual(resolve_provider_idle_timeout_seconds("other-provider", None), 120.0)
 
     @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
     @patch("deeploop.runtime.provider_launcher.subprocess.Popen")

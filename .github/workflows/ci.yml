@@ -50,7 +50,7 @@ jobs:
           python -m pip install -e .
 
       - name: Run selected unit tests
-        run: python -m unittest tests.test_mission_state tests.test_mission_decision_engine tests.test_recursive_agent_runtime tests.test_artifact_packager -q
+        run: python -m unittest tests.test_mission_state tests.test_mission_decision_engine tests.test_recursive_agent_runtime tests.test_artifact_packager tests.test_release_docker_validation -q
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -114,6 +114,22 @@ jobs:
 
       - name: Run public bootstrap contract
         run: make public-bootstrap-check
+
+  docker-release-validation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Validate Docker clean-room release harness
+        run: python scripts/release/docker_validation.py validate-dist
 
   bootstrap-preflight-py312:
     runs-on: ubuntu-latest

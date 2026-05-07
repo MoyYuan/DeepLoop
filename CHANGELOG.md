@@ -11,15 +11,23 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
-## 0.1.1
+## 0.1.2
 
-Patch release focused on release hardening, operator safety, and clearer
-public-facing guidance.
+Patch release focused on post-smoke hardening, operator safety, and clearer
+public-facing guidance. The documented Linux + Python 3.11 path was revalidated
+with clean canonical translation-budget-ladder smoke reruns before release
+preflight.
 
 ### Changed
 
 - PyPI publish now triggers from the published GitHub Release event only, and
   validates that the release tag matches `project.version` before building
+- Copilot-backed recursive runs now use a longer default idle window, normalize
+  generic phase handoffs to the supported phase defaults, and persist
+  canonicalized result payloads for cleaner resumed runs
+- completed missions now refresh their final package manifests at completion,
+  and release-candidate packaging ignores transient sandbox/runtime scratch
+  outputs instead of treating them as durable required artifacts
 - the plain-folder proof-matrix harness now emits per-case progress, enforces a
   per-case timeout, and terminates the full subprocess group on timeout instead
   of leaving descendant provider processes behind
@@ -28,9 +36,13 @@ public-facing guidance.
 - public docs now reduce install duplication, document `deeploop analyze-budget`
   more clearly, and make the installed `deeploop` CLI the canonical operator
   entry surface
+- release docs now include GitHub release preflight guidance and a concise
+  copy-ready release-notes draft aligned with the GitHub Release -> PyPI flow
 
 ### Fixed
 
+- resumed recursive loops now respect the remaining persisted iteration budget
+  instead of silently re-spending the full configured budget after restart
 - proof-matrix timeouts now fail cleanly with structured remediation output
   rather than hanging silently
 - release maintenance guidance now matches the real GitHub Release -> PyPI

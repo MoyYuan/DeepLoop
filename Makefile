@@ -3,12 +3,13 @@ MISSION ?=
 QUEUE ?=
 MISSION_STATE ?=
 
-.PHONY: setup repo-check test test-unit test-integration public-bootstrap-preflight public-bootstrap-check test-smoke test-real test-proof-matrix test-acceptance smoke-manifest lint docs-build docs-serve mission-smoke sanity-gate-smoke record-finding autoexec-smoke mission-advance mission-run mission-meta-eval mission-package mission-release-review mission-release-promote mission-monitor mission-agent-loop
+.PHONY: setup repo-check test test-unit test-integration public-bootstrap-preflight public-bootstrap-check test-smoke test-real test-proof-matrix test-acceptance smoke-manifest lint docs-build docs-serve mission-smoke sanity-gate-smoke record-finding autoexec-smoke mission-advance mission-run mission-meta-eval mission-package mission-release-review mission-release-promote mission-monitor mission-agent-loop docker-release-validate docker-release-validate-pypi
 SANITY_CONFIG ?=
 SANITY_ARTIFACT ?= research-artifact
 LAUNCH_METADATA ?=
 PACKAGE_MANIFEST ?=
 RELEASE_APPROVALS ?=
+VERSION ?=
 
 setup:
 	@PYTHONPATH=src $(PYTHON) -c 'from deeploop.core.paths import EXPECTED_EXTERNAL_DIRS; [path.mkdir(parents=True, exist_ok=True) for path in EXPECTED_EXTERNAL_DIRS]'
@@ -57,6 +58,13 @@ docs-build:
 
 docs-serve:
 	@$(PYTHON) -m mkdocs serve
+
+docker-release-validate:
+	@$(PYTHON) scripts/release/docker_validation.py validate-dist
+
+docker-release-validate-pypi:
+	@test -n "$(VERSION)" || (echo "Usage: make docker-release-validate-pypi VERSION=..." && exit 1)
+	@$(PYTHON) scripts/release/docker_validation.py validate-pypi --install-spec deeploop==$(VERSION)
 
 mission-smoke:
 	@test -n "$(MISSION)" || (echo "Usage: make mission-smoke MISSION=..." && exit 1)

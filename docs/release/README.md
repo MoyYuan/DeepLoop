@@ -17,6 +17,7 @@ That claim is backed by:
 
 - `make public-bootstrap-check` on the documented public path
 - fresh-clone / fresh-home onboarding using published docs
+- a repo-owned Docker clean-room validation harness that builds artifacts, installs from a wheel in a fresh container, and runs a deterministic bootstrap smoke
 - an eligible-for-promotion plain-folder proof matrix across 3 materially
   different workflow shapes
 - a real release-candidate review and promotion path with required approvals
@@ -24,6 +25,8 @@ That claim is backed by:
 - user-facing operator surfaces that now expose ratchet evidence,
   temporary-gap telemetry, and bounded managed-mode recovery hints on the
   supported path
+- Docker is now the preferred release-validation harness for clean-room install
+  and bootstrap proof; conda and pip/uv remain the normal development paths
 
 ## Recent progress on the supported path
 
@@ -36,9 +39,22 @@ stronger than it was before:
   relying only on generic transition fallback
 - operator surfaces now expose clearer temporary-gap telemetry and managed-mode
   staged recovery hints
+- the next patch release keeps the same bounded claim while hardening the
+  documented path; the canonical `translation-budget-ladder` smoke path reran
+  cleanly after the latest post-smoke hardening pass
+- Copilot-backed recursive runs now preserve remaining loop budget on resumed
+  runs, normalize generic handoffs to the supported phase defaults, and give
+  Copilot-driven steps a longer idle window before they are treated as stalled
+- completed missions now refresh final package manifests, while package
+  validation ignores transient sandbox/runtime scratch outputs that should not
+  be treated as durable release artifacts
+- the GitHub Release -> PyPI path is now explicit: PyPI publish only runs from
+  a published GitHub Release and rejects tags that do not match
+  `project.version`
 
-Those additions improve trust and reduce routine babysitting on the documented
-path, but they do **not** widen the public claim beyond bounded-support alpha.
+Those additions and hardening steps improve trust and reduce routine
+babysitting on the documented path, but they do **not** widen the public claim
+beyond bounded-support alpha.
 
 ## Honest non-claims
 
