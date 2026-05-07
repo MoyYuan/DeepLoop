@@ -416,6 +416,100 @@ class ProjectContractTests(unittest.TestCase):
         self.assertTrue(Path(mission_state["plain_folder_followups"]["replication_config_path"]).exists())
         self.assertTrue(Path(mission_state["plain_folder_followups"]["promotion_manifest_path"]).exists())
 
+    def test_build_mission_config_from_project_root_compiles_readiness_from_natural_language_brief(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "natural_language_brief"
+        shutil.rmtree(test_root, ignore_errors=True)
+        repo_root = test_root / "housing-pilot"
+        (repo_root / "docs").mkdir(parents=True, exist_ok=True)
+        brief_path = repo_root / "docs" / "project-brief.md"
+        brief_path.write_text(
+            "\n".join(
+                [
+                    "# Kickoff",
+                    "Build a regression baseline using /datasets/housing/train.csv to predict sale_price.",
+                    "Keep a strict holdout split and avoid neighborhood leakage.",
+                    "Compare against the current linear baseline.",
+                    "Deliver run manifests, metrics, and a final report.",
+                    "Cap compute at 4 GPU hours and stop after two failed attempts.",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (repo_root / "project-facts.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "project": {
+                        "name": "housing-regression-pilot",
+                    },
+                    "artifacts": {"docs": ["docs/project-brief.md"]},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        config = build_mission_config_from_project_root(repo_root)
+        mission_contract = config["mission_contract"]
+
+        self.assertEqual(config["mission"]["objective"], "Build a regression baseline using /datasets/housing/train.csv to predict sale_price.")
+        self.assertEqual(mission_contract["objective"]["task_type"], "regression")
+        self.assertEqual(mission_contract["data"]["dataset"], ["/datasets/housing/train.csv"])
+        self.assertEqual(mission_contract["data"]["target"], "sale_price")
+        self.assertIn("holdout", mission_contract["data"]["split_policy"].lower())
+        self.assertEqual(mission_contract["budget"]["compute_budget"], "4 GPU hours")
+        self.assertEqual(mission_contract["readiness"]["status"], "ready-with-clarifications")
+        self.assertTrue(
+            any(item["id"] == "publication-boundary" for item in mission_contract["prerequisites"]),
+            "Expected publication-boundary prerequisite to be present",
+        )
+        self.assertTrue(
+            any(item["id"] == "novelty-target" for item in mission_contract["prerequisites"]),
+            "Expected novelty-target prerequisite to be present",
+        )
+
+    def test_initialize_mission_writes_compiled_mission_contract_summary(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "compiled_contract_summary"
+        shutil.rmtree(test_root, ignore_errors=True)
+        repo_root = test_root / "crm-pilot"
+        (repo_root / "docs").mkdir(parents=True, exist_ok=True)
+        brief_path = repo_root / "docs" / "project-brief.md"
+        brief_path.write_text(
+            "# Kickoff\n"
+            "Train a classifier on our CRM export to improve retention decisions.\n"
+            "Avoid leakage.\n",
+            encoding="utf-8",
+        )
+        (repo_root / "project-facts.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "project": {"name": "crm-retention"},
+                    "artifacts": {"docs": ["docs/project-brief.md"]},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        generated_config = build_mission_config_from_project_root(repo_root)
+        config_path = test_root / "mission.yaml"
+        config_path.write_text(yaml.safe_dump(generated_config, sort_keys=False), encoding="utf-8")
+
+        result = initialize_mission(config_path, force=True)
+        self.addCleanup(lambda: shutil.rmtree(Path(result["mission_root"]), ignore_errors=True))
+        mission_state = json.loads(Path(result["state_path"]).read_text(encoding="utf-8"))
+        mission_summary = Path(result["summary_path"]).read_text(encoding="utf-8")
+        planner_handoff_path = Path(result["mission_root"]) / "agent_handoffs" / "planner.json"
+        planner_handoff = json.loads(planner_handoff_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(mission_state["mission_contract"]["readiness"]["status"], "blocked")
+        self.assertTrue(Path(mission_state["mission_contract_path"]).exists())
+        self.assertIn("compiled_mission_contract.yaml", "\n".join(planner_handoff["input_artifacts"]))
+        self.assertIn("## Readiness summary", mission_summary)
+        self.assertIn("### Blocking prerequisites", mission_summary)
+        self.assertIn("Where is the dataset located", mission_summary)
+        self.assertIn("What target variable should DeepLoop optimize or predict?", mission_summary)
+
     def test_resolve_runtime_provider_rejects_malformed_provider_contract(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "malformed_provider"
         shutil.rmtree(test_root, ignore_errors=True)
