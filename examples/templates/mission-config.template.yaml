@@ -4,7 +4,7 @@ mission:
   title: TODO_MISSION_TITLE
   summary: TODO_MISSION_SUMMARY
   objective: TODO_MISSION_OBJECTIVE
-  target_repo: ~/workspaces/repos/TODO_REPO
+  target_repo: workspace://repos/TODO_REPO
   target_project: TODO_PROJECT
   constraints:
     - TODO_CONSTRAINT
