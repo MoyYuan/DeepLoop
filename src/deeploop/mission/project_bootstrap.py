@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from deeploop.mission.orchestrator import DEFAULT_OPERATING_MODE
-from deeploop.project_contract import discover_project_contract
+from deeploop.project_contract import CONTRACT_OPERATIONAL_FIELDS, discover_project_contract
 
 DEFAULT_BOOTSTRAP_ROLES = [
     "planner",
@@ -142,6 +142,23 @@ def _merge_mapping(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, A
         else:
             merged[key] = value
     return merged
+
+
+def _promoted_contract_requirements_for_config(contract: dict[str, Any], project_metadata: dict[str, Any]) -> dict[str, Any]:
+    requirements = contract.get("contract_requirements") if isinstance(contract.get("contract_requirements"), dict) else {}
+    promoted = {field: requirements[field] for field in CONTRACT_OPERATIONAL_FIELDS if field in requirements}
+    human_inputs = project_metadata.get("human_inputs") if isinstance(project_metadata.get("human_inputs"), dict) else {}
+    for field in CONTRACT_OPERATIONAL_FIELDS:
+        if field in promoted:
+            continue
+        if field in project_metadata:
+            promoted[field] = project_metadata[field]
+        # Plain-folder starters historically declare budgets under
+        # `project.human_inputs`; keep that location operational while also
+        # promoting `budgets` as a first-class mission contract field.
+        elif field == "budgets" and field in human_inputs:
+            promoted[field] = human_inputs[field]
+    return promoted
 
 
 def _slugify(value: str) -> str:
@@ -719,18 +736,24 @@ def build_mission_config_from_project_root(project_root: Path, *, mission_id: st
         },
         autopilot=merged_autopilot,
     )
+    contract_requirements = _promoted_contract_requirements_for_config(contract, project_metadata)
+    mission_payload: dict[str, Any] = {
+        "id": resolved_mission_id,
+        "mode": _clean_text(project_metadata.get("mode"), fallback=DEFAULT_OPERATING_MODE),
+        "title": title,
+        "summary": summary,
+        "objective": objective,
+        "target_repo": str(repo_root),
+        "target_project": project_name,
+        "constraints": constraints,
+        "human_inputs": human_inputs,
+    }
+    mission_payload.update(contract_requirements)
+    contract_coverage = contract.get("contract_coverage")
+    if isinstance(contract_coverage, list):
+        mission_payload["contract_coverage"] = contract_coverage
     return {
-        "mission": {
-            "id": resolved_mission_id,
-            "mode": _clean_text(project_metadata.get("mode"), fallback=DEFAULT_OPERATING_MODE),
-            "title": title,
-            "summary": summary,
-            "objective": objective,
-            "target_repo": str(repo_root),
-            "target_project": project_name,
-            "constraints": constraints,
-            "human_inputs": human_inputs,
-        },
+        "mission": mission_payload,
         "roles": roles,
         "phases": phases,
         "artifacts": {

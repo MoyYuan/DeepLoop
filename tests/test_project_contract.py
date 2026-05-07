@@ -338,8 +338,17 @@ class ProjectContractTests(unittest.TestCase):
                             "ideas": ["English <-> Chinese machine translation"],
                             "budgets": {"max_gpu_hours": 12, "max_parallel_jobs": 2},
                         },
+                        "acceptance_criteria": {
+                            "min_methods_brainstormed": 12,
+                            "require_gpu_method_attempt": True,
+                        },
                     },
                     "artifacts": {"docs": ["docs/project-brief.md", "docs/benchmark-and-metrics.md"]},
+                    "artifact_contract": {
+                        "required_outputs": ["leaderboard", "test predictions for each evaluated method"],
+                    },
+                    "data": {"test_split": "held-out"},
+                    "evaluation_contract": {"primary_metric": "bleu"},
                 },
                 sort_keys=False,
             ),
@@ -354,6 +363,17 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("Use only the folder's facts as the substrate.", config["mission"]["constraints"])
         self.assertIn("minimal fact/contract substrate", " ".join(config["mission"]["constraints"]))
         self.assertEqual(config["mission"]["human_inputs"]["budgets"]["max_gpu_hours"], 12)
+        self.assertEqual(config["mission"]["acceptance_criteria"]["min_methods_brainstormed"], 12)
+        self.assertTrue(config["mission"]["acceptance_criteria"]["require_gpu_method_attempt"])
+        self.assertEqual(config["mission"]["budgets"]["max_parallel_jobs"], 2)
+        self.assertIn("leaderboard", config["mission"]["artifact_contract"]["required_outputs"])
+        self.assertEqual(config["mission"]["data"]["test_split"], "held-out")
+        self.assertEqual(config["mission"]["evaluation_contract"]["primary_metric"], "bleu")
+        coverage = {entry["field"]: entry for entry in config["mission"]["contract_coverage"]}
+        self.assertTrue(coverage["acceptance_criteria"]["present"])
+        self.assertTrue(coverage["acceptance_criteria"]["promoted_to_config"])
+        self.assertTrue(coverage["acceptance_criteria"]["included_in_prompts"])
+        self.assertFalse(coverage["acceptance_criteria"]["enforced_by_runtime"])
         self.assertEqual(config["artifacts"]["docs"], [str(brief_path.resolve()), str(metrics_path.resolve())])
         self.assertEqual(config["autopilot"]["max_iterations"], 64)
         self.assertNotIn("launch_env_name", config["autopilot"])
@@ -366,6 +386,35 @@ class ProjectContractTests(unittest.TestCase):
         self.assertEqual(config["autopilot"]["phase_execution_hints"]["final-report"]["executor"], "report-synthesis")
         self.assertEqual(config["autopilot"]["phase_execution_hints"]["question-design"]["next_phase_on_success"], "benchmark-selection")
         self.assertTrue(facts_path.exists())
+
+    def test_discover_plain_project_facts_warns_for_unoperationalized_top_level_fields(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "plain_unoperationalized"
+        shutil.rmtree(test_root, ignore_errors=True)
+        repo_root = test_root / "translation-pilot"
+        repo_root.mkdir(parents=True, exist_ok=True)
+        facts_path = repo_root / "project-facts.yaml"
+        facts_path.write_text(
+            yaml.safe_dump(
+                {
+                    "project": {
+                        "name": "translation-zh-en-pilot",
+                        "objective": "Improve translation quality from researcher artifacts only.",
+                    },
+                    "scratch_notes": {"owner": "researcher"},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        contract = discover_project_contract(repo_root)
+
+        self.assertEqual(contract["unoperationalized_fields"], ["scratch_notes"])
+        self.assertTrue(contract["warnings"])
+        self.assertIn("scratch_notes", contract["warnings"][0])
+        coverage = {entry["field"]: entry for entry in contract["contract_coverage"]}
+        self.assertTrue(coverage["scratch_notes"]["present"])
+        self.assertFalse(coverage["scratch_notes"]["promoted_to_config"])
 
     def test_init_mission_script_accepts_project_root(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_contract" / "project_root_cli"
@@ -385,6 +434,10 @@ class ProjectContractTests(unittest.TestCase):
                         "title": "English <-> Chinese folder bootstrap",
                         "summary": "Use the project folder itself as the onboarding input.",
                         "objective": "Improve translation quality from the project folder only.",
+                        "acceptance_criteria": {
+                            "min_methods_evaluated": 8,
+                            "require_leaderboard": True,
+                        },
                     },
                     "artifacts": {"docs": ["docs/project-brief.md", "docs/benchmark-and-metrics.md"]},
                 },
@@ -419,9 +472,13 @@ class ProjectContractTests(unittest.TestCase):
         self.assertTrue(state_path.exists(), f"missing mission state: {state_path}")
         self.assertTrue(generated_config_path.exists(), f"missing generated config: {generated_config_path}")
         mission_state = json.loads(state_path.read_text(encoding="utf-8"))
+        generated_config = yaml.safe_load(generated_config_path.read_text(encoding="utf-8"))
         self.assertEqual(mission_state["mission_id"], mission_id)
         self.assertEqual(mission_state["target_repo"], str(repo_root.resolve()))
         self.assertEqual(mission_state["objective"], "Improve translation quality from the project folder only.")
+        self.assertEqual(generated_config["mission"]["acceptance_criteria"]["min_methods_evaluated"], 8)
+        self.assertEqual(mission_state["acceptance_criteria"]["min_methods_evaluated"], 8)
+        self.assertTrue(mission_state["acceptance_criteria"]["require_leaderboard"])
         self.assertEqual(mission_state["project_contract"]["status"], "plain-artifacts")
         self.assertEqual(mission_state["phase_execution_hints"]["idea-intake"]["executor"]["id"], "recursive-agent")
         self.assertEqual(mission_state["phase_execution_hints"]["execution"]["executor"]["id"], "stage-kernel")

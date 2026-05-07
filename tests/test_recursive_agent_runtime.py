@@ -97,6 +97,14 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
                     "title": "Recursive runtime test mission",
                     "summary": "Exercise recursive Copilot-style looping.",
                     "objective": "Plan work, execute one step, and stop only on explicit completion.",
+                    "acceptance_criteria": {
+                        "min_methods_brainstormed": 12,
+                        "require_gpu_method_attempt": True,
+                    },
+                    "artifact_contract": {
+                        "required_outputs": ["leaderboard", "test predictions for each evaluated method"],
+                    },
+                    "evaluation_contract": {"primary_metric": "bleu"},
                     "current_phase": "idea-intake",
                     "next_phase": "execution",
                     "status": "initialized",
@@ -230,6 +238,13 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         self.assertIn("minimal fact/contract substrate", first_prompt)
         self.assertIn("DeepLoop owns build repo code", first_prompt)
         self.assertIn("additional trusted datasets", first_prompt)
+        self.assertIn("## Mission acceptance criteria", first_prompt)
+        self.assertIn("min_methods_brainstormed: 12", first_prompt)
+        self.assertIn("require_gpu_method_attempt: true", first_prompt)
+        self.assertIn("## Mission contract requirements", first_prompt)
+        self.assertIn("### artifact_contract", first_prompt)
+        self.assertIn("test predictions for each evaluated method", first_prompt)
+        self.assertIn("### evaluation_contract", first_prompt)
 
         loop_report = json.loads(result["report_json_path"].read_text(encoding="utf-8"))
         self.assertEqual(loop_report["status"], "completed")

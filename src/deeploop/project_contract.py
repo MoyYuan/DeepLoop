@@ -17,6 +17,14 @@ _PLAIN_PROJECT_FACT_FILES = (
 )
 _CONFIG_EXTENSIONS = {".yaml", ".yml", ".json", ".toml"}
 _DATA_EXTENSIONS = {".csv", ".tsv", ".parquet", ".jsonl", ".feather", ".arrow", ".sqlite", ".db"}
+CONTRACT_OPERATIONAL_FIELDS = (
+    "acceptance_criteria",
+    "artifact_contract",
+    "budgets",
+    "data",
+    "evaluation_contract",
+)
+_PLAIN_OPERATIONAL_TOP_LEVEL_FIELDS = {"project", "artifacts", *CONTRACT_OPERATIONAL_FIELDS}
 
 
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:
@@ -96,6 +104,50 @@ def _dedupe_strings(values: list[str]) -> list[str]:
         seen.add(value)
         ordered.append(value)
     return ordered
+
+
+def _extract_contract_requirement_value(payload: dict[str, Any], project: dict[str, Any], field: str) -> Any:
+    if field in payload:
+        return payload[field]
+    if field in project:
+        return project[field]
+    human_inputs = project.get("human_inputs") if isinstance(project.get("human_inputs"), dict) else {}
+    if field == "budgets" and field in human_inputs:
+        return human_inputs[field]
+    return None
+
+
+def _plain_contract_requirements(payload: dict[str, Any], project: dict[str, Any]) -> dict[str, Any]:
+    requirements: dict[str, Any] = {}
+    for field in CONTRACT_OPERATIONAL_FIELDS:
+        value = _extract_contract_requirement_value(payload, project, field)
+        if value is not None:
+            requirements[field] = value
+    return requirements
+
+
+def _contract_coverage(requirements: dict[str, Any], unoperationalized_fields: list[str]) -> list[dict[str, Any]]:
+    coverage = [
+        {
+            "field": field,
+            "present": field in requirements,
+            "promoted_to_config": field in requirements,
+            "included_in_prompts": field in requirements,
+            "enforced_by_runtime": False,
+        }
+        for field in CONTRACT_OPERATIONAL_FIELDS
+    ]
+    coverage.extend(
+        {
+            "field": field,
+            "present": True,
+            "promoted_to_config": False,
+            "included_in_prompts": False,
+            "enforced_by_runtime": False,
+        }
+        for field in unoperationalized_fields
+    )
+    return coverage
 
 
 def _default_plain_artifacts(repo_root: Path) -> dict[str, list[str]]:
@@ -219,6 +271,16 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
         plain_payload = _load_yaml_mapping(plain_facts_path)
         plain_project = plain_payload.get("project") if isinstance(plain_payload.get("project"), dict) else {}
         plain_artifacts_payload = plain_payload.get("artifacts") if isinstance(plain_payload.get("artifacts"), dict) else {}
+        contract_requirements = _plain_contract_requirements(plain_payload, plain_project)
+        unoperationalized_fields = sorted(
+            key
+            for key in plain_payload
+            if key not in _PLAIN_OPERATIONAL_TOP_LEVEL_FIELDS
+        )
+        warnings = [
+            "Plain project facts contain top-level fields that are preserved in the project contract "
+            f"but not operationalized in mission config or prompts: {', '.join(unoperationalized_fields)}."
+        ] if unoperationalized_fields else []
         fallback_artifacts = _default_plain_artifacts(repo_root)
         plain_docs = _normalize_paths(plain_artifacts_payload.get("docs"), base_dir=repo_root) or fallback_artifacts["docs"]
         plain_configs = _normalize_paths(plain_artifacts_payload.get("configs"), base_dir=repo_root) or fallback_artifacts["configs"]
@@ -228,6 +290,9 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
             "repo_root": str(repo_root),
             "contract_root": str(repo_root),
             "project_metadata": plain_project,
+            "contract_requirements": contract_requirements,
+            "contract_coverage": _contract_coverage(contract_requirements, unoperationalized_fields),
+            "unoperationalized_fields": unoperationalized_fields,
             "guidance_paths": guidance_paths,
             "contract_files": [str(plain_facts_path.resolve())],
             "artifacts": {
@@ -241,7 +306,10 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
             "recommended_files": [str(plain_facts_path.resolve())],
             "missing_recommended_files": [],
             "scaffold_recommendations": [],
-            "warnings": _config_extension_warnings(plain_configs, source=str(plain_facts_path.resolve())),
+            "warnings": [
+                *warnings,
+                *_config_extension_warnings(plain_configs, source=str(plain_facts_path.resolve())),
+            ],
         }
     warnings: list[str] = []
     if not contract_root.exists():
