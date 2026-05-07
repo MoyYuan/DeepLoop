@@ -793,6 +793,21 @@ def _resolve_recorded_artifact_path(raw_path: str, *, source_path: Path, mission
     return (mission_root / candidate).resolve()
 
 
+def _is_durable_recorded_artifact_path(path: Path) -> bool:
+    resolved = path.expanduser().resolve()
+    if resolved.exists() and not resolved.is_file():
+        return False
+    scratch_root = (WORKSPACE_ROOT / "scratch").resolve()
+    if _is_relative_to(resolved, scratch_root):
+        return False
+    lowered_parts = {part.lower() for part in resolved.parts}
+    if "sandboxes" in lowered_parts:
+        return False
+    if "recursive_agent_runtime" in lowered_parts:
+        return False
+    return True
+
+
 def _strings_from_value(raw: Any) -> list[str]:
     if isinstance(raw, str):
         return [raw]
@@ -971,6 +986,8 @@ def package_mission_artifacts(
             mission_root=mission_root,
             target_repo=target_repo,
         )
+        if resolved.exists() and not resolved.is_file():
+            return
         category = _recorded_artifact_category(resolved)
         metadata: dict[str, Any] = {"declared_by": declared_by, "science_handoff": True}
         if phase:
@@ -1014,17 +1031,12 @@ def package_mission_artifacts(
         if isinstance(latest_outcome, dict):
             register_outputs_from_mapping(latest_outcome, declared_by=f"{declared_by}.latest_outcome", source_path=source_path, phase=phase)
 
+    package_manifest_name = str(contract.get("outputs", {}).get("manifest_json", "mission_artifact_package.json"))
+    package_summary_name = str(contract.get("outputs", {}).get("summary_markdown", "mission_artifact_package.md"))
+    package_manifest_path = package_root / package_manifest_name
+    package_summary_path = package_root / package_summary_name
+
     register_outputs_from_mapping(mission_state, declared_by="mission_state", source_path=mission_state_path)
-    phase_outputs = mission_state.get("phase_outputs_by_phase")
-    if isinstance(phase_outputs, dict):
-        for phase, outputs in phase_outputs.items():
-            for raw_path in _strings_from_value(outputs):
-                register_recorded_output(
-                    raw_path,
-                    declared_by="mission_state.phase_outputs_by_phase",
-                    source_path=mission_state_path,
-                    phase=str(phase),
-                )
     for index, action in enumerate(mission_state.get("next_actions", {}).get("actions", [])):
         if not isinstance(action, dict):
             continue
@@ -1183,9 +1195,11 @@ def package_mission_artifacts(
         for artifact_ids in category_membership.values():
             artifact_ids.discard(artifact_id)
 
+    generated_package_outputs = {package_manifest_path.resolve(), package_summary_path.resolve()}
+
     missing_required_artifacts: list[str] = []
     required_filenames = {str(item) for item in contract.get("required_artifacts", {}).get("filenames", [])}
-    existing_filenames = {path.name for path in artifact_registry}
+    existing_filenames = {path.name for path in artifact_registry} | {package_manifest_name, package_summary_name}
     for filename in sorted(required_filenames):
         if filename not in existing_filenames:
             missing_required_artifacts.append(filename)
@@ -1204,6 +1218,8 @@ def package_mission_artifacts(
         }
         for record in sorted(recorded_output_artifacts.values(), key=lambda item: item["source_path"])
         if record["artifact_id"] in pending_artifact_ids
+        and _is_durable_recorded_artifact_path(Path(record["source_path"]))
+        and Path(str(record["source_path"])).expanduser().resolve() not in generated_package_outputs
     ]
     for record in missing_recorded_output_artifacts:
         missing_required_artifacts.append(f"phase-output:{record['source_path']}")
@@ -1439,11 +1455,6 @@ def package_mission_artifacts(
                 + "."
             )
 
-    manifest_name = str(contract.get("outputs", {}).get("manifest_json", "mission_artifact_package.json"))
-    summary_name = str(contract.get("outputs", {}).get("summary_markdown", "mission_artifact_package.md"))
-    manifest_path = package_root / manifest_name
-    summary_path = package_root / summary_name
-
     package = {
         "schema_version": 1,
         "package_id": f"{mission_id}-{package_claim_state}-package",
@@ -1526,7 +1537,7 @@ def package_mission_artifacts(
     release_policy = load_release_candidate_policy()
     release_review = build_release_candidate_review(
         package,
-        package_manifest_path=manifest_path,
+        package_manifest_path=package_manifest_path,
         policy=release_policy,
     )
     release_bullets.insert(0, f"Release automation decision: {release_review['decision']}.")
@@ -1546,7 +1557,7 @@ def package_mission_artifacts(
     if validation_errors:
         raise RuntimeError("Mission artifact package failed schema validation: " + "; ".join(validation_errors))
 
-    manifest_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
+    package_manifest_path.write_text(json.dumps(package, indent=2) + "\n", encoding="utf-8")
 
     markdown_lines = [
         "# Mission artifact package",
@@ -1619,7 +1630,7 @@ def package_mission_artifacts(
     if operator_key_ids:
         markdown_lines.extend(["", "## Key artifact ids", ""])
         markdown_lines.extend(f"- `{artifact_id}`" for artifact_id in operator_key_ids)
-    summary_path.write_text("\n".join(markdown_lines) + "\n", encoding="utf-8")
+    package_summary_path.write_text("\n".join(markdown_lines) + "\n", encoding="utf-8")
 
     release_review_result = materialize_release_candidate_review(
         release_review,
@@ -1629,8 +1640,8 @@ def package_mission_artifacts(
 
     return {
         "package_root": package_root,
-        "manifest_path": manifest_path,
-        "summary_path": summary_path,
+        "manifest_path": package_manifest_path,
+        "summary_path": package_summary_path,
         "package": package,
         "release_review_path": release_review_result["review_json"],
         "release_review_markdown_path": release_review_result["review_markdown"],

@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 import yaml
 
+from deeploop.core.phase_defaults import default_kind_for_phase, default_role_for_phase
 from deeploop.autonomy.mission_contract_snapshot import resolve_phase_contract_for_state
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import WORKSPACE_URI_PREFIX, resolve_workspace_path
@@ -140,6 +141,27 @@ def _canonical_role(role: str, mission_state: dict[str, Any] | None) -> str:
     return role
 
 
+def _declared_roles(mission_state: dict[str, Any] | None) -> set[str]:
+    roles = mission_state.get("roles") if isinstance(mission_state, dict) else None
+    return {str(item) for item in roles} if isinstance(roles, list) else set()
+
+
+def _canonical_role_for_phase(
+    role: str | None,
+    *,
+    phase: str | None,
+    mission_state: dict[str, Any] | None,
+) -> str | None:
+    default_role = default_role_for_phase(phase) if phase else None
+    if role is None:
+        return default_role
+    canonical = _canonical_role(role, mission_state)
+    declared_roles = _declared_roles(mission_state)
+    if declared_roles and canonical not in declared_roles and default_role in declared_roles:
+        return default_role
+    return canonical
+
+
 def _canonicalize_action_role(action: dict[str, Any], mission_state: dict[str, Any] | None) -> dict[str, Any]:
     role = _optional_string(action.get("role"))
     if role is not None:
@@ -255,6 +277,27 @@ def _default_action_result_status(iteration_status: str) -> str:
     return "in_progress"
 
 
+def _canonical_iteration_status(raw: Any) -> str | None:
+    value = _optional_string(raw)
+    if value is None:
+        return None
+    aliases = {
+        "continue": "continue",
+        "complete": "complete",
+        "completed": "complete",
+        "blocked": "blocked",
+        "failed": "failed",
+        "fail": "failed",
+        "error": "failed",
+        "success": "continue",
+        "successful": "continue",
+        "succeeded": "continue",
+        "ok": "continue",
+        "done": "continue",
+    }
+    return aliases.get(value, value)
+
+
 def _canonical_action_result_status(raw: Any, *, iteration_status: str) -> str:
     value = _optional_string(raw)
     if value is None:
@@ -264,6 +307,11 @@ def _canonical_action_result_status(raw: Any, *, iteration_status: str) -> str:
         "complete": "completed",
         "completed": "completed",
         "critique-parked": "completed",
+        "ok": "completed",
+        "success": "completed",
+        "succeeded": "completed",
+        "done": "completed",
+        "planned": "completed",
         "in-progress": "in_progress",
     }
     if value.startswith("contract-failure"):
@@ -289,7 +337,10 @@ def _normalize_action_result(payload: dict[str, Any], action: dict[str, Any]) ->
     normalized = {
         "mission_action_id": _optional_string(raw.get("mission_action_id")) or _optional_string(action.get("action_id")),
         "loop_action_id": _optional_string(raw.get("loop_action_id")) or _optional_string(action.get("loop_action_id")),
-        "status": _canonical_action_result_status(raw.get("status"), iteration_status=str(payload["status"])),
+        "status": _canonical_action_result_status(
+            raw.get("status"),
+            iteration_status=_canonical_iteration_status(payload.get("status")) or str(payload["status"]),
+        ),
         "phase": _optional_string(raw.get("phase")) or _optional_string(action.get("phase")),
         "kind": _optional_string(raw.get("kind")) or _optional_string(action.get("kind")),
         "branch_id": _optional_string(raw.get("branch_id")) or _optional_string(action.get("branch_id")),
@@ -300,22 +351,73 @@ def _normalize_action_result(payload: dict[str, Any], action: dict[str, Any]) ->
     return normalized
 
 
+def _canonicalize_continuation(
+    continuation: dict[str, Any] | None,
+    *,
+    phase_control: dict[str, Any],
+    action: dict[str, Any],
+    mission_state: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if continuation is None:
+        return None
+    normalized = dict(continuation)
+    phase = (
+        _optional_string(phase_control.get("next_phase"))
+        or _optional_string(normalized.get("phase"))
+        or _optional_string(action.get("phase"))
+    )
+    if phase is not None:
+        normalized["phase"] = phase
+        if _optional_string(normalized.get("kind")) is None:
+            normalized["kind"] = default_kind_for_phase(phase)
+    normalized["role"] = _canonical_role_for_phase(
+        _optional_string(normalized.get("role")),
+        phase=phase,
+        mission_state=mission_state,
+    )
+    return normalized
+
+
+def _canonicalize_action_result(
+    action_result: dict[str, Any],
+    *,
+    phase_control: dict[str, Any],
+) -> dict[str, Any]:
+    normalized = dict(action_result)
+    phase = _optional_string(normalized.get("phase")) or _optional_string(phase_control.get("current_phase"))
+    if phase is not None:
+        normalized["phase"] = phase
+        if _optional_string(normalized.get("kind")) is None:
+            normalized["kind"] = default_kind_for_phase(phase)
+    return normalized
+
+
 def _normalized_result_outcome(
     payload: dict[str, Any],
     action: dict[str, Any],
     *,
     mission_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    status = _canonical_iteration_status(payload.get("status")) or str(payload["status"])
+    phase_control = _normalize_phase_control(payload, action)
     return {
-        "status": str(payload["status"]),
+        "status": status,
         "summary": str(payload["summary"]),
-        "continuation": _sanitize_continuation(
-            _normalize_continuation(payload),
-            mission_state=mission_state,
+        "continuation": _canonicalize_continuation(
+            _sanitize_continuation(
+                _normalize_continuation(payload),
+                mission_state=mission_state,
+                action=action,
+            ),
+            phase_control=phase_control,
             action=action,
+            mission_state=mission_state,
         ),
-        "phase_control": _normalize_phase_control(payload, action),
-        "action_result": _normalize_action_result(payload, action),
+        "phase_control": phase_control,
+        "action_result": _canonicalize_action_result(
+            _normalize_action_result(payload, action),
+            phase_control=phase_control,
+        ),
         "produced_artifacts": _normalize_list(payload.get("produced_artifacts")),
         "findings": _normalize_list(payload.get("findings")),
         "mission_state_updates": payload.get("mission_state_updates", {}),
@@ -603,7 +705,7 @@ def _sync_outer_runtime_summary_from_recursive_agent(mission_state: Mapping[str,
 
 def _validate_result(payload: dict[str, Any]) -> list[str]:
     errors: list[str] = []
-    status = payload.get("status")
+    status = _canonical_iteration_status(payload.get("status"))
     if status not in {"continue", "complete", "blocked", "failed"}:
         errors.append("result.status must be one of continue|complete|blocked|failed")
     if not isinstance(payload.get("summary"), str) or not str(payload.get("summary")).strip():
@@ -641,7 +743,10 @@ def _validate_result(payload: dict[str, Any]) -> list[str]:
         if not isinstance(action_result, dict):
             errors.append("result.action_result must be an object when present")
         else:
-            value = _canonical_action_result_status(action_result.get("status"), iteration_status=str(payload["status"]))
+            value = _canonical_action_result_status(
+                action_result.get("status"),
+                iteration_status=status or str(payload.get("status")),
+            )
             if value is not None and value not in {"in_progress", "completed", "blocked", "deferred", "cancelled"}:
                 errors.append(
                     "result.action_result.status must be one of in_progress|completed|blocked|deferred|cancelled"
@@ -931,6 +1036,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     max_iterations = int(config.get("max_iterations", policy.get("max_iterations", 8)))
     state["max_iterations"] = max_iterations
     state["iterations_remaining"] = max(0, max_iterations - int(state.get("iterations_completed", 0)))
+    remaining_budget = int(state["iterations_remaining"])
     max_consecutive_failures = int(config.get("max_consecutive_failures", policy.get("max_consecutive_failures", 2)))
     recent_ledger_limit = int(config.get("recent_ledger_limit", policy.get("recent_ledger_limit", 8)))
     recent_memory_limit = int(config.get("recent_memory_limit", policy.get("recent_memory_limit", 6)))
@@ -944,7 +1050,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     latest_outcome: dict[str, Any] | None = None
     current_action: dict[str, Any] | None = None
 
-    for _ in range(max_iterations):
+    for _ in range(remaining_budget):
         mission_state = load_mission_state(mission_state_path)
         current_phase = str(mission_state.get("current_phase") or "")
         next_actions = mission_state.get("next_actions", {})
@@ -1187,7 +1293,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
 
         iteration_status = "failed"
         if returncode == 0 and result_payload is not None and not result_errors:
-            iteration_status = str(result_payload["status"])
+            iteration_status = _canonical_iteration_status(result_payload.get("status")) or str(result_payload["status"])
         else:
             if result_payload is None:
                 result_payload = {
@@ -1215,6 +1321,10 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         else:
             normalized_outcome = None
 
+        persisted_result = normalized_outcome if normalized_outcome is not None else result_payload
+        if persisted_result is not None:
+            _write_json(result_json_path, persisted_result)
+
         summary = {
             "schema_version": 1,
             "iteration": iteration_number,
@@ -1233,7 +1343,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             "result_json_path": str(result_json_path),
             "log_path": str(log_path),
             "command": full_command,
-            "result": result_payload,
+            "result": persisted_result,
             "normalized_result": normalized_outcome,
             "result_errors": result_errors,
         }

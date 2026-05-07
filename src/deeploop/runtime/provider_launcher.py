@@ -8,9 +8,17 @@ from pathlib import Path
 from typing import Sequence
 
 
+from deeploop.core.phase_defaults import (
+    default_kind_for_phase as _default_kind_for_phase,
+    default_role_for_phase as _default_role_for_phase,
+)
 from deeploop.runtime.copilot_adapter import build_copilot_prompt_command
 
 _SUPPORTED_PROVIDER_FAMILIES = frozenset({"copilot-cli"})
+_DEFAULT_IDLE_TIMEOUT_SECONDS = 120.0
+_PROVIDER_IDLE_TIMEOUT_SECONDS = {
+    "copilot-cli": 900.0,
+}
 
 
 def build_provider_prompt_command(
@@ -39,6 +47,13 @@ def build_provider_prompt_command(
     )
 
 
+def resolve_provider_idle_timeout_seconds(provider_family: str, idle_timeout_seconds: float | None) -> float:
+    if idle_timeout_seconds is not None:
+        return idle_timeout_seconds
+    resolved_provider_family = str(provider_family or "copilot-cli").strip() or "copilot-cli"
+    return _PROVIDER_IDLE_TIMEOUT_SECONDS.get(resolved_provider_family, _DEFAULT_IDLE_TIMEOUT_SECONDS)
+
+
 def _load_json_file(path: Path) -> dict[str, object] | None:
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
@@ -47,34 +62,7 @@ def _load_json_file(path: Path) -> dict[str, object] | None:
     return loaded if isinstance(loaded, dict) else None
 
 
-_PHASE_ROLE_DEFAULTS = {
-    "idea-intake": "planner",
-    "literature-review": "literature-scout",
-    "question-design": "planner",
-    "benchmark-selection": "dataset-strategist",
-    "experiment-design": "experiment-designer",
-    "execution": "execution-operator",
-    "critique": "critic-verifier",
-    "replication": "execution-operator",
-    "final-report": "report-synthesizer",
-}
-
-_PHASE_ACTION_KIND_DEFAULTS = {
-    "execution": "local-eval",
-    "critique": "critique",
-    "replication": "replication",
-    "final-report": "final-report",
-}
-
 _OUTPUT_NAME_STOPWORDS = {"a", "an", "and", "for", "of", "or", "the", "to", "with"}
-
-
-def _default_role_for_phase(phase: str) -> str:
-    return _PHASE_ROLE_DEFAULTS.get(phase, "planner")
-
-
-def _default_kind_for_phase(phase: str) -> str:
-    return _PHASE_ACTION_KIND_DEFAULTS.get(phase, "artifact-edit")
 
 
 def _normalize_output_name(value: str) -> tuple[str, ...]:
@@ -708,7 +696,7 @@ def run_provider_prompt(
     cwd: Path | None = None,
     allow_all: bool = True,
     no_ask_user: bool = True,
-    idle_timeout_seconds: float = 120.0,
+    idle_timeout_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     prompt_text = prompt_file.read_text(encoding="utf-8")
     try:
@@ -733,6 +721,7 @@ def run_provider_prompt(
         no_ask_user=no_ask_user,
     )
     resolved_cwd = (cwd or target_repo or prompt_file.parent).expanduser().resolve()
+    effective_idle_timeout_seconds = resolve_provider_idle_timeout_seconds(provider_family, idle_timeout_seconds)
     if result_json_path is None:
         return subprocess.run(
             command,
@@ -784,9 +773,9 @@ def run_provider_prompt(
         latest_activity = _latest_tree_activity(idle_watch_roots)
         if (
             result_json_path is not None
-            and idle_timeout_seconds >= 0
+            and effective_idle_timeout_seconds >= 0
             and latest_activity is not None
-            and (time.time() - latest_activity) >= idle_timeout_seconds
+            and (time.time() - latest_activity) >= effective_idle_timeout_seconds
         ):
             recovered = _maybe_materialize_phase_result_from_outputs(
                 prompt_text=prompt_text,

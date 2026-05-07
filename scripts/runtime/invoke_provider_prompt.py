@@ -23,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--model")
     parser.add_argument("--allow-all", action="store_true", default=False)
     parser.add_argument("--no-ask-user", action="store_true", default=False)
+    parser.add_argument("--idle-timeout-seconds", type=float)
     args = parser.parse_args(argv)
 
     completed = run_provider_prompt(
@@ -35,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
         allow_all=args.allow_all,
         no_ask_user=args.no_ask_user,
+        idle_timeout_seconds=args.idle_timeout_seconds,
     )
     if completed.stdout:
         print(completed.stdout, end="")

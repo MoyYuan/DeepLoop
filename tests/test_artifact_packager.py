@@ -684,13 +684,23 @@ class ArtifactPackagerTests(unittest.TestCase):
                     ],
                     "generated_configs": [],
                 },
+                "phase_outputs_by_phase": {
+                    "execution": ["run logs", "metrics", "crash / stability notes"],
+                },
                 "agent_driver": {
                     "memory_path": str(memory_path),
                     "latest_outcome": {
                         "produced_artifacts": [str(stability_notes), str(predictions)],
                         "action_result": {
                             "phase": "execution",
-                            "output_paths": [str(task_metrics), str(run_log), str(stability_notes), str(predictions)],
+                            "output_paths": [
+                                str(task_metrics),
+                                str(run_log),
+                                str(stability_notes),
+                                str(predictions),
+                                str((test_root / "packages" / "recursive-output-package-mission" / "mission_artifact_package.json").resolve()),
+                                str((test_root / "packages" / "recursive-output-package-mission" / "mission_artifact_package.md").resolve()),
+                            ],
                         },
                     },
                 },
@@ -730,7 +740,8 @@ class ArtifactPackagerTests(unittest.TestCase):
             }
             (smoke_dir / "run_manifest.json").write_text(json.dumps(smoke_manifest, indent=2) + "\n", encoding="utf-8")
 
-            result = package_mission_artifacts(mission_state_path, output_root=test_root / "packages")
+            output_root = test_root / "packages"
+            result = package_mission_artifacts(mission_state_path, output_root=output_root)
             package = result["package"]
             artifact_paths = {Path(artifact["source_path"]).name: artifact for artifact in package["artifacts"]}
 
@@ -745,11 +756,23 @@ class ArtifactPackagerTests(unittest.TestCase):
             self.assertEqual(len(package["artifact_map"]["task_run_logs"]), 2)
             self.assertGreaterEqual(len(package["artifact_map"]["task_method_artifacts"]), 2)
             self.assertEqual(len(package["artifact_map"]["plain_folder_smoke_metadata"]), 1)
-            self.assertFalse(package["checks"]["all_required_artifacts_present"])
-            self.assertTrue(
-                any(str(missing_output) in item for item in package["checks"]["missing_required_artifacts"])
+            self.assertTrue(package["checks"]["all_required_artifacts_present"])
+            self.assertEqual(package["checks"]["missing_required_artifacts"], [])
+            self.assertEqual(package["checks"]["missing_recorded_output_artifacts"], [])
+            self.assertFalse(
+                any(
+                    str(missing_output) in item
+                    for item in package["claim_summary"]["release_candidate_blockers"]
+                )
             )
-            self.assertEqual(package["checks"]["missing_recorded_output_artifacts"][0]["source_path"], str(missing_output))
+            self.assertFalse(
+                any(
+                    "crash / stability notes" in item
+                    or str((output_root / "recursive-output-package-mission" / "mission_artifact_package.json").resolve()) in item
+                    or str((output_root / "recursive-output-package-mission" / "mission_artifact_package.md").resolve()) in item
+                    for item in package["claim_summary"]["release_candidate_blockers"]
+                )
+            )
             summary_text = result["summary_path"].read_text(encoding="utf-8")
             self.assertLess(
                 summary_text.index("Task metric: metrics.json"),

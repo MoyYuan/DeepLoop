@@ -68,6 +68,7 @@ from deeploop.runtime.mission_executor_registry import (
     StageKernelExecutorAction,
     run_mission_action,
 )
+from deeploop.runtime import mission_executor_registry as _mission_executor_registry
 
 DEFAULT_RUNTIME_DIR_NAME = "mission_outer_runtime"
 _TERMINAL_RUNTIME_STATUSES = {"completed", "blocked", "failed", "max-iterations"}
@@ -1560,6 +1561,23 @@ def _stop_status(
         mission_state["status"] = "paused"
 
 
+def _refresh_completed_mission_package(
+    mission_state_path: Path,
+    mission_state: dict[str, Any],
+) -> dict[str, Any] | None:
+    package_payload = mission_state.get("mission_package")
+    if not isinstance(package_payload, Mapping):
+        return None
+    package_root_raw = str(package_payload.get("package_root") or "").strip()
+    if not package_root_raw:
+        return None
+    package_root = Path(package_root_raw).expanduser().resolve()
+    return _mission_executor_registry.package_mission_artifacts(
+        mission_state_path,
+        output_root=package_root.parent,
+    )
+
+
 def run_mission(
     mission_state_path: Path,
     *,
@@ -1986,6 +2004,16 @@ def run_mission(
             action_payload=action_payload,
             executor_payload=executor_payload,
         )
+        if outcome.directive == MissionDecisionDirective.COMPLETE:
+            refreshed_package = _refresh_completed_mission_package(resolved_state_path, mission_state)
+            if isinstance(refreshed_package, dict):
+                mission_state["mission_package"] = _jsonify(refreshed_package)
+                _write_state(
+                    resolved_state_path,
+                    mission_state,
+                    runtime_state,
+                    contract=contract,
+                )
         if runtime_state["status"] in _TERMINAL_RUNTIME_STATUSES:
             break
 

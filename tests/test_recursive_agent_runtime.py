@@ -254,6 +254,163 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         shutil.rmtree(sandbox_root, ignore_errors=True)
         shutil.rmtree(test_root, ignore_errors=True)
 
+    def test_runtime_respects_remaining_iteration_budget_from_persisted_state(self) -> None:
+        mission_id = "recursive-agent-runtime-budget-resume"
+        sandbox_root = SANDBOXES_DIR / mission_id
+        test_root = _fresh_test_root("recursive-agent-runtime-budget-resume")
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "mission_id": mission_id,
+                    "mode": "sandboxed-yolo",
+                    "title": "Recursive runtime persisted-budget mission",
+                    "summary": "Ensure resumed loops only spend the remaining iteration budget.",
+                    "objective": "Resume from question-design and stop at the remaining recursive iteration ceiling.",
+                    "current_phase": "question-design",
+                    "next_phase": "experiment-design",
+                    "status": "running",
+                    "target_repo": str(REPO_ROOT),
+                    "roles": ["planner", "execution-operator"],
+                    "autonomy_status": {"state": "running", "reason": "test"},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        fake_agent = test_root / "fake_budget_resume_agent.py"
+        fake_agent.write_text(
+            "\n".join(
+                [
+                    "import argparse, json, os",
+                    "from pathlib import Path",
+                    "parser = argparse.ArgumentParser()",
+                    "parser.add_argument('--result-json', required=True)",
+                    "args = parser.parse_args()",
+                    "payload = {",
+                    "    'status': 'continue',",
+                    "    'summary': 'Prepared the execution handoff before the recursive budget ran out.',",
+                    "    'continuation': {",
+                    "        'role': 'execution-operator',",
+                    "        'task': 'run-experiments',",
+                    "        'artifacts': [],",
+                    "        'kind': 'local-eval',",
+                    "        'phase': 'execution',",
+                    "    },",
+                    "    'action_result': {",
+                    "        'loop_action_id': os.environ.get('DEEPLOOP_LOOP_ACTION_ID') or None,",
+                    "        'status': 'completed',",
+                    "        'phase': os.environ.get('DEEPLOOP_MISSION_ACTION_PHASE') or 'question-design',",
+                    "        'kind': os.environ.get('DEEPLOOP_MISSION_ACTION_KIND') or 'artifact-edit',",
+                    "        'notes': ['Prepared execution handoff.'],",
+                    "    },",
+                    "    'phase_control': {",
+                    "        'current_phase': 'question-design',",
+                    "        'next_phase': 'execution',",
+                    "        'decision_type': 'phase-transition',",
+                    "        'branch_status': 'active',",
+                    "        'recovery_status': 'not-needed',",
+                    "        'summary': 'Ready to enter execution.',",
+                    "    },",
+                    "}",
+                    "Path(args.result_json).write_text(json.dumps(payload, indent=2) + '\\n', encoding='utf-8')",
+                    "raise SystemExit(0)",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        config_path = test_root / "recursive-runtime.yaml"
+        loop_name = "resume-loop"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "mission_state": str(mission_state_path),
+                    "loop_name": loop_name,
+                    "max_iterations": 4,
+                    "max_consecutive_failures": 2,
+                    "agent": {
+                        "command": [
+                            sys.executable,
+                            str(fake_agent),
+                            "--result-json",
+                            "{result_json_path}",
+                        ],
+                        "cwd": str(REPO_ROOT),
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        runtime_root = mission_root / "runtime" / "recursive_agent_runtime" / loop_name
+        runtime_root.mkdir(parents=True, exist_ok=True)
+        state_path = runtime_root / "agent_loop_state.json"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "mission_id": mission_id,
+                    "loop_name": loop_name,
+                    "status": "running",
+                    "iterations_completed": 3,
+                    "consecutive_failures": 0,
+                    "action_cursor": 0,
+                    "initial_task_consumed": True,
+                    "pending_action": {
+                        "role": "execution-operator",
+                        "task": "experiment-design",
+                        "artifacts": [],
+                        "action_id": None,
+                        "loop_action_id": None,
+                        "kind": "artifact-edit",
+                        "phase": "question-design",
+                        "branch_id": None,
+                        "decision_id": None,
+                        "notes": [],
+                        "source": "agent-continuation",
+                    },
+                    "latest_iteration_path": None,
+                    "latest_result_path": None,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        result = run_recursive_agent_loop(config_path)
+
+        self.assertEqual(result["status"], "max-iterations")
+        self.assertEqual(result["iterations_completed"], 4)
+        self.assertEqual(result["iterations_remaining"], 0)
+        self.assertTrue((runtime_root / "iteration-04-execution-operator" / "summary.json").exists())
+        self.assertFalse((runtime_root / "iteration-05-execution-operator").exists())
+
+        loop_state = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(loop_state["iterations_completed"], 4)
+        self.assertEqual(loop_state["iterations_remaining"], 0)
+        self.assertEqual(loop_state["status"], "max-iterations")
+        self.assertEqual(loop_state["pending_action"]["task"], "run-experiments")
+        self.assertEqual(loop_state["pending_action"]["phase"], "execution")
+
+        loop_report = json.loads(result["report_json_path"].read_text(encoding="utf-8"))
+        self.assertEqual(loop_report["status"], "max-iterations")
+        self.assertEqual(loop_report["iterations_completed"], 4)
+        self.assertEqual(len(loop_report["iterations"]), 1)
+        self.assertEqual(loop_report["iterations"][0]["iteration"], 4)
+        self.assertEqual(loop_report["latest_outcome"]["status"], "continue")
+
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        shutil.rmtree(test_root, ignore_errors=True)
+
     def test_runtime_rejects_out_of_scope_provider_artifacts(self) -> None:
         mission_id = "recursive-agent-runtime-artifact-scope"
         sandbox_root = SANDBOXES_DIR / mission_id
@@ -544,7 +701,7 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
                 {
                     "mission_state": str(mission_state_path),
                     "loop_name": loop_name,
-                    "max_iterations": 1,
+                    "max_iterations": 4,
                     "agent": {
                         "command": [
                             sys.executable,
@@ -673,7 +830,7 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
                 {
                     "mission_state": str(mission_state_path),
                     "loop_name": loop_name,
-                    "max_iterations": 1,
+                    "max_iterations": 4,
                     "agent": {
                         "command": [
                             sys.executable,
@@ -761,6 +918,180 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
 
         self.assertEqual(normalized["continuation"]["role"], "execution-operator")
 
+    def test_runtime_canonicalizes_generic_continuation_metadata_to_phase_defaults(self) -> None:
+        payload = {
+            "status": "continue",
+            "summary": "Generic handoff emitted for the next phase.",
+            "continuation": {
+                "role": "researcher",
+                "task": "question-design",
+                "phase": "literature-review",
+            },
+            "phase_control": {
+                "current_phase": "literature-review",
+                "next_phase": "question-design",
+            },
+            "action_result": {
+                "phase": "question-design",
+            },
+        }
+        normalized = _normalized_result_outcome(
+            payload,
+            {
+                "role": "literature-scout",
+                "task": "Ground the mission in prior art.",
+                "artifacts": [],
+                "action_id": None,
+                "loop_action_id": "demo-loop-iter-03-literature-scout",
+                "kind": None,
+                "phase": "literature-review",
+                "branch_id": None,
+                "decision_id": None,
+                "notes": [],
+                "source": "test",
+                "mission_action_index": 0,
+            },
+            mission_state={
+                "roles": [
+                    "planner",
+                    "literature-scout",
+                    "dataset-strategist",
+                    "experiment-designer",
+                    "execution-operator",
+                    "critic-verifier",
+                    "report-synthesizer",
+                ]
+            },
+        )
+
+        self.assertEqual(normalized["continuation"]["role"], "planner")
+        self.assertEqual(normalized["continuation"]["phase"], "question-design")
+        self.assertEqual(normalized["continuation"]["kind"], "artifact-edit")
+        self.assertEqual(normalized["action_result"]["kind"], "artifact-edit")
+
+    def test_runtime_persists_canonicalized_result_payloads(self) -> None:
+        mission_id = "canonicalized-result-persistence"
+        sandbox_root = SANDBOXES_DIR / mission_id
+        test_root = _fresh_test_root("canonicalized-result-persistence")
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "mission_id": mission_id,
+                    "mode": "sandboxed-yolo",
+                    "title": "Canonicalized result persistence",
+                    "summary": "Persist normalized recursive-agent results.",
+                    "objective": "Keep result artifacts canonical after provider normalization.",
+                    "current_phase": "literature-review",
+                    "next_phase": "question-design",
+                    "status": "running",
+                    "target_repo": str(REPO_ROOT),
+                    "roles": [
+                        "planner",
+                        "literature-scout",
+                        "dataset-strategist",
+                        "experiment-designer",
+                        "execution-operator",
+                        "critic-verifier",
+                        "report-synthesizer",
+                    ],
+                    "next_actions": {
+                        "summary": "Advance to question-design.",
+                        "actions": [
+                            {
+                                "action_id": "literature-handoff",
+                                "role": "literature-scout",
+                                "task": "Summarize prior art and hand off to question design.",
+                                "phase": "literature-review",
+                                "kind": "phase-transition",
+                            }
+                        ],
+                    },
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (mission_root / "mission_decisions.jsonl").write_text("", encoding="utf-8")
+        (mission_root / "mission_branches.jsonl").write_text("", encoding="utf-8")
+        fake_agent = test_root / "fake_recursive_agent.py"
+        fake_agent.write_text(
+            "\n".join(
+                [
+                    "import argparse, json",
+                    "from pathlib import Path",
+                    "parser = argparse.ArgumentParser()",
+                    "parser.add_argument('--prompt')",
+                    "parser.add_argument('--result-json')",
+                    "args = parser.parse_args()",
+                    "payload = {",
+                    "  'status': 'continue',",
+                    "  'summary': 'Generic handoff emitted for the next phase.',",
+                    "  'continuation': {",
+                    "    'role': 'researcher',",
+                    "    'task': 'question-design',",
+                    "    'phase': 'literature-review'",
+                    "  },",
+                    "  'phase_control': {",
+                    "    'current_phase': 'literature-review',",
+                    "    'next_phase': 'question-design'",
+                    "  },",
+                    "  'action_result': {",
+                    "    'phase': 'question-design'",
+                    "  }",
+                    "}",
+                    "Path(args.result_json).write_text(json.dumps(payload), encoding='utf-8')",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config_path = test_root / "recursive-runtime.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "mission_state": str(mission_state_path),
+                    "loop_name": "canonicalized-result-loop",
+                    "max_iterations": 1,
+                    "initial_task": "Ground the mission in prior art.",
+                    "default_role": "literature-scout",
+                    "agent": {
+                        "command": [
+                            sys.executable,
+                            str(fake_agent),
+                            "--prompt",
+                            "{prompt_path}",
+                            "--result-json",
+                            "{result_json_path}",
+                        ],
+                        "cwd": str(REPO_ROOT),
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        result = run_recursive_agent_loop(config_path)
+        self.assertEqual(result["status"], "max-iterations")
+        runtime_root = result["runtime_root"]
+        persisted_result = json.loads((runtime_root / "iteration-01-literature-scout" / "agent_result.json").read_text(encoding="utf-8"))
+        persisted_summary = json.loads((runtime_root / "iteration-01-literature-scout" / "summary.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(persisted_result["continuation"]["role"], "planner")
+        self.assertEqual(persisted_result["continuation"]["phase"], "question-design")
+        self.assertEqual(persisted_result["continuation"]["kind"], "artifact-edit")
+        self.assertEqual(persisted_summary["result"]["continuation"]["role"], "planner")
+        self.assertEqual(persisted_summary["result"]["continuation"]["phase"], "question-design")
+        self.assertEqual(persisted_summary["result"]["continuation"]["kind"], "artifact-edit")
+
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        shutil.rmtree(test_root, ignore_errors=True)
+
     def test_validate_result_accepts_string_list_like_handoff_fields(self) -> None:
         payload = {
             "status": "continue",
@@ -792,6 +1123,32 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(normalized["continuation"]["artifacts"], ["runs/demo/prior-art-memo.md"])
         self.assertEqual(normalized["continuation"]["notes"], ["Use the prior-art memo as the bounded contract."])
+
+    def test_validate_result_accepts_success_status_alias(self) -> None:
+        payload = {
+            "status": "success",
+            "summary": "The bounded task succeeded and the mission should continue.",
+        }
+        self.assertEqual(_validate_result(payload), [])
+        normalized = _normalized_result_outcome(
+            payload,
+            {
+                "role": "planner",
+                "task": "Close the idea-intake outputs.",
+                "artifacts": [],
+                "action_id": "idea-intake-close",
+                "loop_action_id": "demo-loop-iter-01-planner",
+                "kind": "artifact-edit",
+                "phase": "idea-intake",
+                "branch_id": None,
+                "decision_id": None,
+                "notes": [],
+                "source": "test",
+                "mission_action_index": 0,
+            },
+        )
+        self.assertEqual(normalized["status"], "continue")
+        self.assertEqual(normalized["action_result"]["status"], "completed")
 
     def test_timeout_seconds_expand_for_execution_phase(self) -> None:
         timeout = _timeout_seconds_for_action(
@@ -944,6 +1301,66 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
                 "notes": [],
                 "source": "test",
                 "mission_action_index": 1,
+            },
+        )
+        self.assertEqual(normalized["action_result"]["status"], "completed")
+
+    def test_validate_result_accepts_ok_action_result_alias(self) -> None:
+        payload = {
+            "status": "continue",
+            "summary": "Literature review completed with a simple ok status.",
+            "action_result": {
+                "status": "ok",
+                "phase": "literature-review",
+                "kind": "phase-transition",
+            },
+        }
+        self.assertEqual(_validate_result(payload), [])
+        normalized = _normalized_result_outcome(
+            payload,
+            {
+                "role": "literature-scout",
+                "task": "Survey the prior art.",
+                "artifacts": [],
+                "action_id": None,
+                "loop_action_id": "demo-loop-iter-02-literature-scout",
+                "kind": "phase-transition",
+                "phase": "literature-review",
+                "branch_id": None,
+                "decision_id": None,
+                "notes": [],
+                "source": "test",
+                "mission_action_index": None,
+            },
+        )
+        self.assertEqual(normalized["action_result"]["status"], "completed")
+
+    def test_validate_result_accepts_planned_action_result_alias(self) -> None:
+        payload = {
+            "status": "continue",
+            "summary": "Experiment design artifacts are staged for the next execution step.",
+            "action_result": {
+                "status": "planned",
+                "phase": "experiment-design",
+                "kind": "artifact-edit",
+            },
+        }
+        self.assertEqual(_validate_result(payload), [])
+        normalized = _normalized_result_outcome(
+            payload,
+            {
+                "role": "execution-operator",
+                "task": "Prepare the bounded experiment artifacts.",
+                "artifacts": [],
+                "action_id": None,
+                "loop_action_id": "demo-loop-iter-05-execution-operator",
+                "kind": "artifact-edit",
+                "phase": "experiment-design",
+                "branch_id": None,
+                "decision_id": None,
+                "notes": [],
+                "source": "test",
+                "mission_action_index": None,
             },
         )
         self.assertEqual(normalized["action_result"]["status"], "completed")

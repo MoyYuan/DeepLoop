@@ -199,6 +199,8 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("0.x", release_maintenance_text)
         self.assertIn("changelog", release_maintenance_text)
         self.assertIn("public-bootstrap-check", release_maintenance_text)
+        self.assertIn("docker-release-validate", release_maintenance_text)
+        self.assertIn("docker clean-room", release_text)
         self.assertIn("safety boundary", autonomy_text)
         self.assertIn("product gap", autonomy_text)
         self.assertIn("scope boundary", design_text)
