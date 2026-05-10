@@ -231,9 +231,10 @@ documented hosted-agent path.
 
 The narrowest suspicious boundary is still the repeated
 `_runtime_persistence._write_state()` -> `sync_mission_memory()` ->
-`record_research_memory_entry()` handoff, where DeepLoop assembles large nested
-mission/runtime snapshots and then crosses into stdlib JSON encoding and any
-native dependency state. That makes the current best classification a
+`record_research_memory_entry()` path, where DeepLoop assembles large nested
+mission-state, runtime-state, and research-memory snapshot dictionaries and
+then passes that payload into stdlib JSON encoding and any native dependency
+state. That makes the current best classification a
 **dependency/interpreter boundary surfaced by DeepLoop persistence payloads**,
 not a confirmed pure-Python logic bug.
 
