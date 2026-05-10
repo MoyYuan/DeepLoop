@@ -194,10 +194,10 @@ python scripts/testing/run_test_tier.py --tier real
 
 The runner is the source of truth for the current tier assignments.
 
-## Mission runtime segfault investigation follow-up
+## Mission runtime investigation entrypoint
 
-The stable full-module exercise command for the reported post-`v0.1.2`
-`tests.test_mission_runtime` segfault is:
+When maintainers need a canonical fault-handler-enabled entrypoint for
+`tests.test_mission_runtime`, use:
 
 ```text
 make test-mission-runtime
@@ -209,8 +209,8 @@ That target enables `PYTHONFAULTHANDLER=1` and runs:
 python -m unittest tests.test_mission_runtime -q
 ```
 
-If you need to narrow the surface further before the next hardening pass, start
-with the recursive-agent lifecycle and final-report closure paths:
+If the full module passes but further narrowing is still useful, start with the
+recursive-agent lifecycle and final-report closure paths:
 
 ```text
 PYTHONFAULTHANDLER=1 python -m unittest \
@@ -219,33 +219,6 @@ PYTHONFAULTHANDLER=1 python -m unittest \
   tests.test_mission_runtime.MissionRuntimeTests.test_runtime_completes_when_no_win_budget_closure_waives_replication \
   tests.test_mission_runtime.MissionRuntimeTests.test_runtime_completes_when_final_report_no_promotion_closes_replication -q
 ```
-
-Current investigation status on the hosted Linux + Python 3.11 path:
-
-- `make repo-check` passed
-- `make test-mission-runtime` passed
-- 10 consecutive subprocess reruns of the full module also passed
-
-So the current issue remains **tracked but not stably reproducible** on the
-documented hosted-agent path.
-
-The narrowest suspicious boundary is still the repeated
-`_runtime_persistence._write_state()` -> `sync_mission_memory()` ->
-`record_research_memory_entry()` path, where DeepLoop assembles large nested
-mission-state, runtime-state, and research-memory snapshot dictionaries and
-then passes that payload into stdlib JSON encoding and any native dependency
-state. That makes the current best classification a
-**dependency/interpreter boundary surfaced by DeepLoop persistence payloads**,
-not a confirmed pure-Python logic bug.
-
-The safe follow-up scope is to harden that boundary without changing mission
-semantics:
-
-- capture the first failing payload shape when the crash reappears
-- add pre-serialization payload validation/size guards so malformed structures
-  fail as normal Python exceptions
-- if needed, quarantine the research-memory write behind a subprocess boundary
-  so a native/interpreter abort cannot take down the full test runner
 
 ## Why Tier 3 matters so much
 
