@@ -179,6 +179,37 @@ the current role's sandbox `outputs_dir`, the mission artifact roots
 artifact provenance entry with `produced_by`, `sandbox_root`, `accepted`, and a
 rejection reason plus a warning.
 
+## Recursive budget-warning review
+
+The current recursive budget warnings fire in two places:
+
+- the runtime prints a stderr warning when utilization reaches at least 80% of
+  `max_iterations` and at least one recursive iteration remains
+- `deeploop analyze-budget` warns when the pending queue projects to at least
+  80% utilization, and escalates to `over-budget` when it exceeds the ceiling
+
+The low-signal pattern from the current release is cadence, not coverage. Once a
+loop crosses the 80% threshold, the runtime repeats the same near-ceiling
+warning on every subsequent iteration until the loop finishes or yields. That is
+most noticeable on longer queues, where operators can see multiple variants of
+the same "budget nearly exhausted" message even though the actionable decision
+is unchanged. The dedicated execution-handoff warning already covers the most
+actionable late-budget case: yielding before entering execution with only one
+recursive iteration left.
+
+Decision for the next release cycle:
+
+- keep the 80% warning threshold for now
+- keep the dedicated execution-handoff and `over-budget` warnings as-is
+- tune near-ceiling runtime warnings in a follow-up PR so they fire once when
+  the loop first crosses the threshold instead of on every post-threshold
+  iteration
+- soften near-ceiling warning wording in that follow-up so it reads as advisory
+  budget pressure, while the stronger wording remains reserved for true
+  `over-budget` and execution-handoff conditions
+- continue treating `deeploop analyze-budget` as the preferred proactive
+  operator check before submitting a large recursive queue
+
 ## Why this runtime exists
 
 This executor fills the fresh-context worker slot inside the canonical mission
