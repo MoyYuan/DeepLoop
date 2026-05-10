@@ -34,7 +34,7 @@ the first-class mission/runtime selection set:
 | Provider family | Typical selection use | Current public selection status | Notes |
 | --- | --- | --- | --- |
 | Copilot CLI | control-plane / recursive-agent loops | implemented | current recursive-agent example uses the provider launcher with the Copilot CLI adapter; optional explicit model selection is allowed |
-| OpenAI-compatible API providers | API-backed mission/runtime selection | contract reserved | selection surface is defined now; public request adapter remains deferred |
+| OpenAI-compatible API providers | API-backed control-plane prompt/result flows | implemented | provider launcher can route structured prompt/result control-plane tasks through an OpenAI-compatible `/v1/chat/completions` endpoint |
 | Anthropic API providers | API-backed mission/runtime selection | contract reserved | selection surface is defined now; public request adapter remains deferred |
 | local-transformers | local execution / replication | implemented | explicit local model choice plus backend-policy-controlled fallback |
 | vllm | local execution / replication | implemented | explicit `vllm` selection remains mission-driven, not automatic |
@@ -107,9 +107,13 @@ The machine-readable registry defines these public profiles:
 
 - provider family: `openai-compatible-api`
 - backend: `openai-compatible-api`
-- status: selection contract reserved; runtime adapter still deferred
+- status: implemented for control-plane prompt/result flows
 - model selection: explicit model identifier and any non-secret endpoint alias
   must come from mission/operator config
+- notes:
+  - the current public adapter covers structured prompt/result flows such as
+    `deeploop analyze`
+  - tool-using recursive-agent execution still remains on `copilot-cli`
 
 ### `anthropic-api-control-plane`
 
@@ -157,8 +161,9 @@ express mission/runtime intent separately from machine setup.
 
 The current public runtime can route through
 `scripts/runtime/invoke_provider_prompt.py`, and that provider-neutral entrypoint
-currently delegates `copilot-cli` requests to the Copilot adapter. The
-`provider_selection` block remains the canonical selection contract for that
+currently delegates `copilot-cli` requests to the Copilot adapter and
+`openai-compatible-api` requests to the OpenAI-compatible control-plane adapter.
+The `provider_selection` block remains the canonical selection contract for that
 loop.
 
 ### `configs/sandbox/agent-launch-policy.yaml`

@@ -320,7 +320,7 @@ class RepoContractTests(unittest.TestCase):
         )
         self.assertEqual(set(config["provider_families"]), set(config["first_class_provider_families"]))
         self.assertEqual(config["provider_families"]["copilot-cli"]["runtime_integration"], "implemented")
-        self.assertEqual(config["provider_families"]["openai-compatible-api"]["runtime_integration"], "deferred")
+        self.assertEqual(config["provider_families"]["openai-compatible-api"]["runtime_integration"], "implemented")
         self.assertEqual(config["provider_families"]["anthropic-api"]["runtime_integration"], "deferred")
         self.assertIn(
             "HUGGING_FACE_HUB_TOKEN",
@@ -390,7 +390,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertEqual(config["selection_profiles"]["vllm-execution"]["backend"], "vllm")
         self.assertEqual(
             config["selection_profiles"]["openai-compatible-api-control-plane"]["status"],
-            "reserved-runtime-adapter",
+            "implemented",
         )
         self.assertEqual(
             config["selection_profiles"]["anthropic-api-control-plane"]["status"],

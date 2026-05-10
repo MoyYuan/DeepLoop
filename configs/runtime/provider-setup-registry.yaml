@@ -50,7 +50,7 @@ provider_families:
   openai-compatible-api:
     display_name: OpenAI-compatible API providers
     public_contract_tier: first-class
-    runtime_integration: deferred
+    runtime_integration: implemented
     required_tools:
       - command: python
         purpose: control-plane entrypoint
@@ -71,7 +71,7 @@ provider_families:
           expectation: set in the operator shell or runner environment
       manual:
         - if OPENAI_BASE_URL is set, confirm the endpoint is reachable over HTTPS
-        - DeepLoop does not yet ship a public request adapter or mission/runtime selector for this family
+        - the public adapter currently covers prompt/result control-plane flows; it does not add Copilot-style tool execution
   anthropic-api:
     display_name: Anthropic API providers
     public_contract_tier: first-class

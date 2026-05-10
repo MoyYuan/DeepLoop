@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
+
+_THINK_BLOCK_RE = re.compile(r"<think>\s*(.*?)\s*</think>", re.IGNORECASE | re.DOTALL)
+_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.IGNORECASE | re.DOTALL)
+
+
+def build_openai_compatible_prompt_command(
+    prompt_file: Path,
+    *,
+    result_json_path: Path | None = None,
+    model: str | None = None,
+) -> list[str]:
+    command = [
+        sys.executable,
+        "-m",
+        "deeploop.runtime.openai_compatible_adapter",
+        "--prompt-file",
+        str(prompt_file.expanduser().resolve()),
+    ]
+    if result_json_path is not None:
+        command.extend(["--result-json-path", str(result_json_path.expanduser().resolve())])
+    if model:
+        command.extend(["--model", model])
+    return command
+
+
+def _normalize_api_base_url(base_url: str) -> str:
+    trimmed = base_url.strip().rstrip("/")
+    if not trimmed:
+        raise ValueError("OPENAI_BASE_URL must not be empty when set")
+    if trimmed.endswith("/chat/completions"):
+        return trimmed[: -len("/chat/completions")]
+    if trimmed.endswith("/v1"):
+        return trimmed
+    return f"{trimmed}/v1"
+
+
+def _strip_wrappers(text: str) -> str:
+    stripped = _THINK_BLOCK_RE.sub("", text)
+    fenced = _FENCE_RE.search(stripped)
+    return fenced.group(1).strip() if fenced else stripped.strip()
+
+
+def _extract_first_json_object(text: str) -> dict[str, Any]:
+    candidate = _strip_wrappers(text)
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(candidate):
+        if char != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(candidate[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    raise ValueError("provider response did not contain a JSON object")
+
+
+def _chat_completion_endpoint() -> str:
+    base_url = _normalize_api_base_url(os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"))
+    return f"{base_url}/chat/completions"
+
+
+def _required_api_key() -> str:
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY must be set for openai-compatible-api provider use")
+    return api_key
+
+
+def _resolved_model(explicit_model: str | None) -> str:
+    model = (explicit_model or os.environ.get("OPENAI_MODEL") or "").strip()
+    if not model:
+        raise ValueError("Provide --model or set OPENAI_MODEL for openai-compatible-api provider use")
+    return model
+
+
+def _request_payload(prompt_text: str, *, model: str) -> bytes:
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt_text}],
+        "temperature": 0,
+    }
+    return json.dumps(payload).encode("utf-8")
+
+
+def _invoke_openai_compatible(prompt_text: str, *, model: str) -> str:
+    request = Request(
+        _chat_completion_endpoint(),
+        data=_request_payload(prompt_text, model=model),
+        headers={
+            "Authorization": f"Bearer {_required_api_key()}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            **(
+                {"OpenAI-Organization": org_id}
+                if (org_id := os.environ.get("OPENAI_ORG_ID", "").strip())
+                else {}
+            ),
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=180) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenAI-compatible request failed with HTTP {exc.code}: {detail}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"OpenAI-compatible request failed: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("OpenAI-compatible endpoint returned malformed JSON") from exc
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError("OpenAI-compatible response did not include choices")
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        raise RuntimeError("OpenAI-compatible response choice was not an object")
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError("OpenAI-compatible response choice did not include a message object")
+    content = message.get("content")
+    if isinstance(content, str) and content.strip():
+        return content
+    if isinstance(content, list):
+        text_parts = [
+            str(item.get("text", "")).strip()
+            for item in content
+            if isinstance(item, dict) and item.get("type") == "text"
+        ]
+        combined = "\n".join(part for part in text_parts if part)
+        if combined:
+            return combined
+    raise RuntimeError("OpenAI-compatible response did not include textual assistant content")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--prompt-file", required=True)
+    parser.add_argument("--result-json-path")
+    parser.add_argument("--model")
+    args = parser.parse_args(argv)
+
+    prompt_file = Path(args.prompt_file).expanduser().resolve()
+    prompt_text = prompt_file.read_text(encoding="utf-8")
+    response_text = _invoke_openai_compatible(prompt_text, model=_resolved_model(args.model))
+    print(response_text, end="" if response_text.endswith("\n") else "\n")
+    if args.result_json_path:
+        payload = _extract_first_json_object(response_text)
+        result_json_path = Path(args.result_json_path).expanduser().resolve()
+        result_json_path.parent.mkdir(parents=True, exist_ok=True)
+        result_json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
