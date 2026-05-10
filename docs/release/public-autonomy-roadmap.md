@@ -60,6 +60,34 @@ credibility, reduce product-gap friction, and widen proof carefully. It does
 **not** put distributed execution or broad superiority claims on the immediate
 promise surface.
 
+### Next-cycle smoke expansion tracking
+
+The next cycle should keep routine smoke coverage broader than the translation
+workflow without turning release validation into a long acceptance run.
+
+Practical lightweight shortlist:
+
+- `literature-gap-map` — the default representative non-translation
+  runtime/package smoke because it exercises project bootstrap, truthful
+  operator blocking, and mission packaging without translation-specific
+  assumptions
+- `forecast-rough-notes` — messy-start onboarding smoke for bounded
+  clarifications/defaults handling
+- `forecast-rough-notes --discover` — discovery-first onboarding smoke for the
+  confirmed-discovery path
+- `partial-project-folder-repair` — bounded negative smoke for repair
+  diagnostics and non-mutation guarantees
+
+Follow-up PR tracking for that lane:
+
+1. keep `literature-gap-map` init + package in the deterministic clean-room
+   release harness as the minimum non-translation package path
+2. keep the `forecast-rough-notes` direct and `--discover` onboarding smokes in
+   the same lightweight provider-free harness
+3. only add more routine smoke cases when they stay deterministic, provider-free,
+   and materially expand workflow-shape coverage instead of repeating the
+   translation path under a new name
+
 ## Later / exploratory bets
 
 These bets may matter later, but they should remain off the immediate promise
