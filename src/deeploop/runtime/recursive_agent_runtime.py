@@ -75,6 +75,86 @@ def _dedupe_strings(values: list[str]) -> list[str]:
     return deduped
 
 
+def _boundary_watch_roots(mission_state: Mapping[str, Any] | None, target_repo: Path) -> list[Path]:
+    artifacts = mission_state.get("artifacts") if isinstance(mission_state, Mapping) else None
+    roots: list[Path] = []
+    if isinstance(artifacts, Mapping):
+        for raw_path in _normalize_list(artifacts.get("docs")) + _normalize_list(artifacts.get("configs")):
+            path = Path(raw_path).expanduser().resolve()
+            if not _is_relative_to(path, target_repo):
+                continue
+            roots.append(path.parent if path.is_file() else path)
+        data_artifacts = artifacts.get("data")
+        if isinstance(data_artifacts, list):
+            for record in data_artifacts:
+                if not isinstance(record, Mapping):
+                    continue
+                raw_path = _optional_string(record.get("path"))
+                if raw_path is None:
+                    continue
+                path = Path(raw_path).expanduser().resolve()
+                if not _is_relative_to(path, target_repo):
+                    continue
+                roots.append(path.parent if path.is_file() else path)
+    deduped: list[Path] = []
+    for root in sorted({path.resolve() for path in roots}):
+        if any(_is_relative_to(root, existing) for existing in deduped):
+            continue
+        deduped = [existing for existing in deduped if not _is_relative_to(existing, root)]
+        deduped.append(root)
+    return deduped
+
+
+def _snapshot_boundary_root_files(root: Path) -> dict[str, bytes]:
+    if not root.exists():
+        return {}
+    snapshot: dict[str, bytes] = {}
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        snapshot[path.relative_to(root).as_posix()] = path.read_bytes()
+    return snapshot
+
+
+def _prune_empty_dirs(root: Path) -> None:
+    for path in sorted((candidate for candidate in root.rglob("*") if candidate.is_dir()), reverse=True):
+        try:
+            next(path.iterdir())
+        except StopIteration:
+            path.rmdir()
+        except (FileNotFoundError, OSError):
+            continue
+
+
+def _restore_boundary_root_files(root: Path, snapshot: Mapping[str, bytes]) -> list[str]:
+    if not root.exists():
+        return []
+    restored: list[str] = []
+    current_files = {
+        path.relative_to(root).as_posix(): path
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+    snapshot_paths = set(snapshot)
+    current_paths = set(current_files)
+
+    for relative_path in sorted(current_paths - snapshot_paths):
+        current_files[relative_path].unlink(missing_ok=True)
+        restored.append(f"Restored substrate boundary by removing unexpected project file `{relative_path}`.")
+
+    for relative_path in sorted(snapshot_paths):
+        expected_bytes = snapshot[relative_path]
+        current_path = root / relative_path
+        if current_path.exists() and current_path.is_file() and current_path.read_bytes() == expected_bytes:
+            continue
+        current_path.parent.mkdir(parents=True, exist_ok=True)
+        current_path.write_bytes(expected_bytes)
+        restored.append(f"Restored substrate boundary by reverting project file `{relative_path}`.")
+
+    _prune_empty_dirs(root)
+    return restored
+
+
 def _is_list_like(raw: Any) -> bool:
     return raw is None or isinstance(raw, (str, Path, list))
 
@@ -1332,6 +1412,12 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
 
         started_at = now_utc()
         timeout_seconds = _timeout_seconds_for_action(config=config, policy=policy, action=action)
+        target_repo_root = Path(mission_state["target_repo"]).expanduser().resolve()
+        boundary_roots = _boundary_watch_roots(mission_state, target_repo_root)
+        boundary_snapshots = {
+            str(root): _snapshot_boundary_root_files(root)
+            for root in boundary_roots
+        }
         try:
             completed = subprocess.run(
                 full_command,
@@ -1351,6 +1437,11 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             stderr = (exc.stderr or "") + f"\nTimeoutExpired after {timeout_seconds} seconds\n"
             returncode = 124
         completed_at = now_utc()
+        boundary_warnings: list[str] = []
+        for root in boundary_roots:
+            boundary_warnings.extend(
+                _restore_boundary_root_files(root, boundary_snapshots.get(str(root), {}))
+            )
         log_path.write_text(stdout + stderr, encoding="utf-8")
 
         result_payload: dict[str, Any] | None = None
@@ -1372,7 +1463,13 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             degradation_warnings.append(
                 f"Agent subprocess exited with returncode {returncode} before producing a ready result payload."
             )
+        degradation_warnings.extend(boundary_warnings)
         if returncode == 0 and result_payload is not None and not result_errors:
+            if boundary_warnings:
+                result_payload = {
+                    **result_payload,
+                    "warnings": _dedupe_strings(_normalize_list(result_payload.get("warnings")) + boundary_warnings),
+                }
             iteration_status = _canonical_iteration_status(result_payload.get("status")) or str(result_payload["status"])
         elif result_payload is None:
             result_payload = {

@@ -257,6 +257,114 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         shutil.rmtree(sandbox_root, ignore_errors=True)
         shutil.rmtree(test_root, ignore_errors=True)
 
+    def test_runtime_restores_target_repo_boundary_after_agent_mutation(self) -> None:
+        mission_id = "recursive-agent-runtime-target-boundary"
+        sandbox_root = SANDBOXES_DIR / mission_id
+        test_root = _fresh_test_root("recursive-agent-runtime-target-boundary")
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        mission_root = test_root / "mission"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        project_root = test_root / "project"
+        docs_root = project_root / "docs"
+        docs_root.mkdir(parents=True, exist_ok=True)
+        brief_path = docs_root / "project-brief.md"
+        brief_path.write_text("# Project brief\n\nOriginal brief.\n", encoding="utf-8")
+        baseline_bytes = brief_path.read_bytes()
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "mission_id": mission_id,
+                    "mode": "sandboxed-yolo",
+                    "title": "Recursive runtime boundary mission",
+                    "summary": "Keep the substrate tree unchanged even if the agent edits it.",
+                    "objective": "Restore any provider-side project mutations before the iteration is recorded.",
+                    "current_phase": "idea-intake",
+                    "next_phase": "idea-intake",
+                    "status": "initialized",
+                    "target_repo": str(project_root),
+                    "artifacts": {
+                        "docs": [str(brief_path)],
+                        "configs": [],
+                        "data": [],
+                    },
+                    "roles": ["planner"],
+                    "autonomy_status": {"state": "initialized", "reason": "test"},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        fake_agent = test_root / "mutating_agent.py"
+        fake_agent.write_text(
+            "\n".join(
+                [
+                    "import argparse, json, os",
+                    "from pathlib import Path",
+                    "parser = argparse.ArgumentParser()",
+                    "parser.add_argument('--result-json', required=True)",
+                    "args = parser.parse_args()",
+                    "target_repo = Path.cwd()",
+                    "(target_repo / 'docs' / 'project-brief.md').write_text('# Mission brief\\n\\nMutated.\\n', encoding='utf-8')",
+                    "(target_repo / 'docs' / 'generated-note.md').write_text('should not persist\\n', encoding='utf-8')",
+                    "payload = {",
+                    "    'status': 'complete',",
+                    "    'summary': 'Finished without leaving substrate edits behind.',",
+                    "    'action_result': {",
+                    "        'loop_action_id': os.environ.get('DEEPLOOP_LOOP_ACTION_ID') or None,",
+                    "        'status': 'completed',",
+                    "        'phase': os.environ.get('DEEPLOOP_MISSION_ACTION_PHASE') or 'idea-intake',",
+                    "        'kind': os.environ.get('DEEPLOOP_MISSION_ACTION_KIND') or 'artifact-edit',",
+                    "        'notes': ['Mutated substrate files during the test.'],",
+                    "    },",
+                    "    'phase_control': {",
+                    "        'current_phase': 'idea-intake',",
+                    "        'next_phase': 'idea-intake',",
+                    "        'decision_type': 'hold',",
+                    "        'branch_status': 'active',",
+                    "        'recovery_status': 'not-needed',",
+                    "        'summary': 'Boundary test complete.',",
+                    "    },",
+                    "}",
+                    "Path(args.result_json).write_text(json.dumps(payload, indent=2) + '\\n', encoding='utf-8')",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        config_path = test_root / "recursive-runtime.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "mission_state": str(mission_state_path),
+                    "loop_name": "boundary-loop",
+                    "max_iterations": 1,
+                    "agent": {
+                        "command": [
+                            sys.executable,
+                            str(fake_agent),
+                            "--result-json",
+                            "{result_json_path}",
+                        ],
+                        "cwd": str(project_root),
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        result = run_recursive_agent_loop(config_path)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(brief_path.read_bytes(), baseline_bytes)
+        self.assertFalse((project_root / "docs" / "generated-note.md").exists())
+        self.assertIn("Restored substrate boundary", "\n".join(result["latest_outcome"]["warnings"]))
+        shutil.rmtree(sandbox_root, ignore_errors=True)
+        shutil.rmtree(test_root, ignore_errors=True)
+
     def test_runtime_respects_remaining_iteration_budget_from_persisted_state(self) -> None:
         mission_id = "recursive-agent-runtime-budget-resume"
         sandbox_root = SANDBOXES_DIR / mission_id
