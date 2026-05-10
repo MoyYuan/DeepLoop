@@ -183,7 +183,7 @@ rejection reason plus a warning.
 
 The current recursive budget warnings fire in two places:
 
-- the runtime prints a stderr warning once utilization reaches 80% of
+- the runtime prints a stderr warning when utilization reaches at least 80% of
   `max_iterations` and at least one recursive iteration remains
 - `deeploop analyze-budget` warns when the pending queue projects to at least
   80% utilization, and escalates to `over-budget` when it exceeds the ceiling
