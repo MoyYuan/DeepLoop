@@ -194,6 +194,32 @@ python scripts/testing/run_test_tier.py --tier real
 
 The runner is the source of truth for the current tier assignments.
 
+## Mission runtime investigation entrypoint
+
+When maintainers need a canonical fault-handler-enabled entrypoint for
+`tests.test_mission_runtime`, use:
+
+```text
+make test-mission-runtime
+```
+
+That target enables `PYTHONFAULTHANDLER=1` and runs:
+
+```text
+python -m unittest tests.test_mission_runtime -q
+```
+
+If the full module passes but further narrowing is still useful, start with the
+recursive-agent lifecycle and final-report closure paths:
+
+```text
+PYTHONFAULTHANDLER=1 python -m unittest \
+  tests.test_mission_runtime.MissionRuntimeTests.test_runtime_completes_init_state_via_phase_execution_hints \
+  tests.test_mission_runtime.MissionRuntimeTests.test_runtime_completes_generic_plain_folder_lifecycle_via_recursive_agent_hints \
+  tests.test_mission_runtime.MissionRuntimeTests.test_runtime_completes_when_no_win_budget_closure_waives_replication \
+  tests.test_mission_runtime.MissionRuntimeTests.test_runtime_completes_when_final_report_no_promotion_closes_replication -q
+```
+
 ## Why Tier 3 matters so much
 
 The recent mission failure was not mainly a missing unit test. It was a missing
