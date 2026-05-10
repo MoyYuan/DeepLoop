@@ -78,7 +78,7 @@ Practical lightweight shortlist:
 - `partial-project-folder-repair` — bounded negative smoke for repair
   diagnostics and non-mutation guarantees
 
-Follow-up PR tracking for that lane:
+Follow-up PR tracking for this smoke-expansion work:
 
 1. keep `literature-gap-map` init + package in the deterministic clean-room
    release harness as the minimum non-translation package path
