@@ -19,6 +19,9 @@ the durable-artifact and policy-oriented view that connects those surfaces.
 - keep release-planning notes in `docs/release/`
 - run the release policy and review CLI before promotion
 - package mission outputs before publication or handoff
+- keep maintainer-only release backlog notes in
+  `docs/release/release-maintenance.md` or linked GitHub issues, not in this
+  companion deep dive
 - use the mission-local platform release handoff as a summary surface, not as a
   replacement for operator approval
 
