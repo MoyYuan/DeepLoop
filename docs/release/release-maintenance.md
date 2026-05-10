@@ -45,6 +45,20 @@ Current preflight posture:
   stale-output recovery hardening, and the strengthened clean-room release gate
   rather than a broader portability or autonomy claim
 
+## Maintainer hardening backlog
+
+Keep release hardening follow-ups version-agnostic on this maintainer surface or
+in the linked GitHub issues, not in published release notes or deep-dive pages.
+
+Current backlog pointers:
+
+- [ ] [#55](https://github.com/tnetal/DeepLoop/issues/55) Investigate the
+  unrelated full mission-runtime segfault
+- [ ] [#56](https://github.com/tnetal/DeepLoop/issues/56) Evaluate optional
+  recursive budget-warning/noise tuning
+- [ ] [#57](https://github.com/tnetal/DeepLoop/issues/57) Expand smoke coverage
+  beyond translation workflows
+
 Docs-only release-prep edits are ignored by the `push` leg of CI, so release
 maintainers should still run the release-facing checks locally before
 publishing:

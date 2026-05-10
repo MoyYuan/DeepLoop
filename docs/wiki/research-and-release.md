@@ -19,21 +19,11 @@ the durable-artifact and policy-oriented view that connects those surfaces.
 - keep release-planning notes in `docs/release/`
 - run the release policy and review CLI before promotion
 - package mission outputs before publication or handoff
+- keep maintainer-only release backlog notes in
+  `docs/release/release-maintenance.md` or linked GitHub issues, not in this
+  companion deep dive
 - use the mission-local platform release handoff as a summary surface, not as a
   replacement for operator approval
-
-## Post-`v0.1.2` hardening follow-ups
-
-These items were intentionally left for post-`v0.1.2` maintainer follow-up work.
-Track them as internal release hardening backlog, not as part of the published
-release notes:
-
-- [ ] [#55](https://github.com/tnetal/DeepLoop/issues/55) Investigate the
-  unrelated full mission-runtime segfault
-- [ ] [#56](https://github.com/tnetal/DeepLoop/issues/56) Evaluate optional
-  recursive budget-warning/noise tuning
-- [ ] [#57](https://github.com/tnetal/DeepLoop/issues/57) Expand smoke coverage
-  beyond translation workflows
 
 ## Key references
 
