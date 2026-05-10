@@ -62,21 +62,27 @@ promise surface.
 
 ### Next-cycle smoke expansion tracking
 
-The next cycle should keep routine smoke coverage broader than the translation
-workflow without turning release validation into a long acceptance run.
+The deterministic clean-room harness already exercises related
+non-translation paths today. The next cycle should keep that routine smoke
+coverage broader than the translation workflow without turning release
+validation into a long acceptance run.
 
-Practical lightweight shortlist:
+Existing lightweight harness coverage today:
 
-- `literature-gap-map` — the default representative non-translation
+- `literature-gap-map` — the current representative non-translation
   runtime/package smoke because it exercises project bootstrap, truthful
   operator blocking, and mission packaging without translation-specific
   assumptions
-- `forecast-rough-notes` — messy-start onboarding smoke for bounded
+- `forecast-rough-notes` — the current messy-start onboarding smoke for bounded
   clarifications/defaults handling
-- `forecast-rough-notes --discover` — discovery-first onboarding smoke for the
-  confirmed-discovery path
+- `forecast-rough-notes --discover` — the current discovery-first onboarding
+  smoke for the confirmed-discovery path
+
+Next-cycle expansion target:
+
 - `partial-project-folder-repair` — bounded negative smoke for repair
-  diagnostics and non-mutation guarantees
+  diagnostics and non-mutation guarantees if it stays lightweight in the same
+  deterministic harness
 
 Follow-up PR tracking for this smoke-expansion work:
 
@@ -84,7 +90,10 @@ Follow-up PR tracking for this smoke-expansion work:
    release harness as the minimum non-translation package path
 2. keep the `forecast-rough-notes` direct and `--discover` onboarding smokes in
    the same lightweight provider-free harness
-3. only add more routine smoke cases when they stay deterministic, provider-free,
+3. only promote `partial-project-folder-repair` to routine smoke if it remains
+   deterministic, provider-free, and materially distinct from the existing
+   paths
+4. only add more routine smoke cases when they stay deterministic, provider-free,
    and materially expand workflow-shape coverage instead of repeating the
    translation path under a new name
 
