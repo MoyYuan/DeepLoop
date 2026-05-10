@@ -3,7 +3,7 @@ MISSION ?=
 QUEUE ?=
 MISSION_STATE ?=
 
-.PHONY: setup repo-check test test-unit test-integration public-bootstrap-preflight public-bootstrap-check test-smoke test-real test-proof-matrix test-acceptance smoke-manifest lint docs-build docs-serve mission-smoke sanity-gate-smoke record-finding autoexec-smoke mission-advance mission-run mission-meta-eval mission-package mission-release-review mission-release-promote mission-monitor mission-agent-loop docker-release-validate docker-release-validate-pypi
+.PHONY: setup repo-check test test-unit test-integration test-mission-runtime public-bootstrap-preflight public-bootstrap-check test-smoke test-real test-proof-matrix test-acceptance smoke-manifest lint docs-build docs-serve mission-smoke sanity-gate-smoke record-finding autoexec-smoke mission-advance mission-run mission-meta-eval mission-package mission-release-review mission-release-promote mission-monitor mission-agent-loop docker-release-validate docker-release-validate-pypi
 SANITY_CONFIG ?=
 SANITY_ARTIFACT ?= research-artifact
 LAUNCH_METADATA ?=
@@ -28,6 +28,9 @@ test-unit:
 
 test-integration:
 	@$(PYTHON) scripts/testing/run_test_tier.py --tier integration
+
+test-mission-runtime:
+	@PYTHONFAULTHANDLER=1 $(PYTHON) -m unittest tests.test_mission_runtime -q
 
 public-bootstrap-check:
 	@$(MAKE) setup
