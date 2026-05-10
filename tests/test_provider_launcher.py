@@ -37,6 +37,23 @@ class ProviderLauncherTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_provider_prompt_command("hello world", provider_family="unknown-provider")
 
+    def test_build_command_for_openai_compatible_api_uses_prompt_file(self) -> None:
+        command = build_provider_prompt_command(
+            "hello world",
+            provider_family="openai-compatible-api",
+            prompt_file=Path("/tmp/prompt.md"),
+            result_json_path=Path("/tmp/result.json"),
+            model="Qwen3.6-27B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(command[:3], [sys.executable, "-m", "deeploop.runtime.openai_compatible_adapter"])
+        self.assertIn("--prompt-file", command)
+        self.assertIn("--result-json-path", command)
+        self.assertIn("Qwen3.6-27B-UD-Q4_K_XL.gguf", command)
+
+    def test_build_command_for_openai_compatible_api_requires_prompt_file(self) -> None:
+        with self.assertRaises(ValueError):
+            build_provider_prompt_command("hello world", provider_family="openai-compatible-api")
+
     def test_resolve_provider_idle_timeout_prefers_longer_copilot_window(self) -> None:
         self.assertEqual(resolve_provider_idle_timeout_seconds("copilot-cli", None), 900.0)
         self.assertEqual(resolve_provider_idle_timeout_seconds("copilot-cli", 30.0), 30.0)

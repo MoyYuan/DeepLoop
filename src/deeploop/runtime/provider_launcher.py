@@ -13,11 +13,13 @@ from deeploop.core.phase_defaults import (
     default_role_for_phase as _default_role_for_phase,
 )
 from deeploop.runtime.copilot_adapter import build_copilot_prompt_command
+from deeploop.runtime.openai_compatible_adapter import build_openai_compatible_prompt_command
 
-_SUPPORTED_PROVIDER_FAMILIES = frozenset({"copilot-cli"})
+_SUPPORTED_PROVIDER_FAMILIES = frozenset({"copilot-cli", "openai-compatible-api"})
 _DEFAULT_IDLE_TIMEOUT_SECONDS = 120.0
 _PROVIDER_IDLE_TIMEOUT_SECONDS = {
     "copilot-cli": 900.0,
+    "openai-compatible-api": 300.0,
 }
 
 
@@ -25,6 +27,8 @@ def build_provider_prompt_command(
     prompt_text: str,
     *,
     provider_family: str = "copilot-cli",
+    prompt_file: Path | None = None,
+    result_json_path: Path | None = None,
     add_dirs: Sequence[Path] = (),
     model: str | None = None,
     allow_all: bool = True,
@@ -37,13 +41,21 @@ def build_provider_prompt_command(
         raise ValueError(
             f"Unsupported provider family '{resolved_provider_family}'. Supported families: {supported}"
         )
-    return build_copilot_prompt_command(
-        prompt_text,
-        add_dirs=add_dirs,
+    if resolved_provider_family == "copilot-cli":
+        return build_copilot_prompt_command(
+            prompt_text,
+            add_dirs=add_dirs,
+            model=model,
+            allow_all=allow_all,
+            no_ask_user=no_ask_user,
+            output_format=output_format,
+        )
+    if prompt_file is None:
+        raise ValueError(f"provider family '{resolved_provider_family}' requires a prompt file")
+    return build_openai_compatible_prompt_command(
+        prompt_file,
+        result_json_path=result_json_path,
         model=model,
-        allow_all=allow_all,
-        no_ask_user=no_ask_user,
-        output_format=output_format,
     )
 
 
@@ -863,6 +875,8 @@ def run_provider_prompt(
     command = build_provider_prompt_command(
         prompt_text,
         provider_family=provider_family,
+        prompt_file=prompt_file,
+        result_json_path=result_json_path,
         add_dirs=add_dirs,
         model=model,
         allow_all=allow_all,

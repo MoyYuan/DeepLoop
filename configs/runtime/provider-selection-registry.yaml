@@ -112,7 +112,7 @@ selection_profiles:
         - vllm
         - local-transformers
   openai-compatible-api-control-plane:
-    status: reserved-runtime-adapter
+    status: implemented
     provider_family: openai-compatible-api
     backend: openai-compatible-api
     model_selection:
@@ -125,6 +125,9 @@ selection_profiles:
       provider_family_switch: explicit-only
       backend_switch: provider-native
       model_fallback: explicit-model-ladder-only
+    notes:
+      - runtime support currently covers prompt/result control-plane flows that return structured JSON
+      - recursive-agent tool execution remains on the copilot-cli path
   anthropic-api-control-plane:
     status: reserved-runtime-adapter
     provider_family: anthropic-api

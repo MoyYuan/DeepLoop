@@ -36,14 +36,15 @@ first-class machine-level setup set:
 | Provider family | Machine setup contract | Current runtime integration | Canonical readiness summary |
 | --- | --- | --- | --- |
 | Copilot CLI | documented now | implemented | `copilot` installed, DeepLoop provider launcher available, machine already authenticated |
-| OpenAI-compatible API providers | documented now | deferred | API key env var set, endpoint/base URL chosen outside repo, auth handled outside repo |
+| OpenAI-compatible API providers | documented now | implemented | API key env var set, endpoint/base URL chosen outside repo, auth handled outside repo, prompt/result control-plane adapter available |
 | Anthropic API providers | documented now | deferred | API key env var set, endpoint choice handled outside repo, auth handled outside repo |
 | local-transformers | documented now | implemented | `torch` + `transformers` import cleanly and model weights are reachable |
 | vllm | documented now | implemented | `torch` + `vllm` import cleanly and the machine exposes a suitable accelerator/runtime |
 
-The "deferred" rows are still first-class in this setup contract, but DeepLoop
-does not yet ship the public request-adapter layer for them. The later mission
-selection contract is documented separately.
+The Anthropic row is still first-class in this setup contract even though its
+runtime adapter remains deferred. OpenAI-compatible setup now has a public
+control-plane prompt/result adapter; the later mission selection contract is
+documented separately.
 
 ## Canonical sources of truth
 
@@ -129,8 +130,12 @@ path. Custom scripts must follow the same rule.
     environment
   - if `OPENAI_BASE_URL` is overridden, the chosen HTTPS endpoint is reachable
 
-DeepLoop does not yet ship a public request adapter. Setup is documented here;
-mission/runtime provider selection is documented separately.
+DeepLoop now ships a public control-plane prompt/result adapter for this family.
+It reads prompt files, calls an OpenAI-compatible `/v1/chat/completions`
+endpoint, and materializes structured result JSON for prompt/result flows such
+as `deeploop analyze`. Tool-using recursive-agent execution still remains on the
+Copilot CLI path. Setup is documented here; mission/runtime provider selection
+is documented separately.
 
 ### Anthropic API providers
 
