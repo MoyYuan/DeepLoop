@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` currently declares `0.1.3`, so
-the publishable tag and GitHub Release tag must be `v0.1.3`.
+For the next public release, `pyproject.toml` now declares `0.1.4`, so the
+publishable tag and GitHub Release tag must be `v0.1.4`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -41,9 +41,9 @@ Current preflight posture:
   Python 3.11 path
 - merged `main` has already been rechecked with the integrated release-baseline
   unittest sweep, `make docs-build`, and `make public-bootstrap-check`
-- the next release should emphasize onboarding/operator clarity, bounded repair,
-  runtime/package hardening, and the strengthened clean-room release gate rather
-  than a broader portability or autonomy claim
+- the next release should emphasize installed-runtime import correctness,
+  stale-output recovery hardening, and the strengthened clean-room release gate
+  rather than a broader portability or autonomy claim
 
 Docs-only release-prep edits are ignored by the `push` leg of CI, so release
 maintainers should still run the release-facing checks locally before
@@ -84,29 +84,28 @@ publishing:
      - proof / CI changes
      - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.1.3`)
+## GitHub release notes draft (`v0.1.4`)
 
 ```md
-## DeepLoop v0.1.3
+## DeepLoop v0.1.4
 
-This patch release makes the documented Linux + Python 3.11 public-alpha path
-easier to start, easier to recover, and better proven in clean-room validation
-without widening the public claim.
+This patch release keeps the published Linux + Python 3.11 public-alpha path
+honest after wheel install, hardens runtime recovery against stale outputs, and
+adds release-proof coverage for the shipped launcher without widening the public
+claim.
 
-- **Install / bootstrap:** the public `deeploop` CLI is now the clearer entry
-  surface, discovery reuses detected project context, and incomplete plain-folder
-  projects stop with bounded repair guidance instead of opaque failures.
-- **Runtime / operator:** operator handoffs now point to public `deeploop ...`
-  commands, degraded provider paths emit cleaner canonical warnings, and resumed
-  runs preserve better recovery/package context on the supported path.
-- **Package / release review:** runtime/package summaries now expose clearer
-  recovery detail, and the release-candidate packaging/review path remains
-  bounded and explicit.
-- **Proof / CI:** the Docker clean-room gate now rechecks canonical bootstrap,
-  messy-start clarifications/defaults, discovery-first onboarding, and bounded
-  bootstrap-repair diagnostics on the same release path; merged-main release
-  checks were also revalidated with the integrated unittest sweep,
-  `make public-bootstrap-check`, and `make docs-build`.
+- **Install / bootstrap:** the shipped runtime launcher now resolves imports
+  correctly when it is executed from an installed wheel, not only from a repo
+  checkout or runtime cache.
+- **Runtime / operator:** non-execution phase recovery now ignores stale output
+  artifacts even on timestamp ties, so old files do not look like fresh phase
+  completions.
+- **Package / release review:** the release artifact keeps the packaged runtime
+  script executable as shipped, which is now covered by an explicit wheel-based
+  regression test.
+- **Proof / CI:** merged-main release checks were revalidated with targeted
+  provider-launcher/package tests, `make public-bootstrap-check`,
+  `make docs-build`, and the Docker clean-room release validation harness.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
   public alpha for the documented Linux path; this release improves UX,
   resilience, and proof discipline rather than widening autonomy scope.

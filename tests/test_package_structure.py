@@ -133,6 +133,51 @@ class PackageStructureTests(unittest.TestCase):
         }
         self.assertTrue(expected_assets.issubset(wheel_files), expected_assets - wheel_files)
 
+    def test_packaged_invoke_provider_prompt_bootstraps_package_imports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wheel_dir = Path(tmpdir) / "wheelhouse"
+            site_packages = Path(tmpdir) / "site-packages"
+            wheel_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "wheel",
+                        str(REPO_ROOT),
+                        "--no-deps",
+                        "--no-build-isolation",
+                        "--wheel-dir",
+                        str(wheel_dir),
+                    ],
+                    cwd=REPO_ROOT,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as exc:
+                self.fail((exc.stdout or "") + (exc.stderr or ""))
+
+            wheel_paths = list(wheel_dir.glob("deeploop-*.whl"))
+            self.assertEqual(len(wheel_paths), 1, [path.name for path in wheel_paths])
+            with ZipFile(wheel_paths[0]) as wheel:
+                wheel.extractall(site_packages)
+
+            packaged_script = site_packages / "deeploop" / "_assets" / "scripts" / "runtime" / "invoke_provider_prompt.py"
+            self.assertTrue(packaged_script.exists(), packaged_script)
+
+            completed = subprocess.run(
+                [sys.executable, "-S", str(packaged_script), "--help"],
+                cwd=REPO_ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("--provider-family", completed.stdout)
+
     def test_release_hygiene_ignores_generated_build_artifacts(self) -> None:
         gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
         for pattern in ("site/", "*.egg-info/", "docs/_build/", "build/", "dist/", ".vscode/"):

@@ -1,13 +1,36 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-SRC_ROOT = REPO_ROOT / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.insert(0, str(SRC_ROOT))
+SCRIPT_PATH = Path(__file__).resolve()
+REPO_ROOT = SCRIPT_PATH.parents[2]
+
+
+def _bootstrap_import_path() -> None:
+    candidates: list[Path] = []
+
+    cache_src = os.environ.get("DEEPLOOP_RUNTIME_CACHE_SRC", "").strip()
+    if cache_src:
+        candidates.append(Path(cache_src).expanduser().resolve())
+
+    repo_src = REPO_ROOT / "src"
+    if repo_src.is_dir():
+        candidates.append(repo_src)
+
+    package_root = SCRIPT_PATH.parents[3]
+    if package_root.name == "deeploop" and (package_root / "__init__.py").is_file():
+        candidates.append(package_root.parent)
+
+    for candidate in candidates:
+        candidate_text = str(candidate)
+        if candidate.is_dir() and candidate_text not in sys.path:
+            sys.path.insert(0, candidate_text)
+
+
+_bootstrap_import_path()
 
 from deeploop.runtime.provider_launcher import run_provider_prompt
 

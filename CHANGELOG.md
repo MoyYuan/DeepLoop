@@ -11,6 +11,26 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.4
+
+Patch release focused on keeping the published runtime path honest after
+wheel install, tightening stale-output recovery for non-execution phases, and
+recording that proof in the release surface.
+
+### Changed
+
+- the packaged runtime launcher now bootstraps imports from either the repo
+  `src/` tree, an explicit runtime cache source, or the installed `deeploop`
+  package so the shipped asset script works in wheel-installed environments
+- release/package structure proof now includes a regression check that executes
+  the shipped `invoke_provider_prompt.py` asset directly from an extracted wheel
+
+### Fixed
+
+- non-execution phase recovery now ignores stale output files even when prompt
+  and output timestamps tie, preventing an old artifact from being mistaken for
+  fresh work during runtime handoff
+
 ## 0.1.3
 
 Patch release focused on making the supported DeepLoop path easier to start,

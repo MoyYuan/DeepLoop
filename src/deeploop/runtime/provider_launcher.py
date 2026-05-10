@@ -209,16 +209,24 @@ def _extract_transition_metadata(prompt_text: str, next_phase: str | None) -> tu
     return (match.group(1).strip() or "active", match.group(2).strip() or "not-needed")
 
 
-def _collect_output_files(outputs_root: Path, *, min_mtime: float | None = None) -> list[Path]:
+def _collect_output_files(
+    outputs_root: Path,
+    *,
+    min_mtime_ns: int | None = None,
+    min_inode_on_tie: int | None = None,
+) -> list[Path]:
     if not outputs_root.exists():
         return []
     collected: list[Path] = []
     for path in outputs_root.rglob("*"):
         if not path.is_file():
             continue
-        if min_mtime is not None:
+        if min_mtime_ns is not None:
             try:
-                if path.stat().st_mtime < min_mtime:
+                path_stat = path.stat()
+                path_marker = (max(path_stat.st_mtime_ns, path_stat.st_ctime_ns), path_stat.st_ino)
+                prompt_marker = (min_mtime_ns, min_inode_on_tie or -1)
+                if path_marker <= prompt_marker:
                     continue
             except OSError:
                 continue
@@ -639,7 +647,8 @@ def _maybe_materialize_execution_phase_result(
 def _maybe_materialize_phase_result_from_outputs(
     *,
     prompt_text: str,
-    prompt_started_at: float,
+    prompt_started_at: int,
+    prompt_started_at_inode: int | None,
     result_json_path: Path,
     sandbox_root: Path | None,
     mission_state_path: Path | None,
@@ -659,7 +668,11 @@ def _maybe_materialize_phase_result_from_outputs(
     if not current_phase or current_phase == "execution":
         return None
     outputs_root = sandbox_root / "outputs"
-    produced_files = _collect_output_files(outputs_root, min_mtime=prompt_started_at)
+    produced_files = _collect_output_files(
+        outputs_root,
+        min_mtime_ns=prompt_started_at,
+        min_inode_on_tie=prompt_started_at_inode,
+    )
     required_outputs, next_phase_candidates = _extract_prompt_phase_constraints(prompt_text)
     if not _phase_outputs_are_satisfied(required_outputs, produced_files):
         return None
@@ -860,9 +873,12 @@ def run_provider_prompt(
 ) -> subprocess.CompletedProcess[str]:
     prompt_text = prompt_file.read_text(encoding="utf-8")
     try:
-        prompt_started_at = prompt_file.stat().st_mtime
+        prompt_stat = prompt_file.stat()
+        prompt_started_at_ns = max(prompt_stat.st_mtime_ns, prompt_stat.st_ctime_ns)
+        prompt_started_at_inode = prompt_stat.st_ino
     except OSError:
-        prompt_started_at = time.time()
+        prompt_started_at_ns = time.time_ns()
+        prompt_started_at_inode = None
     add_dirs: list[Path] = [prompt_file.parent]
     if result_json_path is not None:
         add_dirs.append(result_json_path.parent)
@@ -948,7 +964,8 @@ def run_provider_prompt(
                     if recovered is None:
                         recovered = _maybe_materialize_phase_result_from_outputs(
                             prompt_text=prompt_text,
-                            prompt_started_at=prompt_started_at,
+                            prompt_started_at=prompt_started_at_ns,
+                            prompt_started_at_inode=prompt_started_at_inode,
                             result_json_path=result_json_path,
                             sandbox_root=sandbox_root,
                             mission_state_path=mission_state_path,
@@ -1000,7 +1017,8 @@ def run_provider_prompt(
         ):
             recovered = _maybe_materialize_phase_result_from_outputs(
                 prompt_text=prompt_text,
-                prompt_started_at=prompt_started_at,
+                prompt_started_at=prompt_started_at_ns,
+                prompt_started_at_inode=prompt_started_at_inode,
                 result_json_path=result_json_path,
                 sandbox_root=sandbox_root,
                 mission_state_path=mission_state_path,
