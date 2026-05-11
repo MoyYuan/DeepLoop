@@ -25,7 +25,8 @@ When these areas change, update the related docs in the same change set.
 | `manage_mission.py`, operator commands, or mission control flow | `docs/getting-started.md`, `docs/guide/operator.md`, `docs/guide/faq.md`, relevant README snippets |
 | Runtime behavior, state transitions, executor behavior, or boundaries | `docs/concepts/architecture.md`, `docs/concepts/glossary.md`, `docs/reference/index.md`, related `docs/design/` pages |
 | Research evaluation assumptions or artifact expectations | `docs/research/README.md`, `docs/wiki/research-and-release.md`, relevant design notes |
-| Packaging, release review, or approval flow | `docs/release/README.md`, `docs/reference/index.md`, `docs/design/release-automation.md` |
+| Packaging, release review, approval flow, or release-gate claims | `docs/release/README.md`, `docs/release/release-maintenance.md`, `scripts/release/README.md`, `docs/reference/testing-strategy.md`, `docs/reference/index.md`, `docs/design/release-automation.md` |
+| Gate 1 / Gate 2 expectations, approved runtime lanes, or proof commands | `docs/release/README.md`, `docs/release/release-maintenance.md`, `scripts/release/README.md`, `docs/reference/provider-setup.md`, `docs/reference/provider-selection.md`, `docs/reference/testing-strategy.md` |
 | Docs structure or page ownership | `docs/index.md`, `docs/reference/index.md`, this page, and any affected landing pages |
 
 ## Placement rules
@@ -46,6 +47,9 @@ Before you consider a docs change complete, check that:
 3. commands and file paths still match the repo
 4. navigation points readers back to the canonical docs path
 5. terminology matches the current runtime and operator language
+6. Gate 1 / Gate 2 claims still match `configs/runtime/gate-2-runtime-lanes.yaml`,
+   `configs/runtime/gate-2-real-runtime-validation.yaml`, and the actual
+   `scripts/release/real_runtime_validation.py` workflow
 
 ## Validation
 

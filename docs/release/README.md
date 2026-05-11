@@ -63,8 +63,8 @@ beyond bounded-support alpha.
 
 ## Current release gate
 
-The public release gate is still intentionally compact, but it now has a clear
-**Gate 1 vs Gate 2** split:
+The public release gate is still intentionally compact, but it now has a
+clear **Gate 1 vs Gate 2** split:
 
 ### Gate 1 — baseline install/bootstrap proof
 
@@ -81,7 +81,7 @@ Gate 1 proves the documented install/onboarding path, the clean-room Docker
 bootstrap smoke, and the public docs claim. It does **not** prove a live
 provider-backed runtime by itself.
 
-### Gate 2 — real runtime proof contract
+### Gate 2 — real runtime proof
 
 Gate 2 is required before coordinated release signoff and for high-risk changes
 that touch onboarding, packaging, provider wiring, runtime routing, Docker,
@@ -93,17 +93,29 @@ The current approved Gate 2 phase requires both lanes from
 1. **local Qwen via an OpenAI-compatible lane**
 2. **Copilot CLI with GPT-5 mini (`gpt-5-mini`) for the coding-agent lane**
 
+Use the repo-owned harness:
+
+```text
+python scripts/release/real_runtime_validation.py \
+  --validation-id <release-id> \
+  --manual-note "fresh env + documented install path used for Gate 2" \
+  --lane-note "local-qwen-openai-compatible=host-local Qwen/OpenAI-compatible server was started outside DeepLoop" \
+  --lane-note "copilot-cli-gpt-5-mini-coding-agent=machine was already authenticated for Copilot CLI before the run"
+```
+
 What counts as Gate 2 proof:
 
 - a real LLM-backed mission/runtime path on each approved lane
-- durable mission/runtime evidence recorded for each lane, plus the resolved
-  provider family, backend, and model/profile metadata
-- explicit notes for the host-local Qwen setup boundary and the manual Copilot
-  CLI authentication boundary
+- durable mission/runtime evidence written under the configured workspace
+  release-validation root
+- the batch summary (`gate_2_real_runtime_validation.json` / `.md`) plus the
+  per-lane `validation_record.json` / `.md` files
+- recorded provider family, backend, model/profile, and manual boundary notes
 
 What does **not** count as Gate 2 proof:
 
 - provider-free smoke by itself
+- `deeploop provider-ready` alone
 - Docker clean-room bootstrap proof alone
 - an unrecorded shell transcript with no durable artifacts
 - a commercial OpenAI-compatible endpoint in this approved phase

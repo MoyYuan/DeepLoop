@@ -128,6 +128,8 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("local qwen", testing_text)
         self.assertIn("gpt-5 mini", testing_text)
         self.assertIn("configs/runtime/gate-2-runtime-lanes.yaml", testing_text)
+        self.assertIn("real_runtime_validation.py", testing_text)
+        self.assertIn("validation_record.json", testing_text)
         self.assertIn("provider-free smoke remains baseline-only", testing_text)
         self.assertIn("make test-acceptance", testing_text)
         self.assertIn("translation-paper-scale", acceptance_text)
@@ -220,18 +222,22 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("local qwen", release_maintenance_text)
         self.assertIn("gpt-5 mini", release_maintenance_text)
         self.assertIn("no commercial openai-compatible lane in this phase", release_maintenance_text)
+        self.assertIn("real_runtime_validation.py", release_maintenance_text)
+        self.assertIn("validation_record.json", release_maintenance_text)
         self.assertIn("docker clean-room", release_text)
         self.assertIn("provider-free smoke remains baseline-only release evidence", release_text)
         self.assertIn("gate 1", release_text)
         self.assertIn("openai-compatible lane", release_text)
         self.assertIn("copilot cli with gpt-5 mini", release_text)
         self.assertIn("configs/runtime/gate-2-runtime-lanes.yaml", release_text)
+        self.assertIn("gate_2_real_runtime_validation.json", release_text)
         self.assertIn("safety boundary", autonomy_text)
         self.assertIn("product gap", autonomy_text)
         self.assertIn("scope boundary", design_text)
         self.assertIn("public-release story", design_text)
         self.assertIn("gate 1", design_text)
         self.assertIn("gate 2", design_text)
+        self.assertIn("real_runtime_validation.py", design_text)
         self.assertIn("examples/translation-budget-ladder", examples_text)
         self.assertIn("proof-case.yaml", examples_text)
         self.assertIn("translation-budget-ladder", starter_text)
@@ -525,6 +531,29 @@ class RepoContractTests(unittest.TestCase):
         recursive_config = yaml.safe_load(recursive_example.read_text(encoding="utf-8"))
         self.assertEqual(recursive_config["provider_selection"]["profile"], "gate2-coding-agent-copilot-gpt5-mini")
         self.assertEqual(recursive_config["provider_selection"]["mission_default"]["model"]["alias"], "gpt-5-mini")
+
+    def test_gate_2_real_runtime_validation_harness_surfaces_exist(self) -> None:
+        harness_config = REPO_ROOT / "configs" / "runtime" / "gate-2-real-runtime-validation.yaml"
+        harness_script = REPO_ROOT / "scripts" / "release" / "real_runtime_validation.py"
+        release_scripts_doc = REPO_ROOT / "scripts" / "release" / "README.md"
+        self.assertTrue(harness_config.exists(), f"missing Gate 2 validation harness config: {harness_config}")
+        self.assertTrue(harness_script.exists(), f"missing Gate 2 validation harness script: {harness_script}")
+
+        config = yaml.safe_load(harness_config.read_text(encoding="utf-8"))
+        self.assertEqual(config["contract_id"], "gate-2-real-runtime-validation")
+        self.assertEqual(config["source_lane_contract"], "configs/runtime/gate-2-runtime-lanes.yaml")
+        self.assertEqual(
+            set(config["lanes"]),
+            {"local-qwen-openai-compatible", "copilot-cli-gpt-5-mini-coding-agent"},
+        )
+        self.assertEqual(config["lanes"]["local-qwen-openai-compatible"]["validation_surface"], "deeploop-analyze")
+        self.assertEqual(
+            config["lanes"]["copilot-cli-gpt-5-mini-coding-agent"]["validation_surface"],
+            "recursive-agent-runtime",
+        )
+
+        release_scripts_text = release_scripts_doc.read_text(encoding="utf-8").lower()
+        self.assertIn("real_runtime_validation.py", release_scripts_text)
 
     def test_local_qwen_openai_execution_profile_is_documented(self) -> None:
         contract = yaml.safe_load(

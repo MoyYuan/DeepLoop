@@ -184,17 +184,18 @@ DeepLoop's release story sits on top of the engineering tiers:
   - `make docker-release-validate`
   - `make docs-build`
   - proves install/bootstrap/docs integrity, not the final live runtime claim
-- **Gate 2** — coordinated release signoff and high-risk runtime changes
+- **Gate 2** — required for every release and for high-risk PRs
+  - run `python scripts/release/real_runtime_validation.py ...`
   - prove both approved lanes:
     - local Qwen via the OpenAI-compatible lane
     - Copilot CLI with `gpt-5-mini` for the coding-agent lane
-  - use `configs/runtime/gate-2-runtime-lanes.yaml` as the machine-readable
-    source of truth
-  - record durable mission/runtime evidence and keep Copilot machine auth
-    explicit
+  - keep manual machine auth explicit and record durable evidence (`gate_2_real_runtime_validation.json` / `.md` and each lane's `validation_record.json` / `.md`)
+- **Gate 3** — broader pre-release or nightly matrix confidence
+  - use when you want additional provider/backend combinations or larger
+    fixtures, not as the default merge gate
 
-Provider-free smoke is still a useful baseline signal, but it does **not**
-satisfy Gate 2 on its own.
+Provider-free smoke and `deeploop provider-ready` are still useful baseline
+signals, but they do **not** satisfy Gate 2 on their own.
 
 ## Default run policy
 
