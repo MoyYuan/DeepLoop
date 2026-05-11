@@ -45,6 +45,24 @@ Current preflight posture:
   stale-output recovery hardening, and the strengthened clean-room release gate
   rather than a broader portability or autonomy claim
 
+## Release gates at a glance
+
+The current release story has a narrow Gate 1 / Gate 2 split:
+
+- **Gate 1** provider-free bootstrap/smoke and Docker clean-room validation are
+  the **baseline** install/onboarding proof
+- **Gate 2** is the separate real LLM-backed mission/runtime proof required
+  before recommending a coordinated release
+
+The current approved Gate 2 phase is intentionally narrow and must stay honest:
+
+1. **local Qwen via the OpenAI-compatible lane**
+2. **Copilot CLI with GPT-5 mini for the coding-agent lane**
+3. **no commercial OpenAI-compatible lane in this phase**
+
+The machine-readable source of truth for those approved lanes is
+`configs/runtime/gate-2-runtime-lanes.yaml`.
+
 ## Maintainer hardening backlog
 
 Keep release hardening follow-ups version-agnostic on this maintainer surface or
@@ -70,32 +88,42 @@ publishing:
 ## GitHub share checklist
 
 1. update `CHANGELOG.md`
-2. run `make public-bootstrap-check`
-3. run `make docker-release-validate` to build sdist/wheel in Docker, install
-   the wheel in a fresh container, and execute the provider-free bootstrap /
-   onboarding smoke matrix
-4. verify a fresh-clone / fresh-home onboarding run still succeeds on the
-   documented path
-5. verify the current proof-matrix review is still eligible for promotion
-6. verify at least one real mission package still has a promotable
-   `release_candidate_review.json` with the required approvals
-7. run `make test-smoke` when runtime/bootstrap behavior changed
-8. run `make docs-build` for docs or claim changes; docs-only pushes are
-   ignored by the `push` leg of CI, so do not skip the local docs validation
-9. verify README and release docs still match the real proof level
-10. verify operator-only boundaries, provenance, licensing, and approval
-   requirements are still documented honestly
-11. publish the GitHub Release for the tagged version; the PyPI publish workflow
+2. complete **Gate 1** by running `make public-bootstrap-check`
+3. complete **Gate 1** by running `make docker-release-validate` to build
+   sdist/wheel in Docker, install the wheel in a fresh container, and execute
+   the provider-free bootstrap / onboarding smoke matrix; this is baseline proof
+   only
+4. complete **Gate 1** by running `make docs-build`
+5. verify a fresh-clone / fresh-home onboarding run still succeeds on the
+   documented path when onboarding or docs-command claims changed
+6. complete **Gate 2 runtime proof contract** for both approved lanes:
+    - local Qwen via an OpenAI-compatible endpoint
+    - Copilot CLI with GPT-5 mini for the coding-agent lane
+    - keep machine auth explicit and manual for Copilot CLI
+    - record durable mission/runtime artifacts plus provider family, backend,
+      model/profile, and lane-boundary notes instead of relying on shell output
+7. verify the current proof-matrix review is still eligible for promotion
+8. verify at least one real mission package still has a promotable
+   `release_candidate_review.json` with the required approvals and the embedded
+   `gate_2_runtime_contract`
+9. run `make test-smoke` when runtime/bootstrap behavior changed
+10. verify README and release docs still match the real proof level, including
+    the explicit Gate 1 / Gate 2 boundary, the approved lanes, and the fact
+    that provider-free bootstrap/smoke stays baseline-only
+11. verify operator-only boundaries, provenance, licensing, and approval
+    requirements are still documented honestly
+12. publish the GitHub Release for the tagged version; the PyPI publish workflow
     is triggered from the published release event, not from a bare tag push
-12. after PyPI publish completes, run
+13. after PyPI publish completes, run
     `make docker-release-validate-pypi VERSION=<version>` in a second fresh
     container build to confirm the published artifact still passes the
     clean-room smoke
-13. publish release notes that call out:
+14. publish release notes that call out:
      - install / bootstrap changes
      - runtime / operator changes
      - package / release-review changes
-     - proof / CI changes
+     - proof / CI changes, including Gate 1 baseline plus Gate 2 lane-contract
+       evidence
      - governance / trust-surface changes
 
 ## GitHub release notes draft (`v0.1.4`)
@@ -119,7 +147,8 @@ claim.
   regression test.
 - **Proof / CI:** merged-main release checks were revalidated with targeted
   provider-launcher/package tests, `make public-bootstrap-check`,
-  `make docs-build`, and the Docker clean-room release validation harness.
+  `make docs-build`, the Docker clean-room release validation harness, and the
+  explicit Gate 1 / Gate 2 runtime-proof contract.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
   public alpha for the documented Linux path; this release improves UX,
   resilience, and proof discipline rather than widening autonomy scope.

@@ -5,14 +5,14 @@ max_consecutive_failures: 2
 initial_task: Formalize the next bounded-support autonomous research step from the current mission state and continue until you can either complete it or emit a precise next-step handoff.
 provider_selection:
   contract: configs/runtime/provider-selection-registry.yaml
-  profile: control-plane-copilot-cli
+  profile: gate2-coding-agent-copilot-gpt5-mini
   mission_default:
     provider_family: copilot-cli
     backend: copilot-cli
     model:
-      alias: null
+      alias: gpt-5-mini
       identifier: null
-      selection_source: operator-default-or-mission-override
+      selection_source: gate-2-coding-agent-lane
   loop_overrides:
     bounded-support-provider-loop:
       role_overrides:
@@ -49,5 +49,6 @@ notes:
   - Example config for running the recursive agent runtime against the local `copilot` CLI.
   - The `provider_selection` block declares mission/runtime intent separately from machine setup.
   - Current public runtime integration can route through the provider launcher surface; today that launcher delegates `copilot-cli` requests to the Copilot adapter.
-  - Adjust mission_state, loop_name, cwd, and optional model selection per mission.
+  - This example matches the current Gate 2 coding-agent release-validation lane by pinning the `gpt-5-mini` alias while keeping machine auth explicit outside repo automation.
+  - Adjust mission_state, loop_name, cwd, and optional model selection per mission when you are not validating that Gate 2 lane.
   - The DeepLoop runtime handles the outer fresh-context loop; Copilot handles each bounded iteration.

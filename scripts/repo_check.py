@@ -36,6 +36,7 @@ REQUIRED_PATHS = [
     REPO_ROOT / "configs" / "roles" / "agent-roles.yaml",
     REPO_ROOT / "configs" / "runtime" / "backend-policy.yaml",
     REPO_ROOT / "configs" / "runtime" / "artifact-package-contract.yaml",
+    REPO_ROOT / "configs" / "runtime" / "gate-2-runtime-lanes.yaml",
     REPO_ROOT / "configs" / "runtime" / "provider-setup-registry.yaml",
     REPO_ROOT / "configs" / "runtime" / "provider-selection-registry.yaml",
     REPO_ROOT / "configs" / "runtime" / "release-candidate-policy.yaml",

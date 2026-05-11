@@ -27,6 +27,8 @@ Use these together:
 
 - `configs/runtime/release-candidate-policy.yaml` — machine-readable policy for
   release-candidate gates
+- `configs/runtime/gate-2-runtime-lanes.yaml` — machine-readable description of
+  the current approved Gate 2 real-runtime lanes and proof boundary
 - `schemas/release-candidate-review.schema.json` — schema for generated release
   review artifacts
 - `scripts/release/review_release_candidate.py` — canonical CLI for re-running
@@ -46,6 +48,11 @@ The release-candidate policy currently enforces:
 Packaging always emits a blocked-or-promotable review artifact so operators can
 see exactly which gates remain open before release.
 
+Release review artifacts now also snapshot the current Gate 2 runtime-lane
+contract so package-level promotion records stay aligned with the broader
+release proof boundary, even though package promotion alone does not satisfy
+Gate 2.
+
 ## Broader public release gates
 
 Mission package promotion is necessary but not sufficient for stronger public
@@ -61,6 +68,16 @@ status, the broader repo must also satisfy release-facing gates such as:
 
 Those broader gates belong in the public roadmap and release docs, not only in
 package-level promotion logic.
+
+In the current release story, keep the split explicit:
+
+- **Gate 1** is the baseline install/bootstrap/docs proof (`make public-bootstrap-check`,
+  `make docker-release-validate`, `make docs-build`)
+- **Gate 2** is the separate real-runtime proof on the approved local Qwen
+  OpenAI-compatible lane plus the Copilot CLI `gpt-5-mini` coding-agent lane,
+  as defined by `configs/runtime/gate-2-runtime-lanes.yaml`
+- package promotion artifacts and approvals contribute to the release bundle,
+  but they do not replace Gate 2 durable runtime evidence
 
 ## Approvals
 

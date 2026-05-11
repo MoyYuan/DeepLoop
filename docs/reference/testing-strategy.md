@@ -160,10 +160,41 @@ stronger share claim depends on a bundle of evidence:
    home
 3. a real promotable `release_candidate_review.json` for at least one mission
    package with the required approvals
-4. autonomy-gap evidence showing bounded recovery is happening before operator
+4. a Gate 2 release proof that records real LLM-backed mission/runtime evidence
+   on the current approved lanes:
+   - local Qwen via an OpenAI-compatible lane
+   - Copilot CLI with GPT-5 mini for the coding-agent lane
+   - use `configs/runtime/gate-2-runtime-lanes.yaml` as the machine-readable
+     source of truth for that proof boundary
+5. autonomy-gap evidence showing bounded recovery is happening before operator
    escalation for the covered gap classes
-5. the translation pilot acceptance campaign when you need an additional real-project
+6. the translation pilot acceptance campaign when you need an additional real-project
    exam on top of the broader bundle
+
+Provider-free smoke remains baseline-only release evidence in this bundle. It
+does not replace the Gate 2 runtime proof, and the current approved phase does
+not include a commercial OpenAI-compatible lane.
+
+## Release gate mapping
+
+DeepLoop's release story sits on top of the engineering tiers:
+
+- **Gate 1** — required baseline for every PR and every release
+  - `make public-bootstrap-check`
+  - `make docker-release-validate`
+  - `make docs-build`
+  - proves install/bootstrap/docs integrity, not the final live runtime claim
+- **Gate 2** — coordinated release signoff and high-risk runtime changes
+  - prove both approved lanes:
+    - local Qwen via the OpenAI-compatible lane
+    - Copilot CLI with `gpt-5-mini` for the coding-agent lane
+  - use `configs/runtime/gate-2-runtime-lanes.yaml` as the machine-readable
+    source of truth
+  - record durable mission/runtime evidence and keep Copilot machine auth
+    explicit
+
+Provider-free smoke is still a useful baseline signal, but it does **not**
+satisfy Gate 2 on its own.
 
 ## Default run policy
 

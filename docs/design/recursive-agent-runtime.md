@@ -73,7 +73,10 @@ For the shipped recursive-agent example, DeepLoop also ships:
 - `configs/runtime/recursive-agent-runtime-provider.example.yaml`
 
 This keeps the outer-loop runtime generic while preserving Copilot CLI as one
-supported provider adapter.
+supported provider adapter. The shipped example also makes the current Gate 2
+coding-agent lane explicit by pinning the `gpt-5-mini` alias through the
+`gate2-coding-agent-copilot-gpt5-mini` selection profile while leaving machine
+authentication in the separate provider-setup contract.
 
 Template placeholders supported in `agent.command`:
 

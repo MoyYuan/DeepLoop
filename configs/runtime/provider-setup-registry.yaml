@@ -21,11 +21,17 @@ related_runtime_surfaces:
   local_backend_policy: configs/runtime/backend-policy.yaml
   mission_runtime_selection: configs/runtime/provider-selection-registry.yaml
   recursive_agent_runtime_example: configs/runtime/recursive-agent-runtime-provider.example.yaml
+  gate_2_runtime_lanes: configs/runtime/gate-2-runtime-lanes.yaml
 provider_families:
   copilot-cli:
     display_name: Copilot CLI
     public_contract_tier: first-class
     runtime_integration: implemented
+    gate_2_release_validation:
+      lane_id: copilot-cli-gpt-5-mini-coding-agent
+      model_alias: gpt-5-mini
+      auth_boundary: manual-machine-auth-explicit
+      proof_requirement: durable mission/runtime artifacts must record the resolved runtime lane
     required_tools:
       - command: copilot
         purpose: CLI entrypoint used by deeploop.runtime.provider_launcher
@@ -51,6 +57,28 @@ provider_families:
     display_name: OpenAI-compatible API providers
     public_contract_tier: first-class
     runtime_integration: implemented
+    deployment_profiles:
+      local-qwen3_6-27b-openai:
+        lane_id: local-qwen-openai-compatible
+        model_identifier: Qwen/Qwen3.6-27B
+        endpoint_contract:
+          path: /v1/chat/completions
+          required_env_vars:
+            - OPENAI_API_KEY
+            - OPENAI_BASE_URL
+          optional_env_vars:
+            - OPENAI_ORG_ID
+        environment_expectations:
+          control_plane_env: deeploop
+          serving_env: llm-or-host-equivalent
+          suggested_serving_env_file: environment.llm.yml
+        manual_requirements:
+          - start a host-local OpenAI-compatible server that serves Qwen/Qwen3.6-27B and is reachable from the DeepLoop shell
+          - set OPENAI_API_KEY outside the repo to whatever the local server expects; if it accepts a placeholder token, keep that placeholder external and manual too
+          - keep model-weight access, accelerator provisioning, and server launch flags host-specific and outside repo automation
+        fallback_guidance:
+          - lower max context, max new tokens, or request concurrency before changing the lane definition
+          - if the dense 27B profile is unstable on the host, record an explicit downgrade to qwen3_5-mid-fp16 or single-gpu-8b-9b-fp16 instead of silently switching provider families
     required_tools:
       - command: python
         purpose: control-plane entrypoint

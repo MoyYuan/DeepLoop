@@ -52,6 +52,7 @@ documented separately.
 - machine-readable registry: `configs/runtime/provider-setup-registry.yaml`
 - human-readable selection contract: `docs/reference/provider-selection.md`
 - machine-readable selection registry: `configs/runtime/provider-selection-registry.yaml`
+- Gate 2 runtime-lane registry: `configs/runtime/gate-2-runtime-lanes.yaml`
 - related local-backend defaults: `configs/runtime/backend-policy.yaml`
 - related recursive-agent example: `configs/runtime/recursive-agent-runtime-provider.example.yaml`
 
@@ -79,6 +80,14 @@ This family is wired into the current runtime through
 `src/deeploop/runtime/provider_launcher.py`,
 `src/deeploop/runtime/copilot_adapter.py`, and
 `scripts/runtime/invoke_provider_prompt.py`.
+
+The current Gate 2 coding-agent release-proof lane pins this family to the
+`gpt-5-mini` alias through
+`configs/runtime/gate-2-runtime-lanes.yaml` and
+`configs/runtime/provider-selection-registry.yaml`. That lane still keeps
+manual machine authentication explicit: repo automation can validate the CLI and
+launcher surface, but release proof must record that Copilot CLI auth was
+already valid on the machine.
 
 #### Custom script data routing
 
@@ -136,6 +145,36 @@ endpoint, and materializes structured result JSON for prompt/result flows such
 as `deeploop analyze`. Tool-using recursive-agent execution still remains on the
 Copilot CLI path. Setup is documented here; mission/runtime provider selection
 is documented separately.
+
+#### Documented local deployment profile: `local-qwen3_6-27b-openai`
+
+The current Gate 2 local OpenAI-compatible lane is a **deployment profile inside
+this family**, not a new provider family:
+
+- target model identifier: `Qwen/Qwen3.6-27B`
+- endpoint contract:
+  - `OPENAI_BASE_URL` points at a host-local OpenAI-compatible server exposing
+    `/v1/chat/completions`
+  - `OPENAI_API_KEY` stays external/manual even for local serving; if the server
+    accepts a placeholder token, keep that placeholder outside repo config too
+  - `OPENAI_ORG_ID` remains optional and only matters if the chosen server honors
+    it
+- environment expectations:
+  - DeepLoop's control-plane commands can stay on the normal `deeploop` env
+  - the local serving stack commonly lives in `environment.llm.yml` or an
+    equivalent host-managed env
+- manual / host-specific boundary:
+  - DeepLoop does not launch, supervise, or tune the host-local server
+  - GPU sizing, precision/quantization choice, and server flags for
+    `Qwen/Qwen3.6-27B` remain host-specific and must be validated on the machine
+  - if the server depends on gated or private weights, provision access outside
+    the repo before startup
+- fallback / downgrade guidance:
+  - lower context, max output, or request concurrency first while staying on the
+    same OpenAI-compatible lane
+  - if the dense 27B profile is not stable on the host, record an explicit
+    downgrade to `qwen3_5-mid-fp16` or `single-gpu-8b-9b-fp16` from
+    `configs/execution-profiles/inference-families.yaml`
 
 ### Anthropic API providers
 

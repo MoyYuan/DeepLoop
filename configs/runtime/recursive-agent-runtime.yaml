@@ -19,5 +19,6 @@ notes:
   - Inspired by Ralph's fresh-context loop and AutoResearch's keep-discard experiment loop.
   - Provider setup stays in docs/reference/provider-setup.md and configs/runtime/provider-setup-registry.yaml.
   - Provider/model selection stays in the separate provider-selection contract; loop configs can attach a provider_selection block without restating machine setup.
+  - The current Gate 2 coding-agent release lane is defined in configs/runtime/gate-2-runtime-lanes.yaml and pinned by the shipped recursive-agent provider example.
   - DeepLoop supplies the recursive runtime; operator-local config supplies the actual provider-compatible CLI command or provider launcher invocation.
   - Override mission-specific values in a separate config passed to scripts/mission/run_recursive_agent_loop.py.

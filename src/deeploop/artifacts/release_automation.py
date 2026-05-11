@@ -13,6 +13,7 @@ from deeploop.core.structured_io import (
 
 RELEASE_POLICY_PATH = REPO_ROOT / "configs" / "runtime" / "release-candidate-policy.yaml"
 EVIDENCE_POLICY_PATH = REPO_ROOT / "configs" / "autonomy" / "evidence-policy.yaml"
+GATE_2_RUNTIME_CONTRACT_PATH = REPO_ROOT / "configs" / "runtime" / "gate-2-runtime-lanes.yaml"
 RELEASE_REVIEW_SCHEMA_PATH = REPO_ROOT / "schemas" / "release-candidate-review.schema.json"
 
 CLAIM_ORDER = {
@@ -29,6 +30,10 @@ def load_release_candidate_policy(path: Path = RELEASE_POLICY_PATH) -> dict[str,
 
 
 def load_evidence_policy(path: Path = EVIDENCE_POLICY_PATH) -> dict[str, Any]:
+    return _load_yaml(path)
+
+
+def load_gate_2_runtime_contract(path: Path = GATE_2_RUNTIME_CONTRACT_PATH) -> dict[str, Any]:
     return _load_yaml(path)
 
 
@@ -151,6 +156,7 @@ def build_release_candidate_review(
     summary = package.get("summary", {})
     claim_state = str(claim_summary.get("package_claim_state", "exploratory"))
     evidence_policy = load_evidence_policy()
+    gate_2_contract = load_gate_2_runtime_contract()
     failed_gate_ids: list[str] = []
     gates: list[dict[str, Any]] = []
 
@@ -314,6 +320,13 @@ def build_release_candidate_review(
         recommended_actions.append("Resolve package validation errors before promotion.")
 
     eligible_for_promotion = not failed_gate_ids
+    gate_2_runtime_contract = {
+        "policy_path": str(GATE_2_RUNTIME_CONTRACT_PATH),
+        "phase_id": str((gate_2_contract.get("approved_phase") or {}).get("id", "")),
+        "baseline_boundary": dict(gate_2_contract.get("baseline_install_boundary", {})),
+        "proof_boundary": dict(gate_2_contract.get("gate_2_proof_boundary", {})),
+        "required_lanes": list(gate_2_contract.get("required_lanes", [])),
+    }
     return {
         "schema_version": 1,
         "policy_name": str(resolved_policy.get("policy_name", "deeploop-release-candidate-policy")),
@@ -326,6 +339,7 @@ def build_release_candidate_review(
         "package_digest": str(package.get("package_digest", "")),
         "package_claim_state": claim_state,
         "evidence_policy_path": str(EVIDENCE_POLICY_PATH),
+        "gate_2_runtime_contract": gate_2_runtime_contract,
         "decision": "promotable" if eligible_for_promotion else "blocked",
         "eligible_for_promotion": eligible_for_promotion,
         "gates": gates,
@@ -386,6 +400,36 @@ def materialize_release_candidate_review(
         state = "approved" if approval["approved"] else "missing"
         approver = approval["approved_by"] or "unrecorded"
         lines.append(f"- `{approval['approval_id']}` — {state} ({approver})")
+    gate_2_runtime_contract = rendered_review.get("gate_2_runtime_contract", {})
+    if gate_2_runtime_contract:
+        proof_boundary = gate_2_runtime_contract.get("proof_boundary", {})
+        lines.extend(["", "## Gate 2 runtime contract", ""])
+        lines.append(f"- phase_id: `{gate_2_runtime_contract.get('phase_id', '')}`")
+        lines.append(
+            "- durable mission/runtime evidence required: "
+            + ("yes" if proof_boundary.get("durable_mission_runtime_evidence_required") else "no")
+        )
+        lines.append(
+            "- manual machine auth remains explicit: "
+            + ("yes" if proof_boundary.get("manual_machine_auth_remains_explicit") else "no")
+        )
+        for lane in gate_2_runtime_contract.get("required_lanes", []):
+            if not isinstance(lane, dict):
+                continue
+            model_expectation = lane.get("model_expectation") if isinstance(lane.get("model_expectation"), dict) else {}
+            model_bits = [
+                f"{key}={value}"
+                for key, value in model_expectation.items()
+                if isinstance(key, str) and value not in {None, ""}
+            ]
+            lane_summary = (
+                f"- `{lane.get('lane_id', '')}` — {lane.get('provider_family', '')}/{lane.get('backend', '')}"
+            )
+            if lane.get("selection_profile"):
+                lane_summary += f", profile={lane['selection_profile']}"
+            if model_bits:
+                lane_summary += ", " + ", ".join(model_bits)
+            lines.append(lane_summary)
     lines.extend(["", "## Next actions", ""])
     lines.extend(f"- {item}" for item in rendered_review["next_actions"])
     review_paths["markdown"].write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -440,5 +484,6 @@ def build_package_release_automation(
         "eligible_for_promotion": bool(review["eligible_for_promotion"]),
         "failed_gate_ids": list(review.get("failed_gate_ids", [])),
         "missing_approvals": list(review.get("missing_approvals", [])),
+        "gate_2_runtime_contract": dict(review.get("gate_2_runtime_contract", {})),
         "review_artifacts": review_artifacts,
     }
