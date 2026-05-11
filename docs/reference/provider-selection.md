@@ -182,6 +182,16 @@ Public override points are:
 Keep secrets out of repo config. Only non-secret provider identifiers, backend
 choices, model aliases/IDs, and fallback policy belong here.
 
+If you want to validate the machine-level setup behind a selection profile
+without collapsing this boundary, run:
+
+```text
+deeploop provider-ready --selection-profile <profile>
+```
+
+That command resolves the provider family from this registry, but it still
+checks only the setup contract from [Provider setup](provider-setup.md).
+
 ## Relationship to existing runtime surfaces
 
 ### `configs/runtime/backend-policy.yaml`

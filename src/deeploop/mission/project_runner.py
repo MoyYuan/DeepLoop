@@ -4,9 +4,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from deeploop.mission.mission_monitor import build_mission_snapshot
 from deeploop.mission.mission_runtime import run_mission
 from deeploop.mission.orchestrator import initialize_mission
+from deeploop.mission.project_bootstrap import resolve_project_root_for_bootstrap
 
 
 def _jsonify(value: Any) -> Any:
@@ -62,38 +65,20 @@ def _resume_summary_from_state(mission_state_path: Path) -> dict[str, Any]:
     }
 
 
-def run_project_until_complete(
-    project_root: Path,
+def _continue_initialized_mission_until_complete(
+    init_result: dict[str, Any],
     *,
-    mission_id: str | None = None,
-    force: bool = False,
-    chunk_iterations: int = 8,
-    max_total_iterations: int = 256,
+    resolved_project_root: Path,
+    chunk_iterations: int,
+    max_total_iterations: int,
 ) -> dict[str, Any]:
-    resolved_project_root = project_root.expanduser().resolve()
-    resolved_chunk_iterations = _normalized_int(chunk_iterations, minimum=1)
-    resolved_max_total_iterations = _normalized_int(max_total_iterations, minimum=1)
-    if resolved_chunk_iterations > resolved_max_total_iterations:
-        raise ValueError("chunk_iterations cannot exceed max_total_iterations.")
-
-    init_result = initialize_mission_from_project_root(
-        resolved_project_root,
-        mission_id=mission_id,
-        force=force,
-    )
-    if init_result.get("status") == "bootstrap-repair-required":
-        return {
-            "status": "bootstrap-repair-required",
-            "project_root": resolved_project_root,
-            "bootstrap_repair": init_result.get("bootstrap_repair"),
-        }
     mission_state_path = Path(init_result["state_path"]).expanduser().resolve()
     resume_summary = _resume_summary_from_state(mission_state_path)
     runtime_passes = 0
     soft_recovery_resume_passes = 0
     latest_result: dict[str, Any] | None = None
     latest_snapshot: dict[str, Any] | None = None
-    runtime_limit = min(resolved_chunk_iterations, resolved_max_total_iterations)
+    runtime_limit = min(chunk_iterations, max_total_iterations)
 
     while True:
         latest_result = run_mission(mission_state_path, max_iterations=runtime_limit)
@@ -144,7 +129,7 @@ def run_project_until_complete(
             soft_recovery_resume_passes += 1
 
         iterations_completed = int(latest_result.get("iterations_completed", 0) or 0)
-        if iterations_completed >= resolved_max_total_iterations:
+        if iterations_completed >= max_total_iterations:
             resume_summary["bounded_resume_passes"] = max(runtime_passes - 1, 0)
             resume_summary["soft_recovery_resume_passes"] = soft_recovery_resume_passes
             return {
@@ -158,7 +143,7 @@ def run_project_until_complete(
                 "snapshot": latest_snapshot,
                 "resume_summary": resume_summary,
             }
-        runtime_limit = min(max(iterations_completed, runtime_limit) + resolved_chunk_iterations, resolved_max_total_iterations)
+        runtime_limit = min(max(iterations_completed, runtime_limit) + chunk_iterations, max_total_iterations)
 
     resume_summary["bounded_resume_passes"] = max(runtime_passes - 1, 0)
     resume_summary["soft_recovery_resume_passes"] = soft_recovery_resume_passes
@@ -173,6 +158,68 @@ def run_project_until_complete(
         "snapshot": latest_snapshot,
         "resume_summary": resume_summary,
     }
+
+
+def run_project_until_complete(
+    project_root: Path,
+    *,
+    mission_id: str | None = None,
+    force: bool = False,
+    chunk_iterations: int = 8,
+    max_total_iterations: int = 256,
+) -> dict[str, Any]:
+    resolved_project_root = resolve_project_root_for_bootstrap(project_root)
+    resolved_chunk_iterations = _normalized_int(chunk_iterations, minimum=1)
+    resolved_max_total_iterations = _normalized_int(max_total_iterations, minimum=1)
+    if resolved_chunk_iterations > resolved_max_total_iterations:
+        raise ValueError("chunk_iterations cannot exceed max_total_iterations.")
+
+    init_result = initialize_mission_from_project_root(
+        resolved_project_root,
+        mission_id=mission_id,
+        force=force,
+    )
+    if init_result.get("status") == "bootstrap-repair-required":
+        return {
+            "status": "bootstrap-repair-required",
+            "project_root": resolved_project_root,
+            "bootstrap_repair": init_result.get("bootstrap_repair"),
+        }
+    return _continue_initialized_mission_until_complete(
+        init_result,
+        resolved_project_root=resolved_project_root,
+        chunk_iterations=resolved_chunk_iterations,
+        max_total_iterations=resolved_max_total_iterations,
+    )
+
+
+def run_config_until_complete(
+    config_path: Path,
+    *,
+    force: bool = False,
+    chunk_iterations: int = 8,
+    max_total_iterations: int = 256,
+) -> dict[str, Any]:
+    resolved_config_path = config_path.expanduser().resolve()
+    resolved_chunk_iterations = _normalized_int(chunk_iterations, minimum=1)
+    resolved_max_total_iterations = _normalized_int(max_total_iterations, minimum=1)
+    if resolved_chunk_iterations > resolved_max_total_iterations:
+        raise ValueError("chunk_iterations cannot exceed max_total_iterations.")
+    init_result = initialize_mission(resolved_config_path, force=force)
+    config = yaml.safe_load(resolved_config_path.read_text(encoding="utf-8")) or {}
+    mission_cfg = config.get("mission") if isinstance(config.get("mission"), dict) else {}
+    target_repo = mission_cfg.get("target_repo")
+    if not isinstance(target_repo, str) or not target_repo.strip():
+        mission_state_path = Path(init_result["state_path"]).expanduser().resolve()
+        mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
+        target_repo = mission_state.get("target_repo")
+    resolved_project_root = Path(str(target_repo)).expanduser().resolve()
+    return _continue_initialized_mission_until_complete(
+        init_result,
+        resolved_project_root=resolved_project_root,
+        chunk_iterations=resolved_chunk_iterations,
+        max_total_iterations=resolved_max_total_iterations,
+    )
 
 
 def _find_explicit_mission_configs(project_root: Path) -> list[Path]:
@@ -193,7 +240,7 @@ def initialize_mission_from_project_root(
     from deeploop.mission.project_bootstrap import build_mission_config_from_project_root
     import yaml
 
-    resolved_project_root = project_root.expanduser().resolve()
+    resolved_project_root = resolve_project_root_for_bootstrap(project_root)
 
     explicit_configs = _find_explicit_mission_configs(resolved_project_root)
     if explicit_configs:
@@ -260,6 +307,7 @@ def initialize_mission_from_project_root(
 
 __all__ = [
     "initialize_mission_from_project_root",
+    "run_config_until_complete",
     "run_project_until_complete",
     "_jsonify",
 ]

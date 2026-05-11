@@ -1,0 +1,18 @@
+project:
+  name: starter-general-research
+  title: General research starter
+  summary: >
+    Public-safe starter project for end-to-end DeepLoop research from a minimal
+    plain-folder contract.
+  objective: >
+    Use DeepLoop to turn a rough research goal into a bounded executable mission
+    without assuming a repo-local example checkout.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the project folder free of DeepLoop runtime state, generated configs, and code.
+    - Prefer honest bounded progress over broad unsupported claims.
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/benchmark-and-metrics.md
+    - docs/budget-and-baselines.md

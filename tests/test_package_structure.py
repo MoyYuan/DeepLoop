@@ -127,6 +127,7 @@ class PackageStructureTests(unittest.TestCase):
             "deeploop/_assets/configs/autonomy/mission-outer-loop.yaml",
             "deeploop/_assets/configs/runtime/recursive-agent-runtime.yaml",
             "deeploop/_assets/examples/translation-budget-ladder/project-facts.yaml",
+            "deeploop/_assets/examples/starter-general-research/project-facts.yaml",
             "deeploop/_assets/schemas/mission-action.schema.json",
             "deeploop/_assets/scripts/runtime/invoke_provider_prompt.py",
             "deeploop/_assets/scripts/mission/run_mission.py",

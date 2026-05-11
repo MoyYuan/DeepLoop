@@ -18,6 +18,7 @@ from deeploop.core.paths import WORKSPACE_ROOT
 from deeploop.core.paths import WORKSPACE_ROOT_ENV_VAR
 from deeploop.core.paths import workspace_root_diagnostics
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object
+from deeploop.mission._operator_surface import partition_operator_commands
 from deeploop.mission.mission_monitor import build_mission_snapshot, render_mission_snapshot
 from deeploop.mission.mission_state import load_mission_state
 from deeploop.cli.run_project import _add_run_args, _run_project
@@ -25,6 +26,14 @@ from deeploop.cli.init_mission import _add_init_args, _init_mission
 from deeploop.cli.package_mission import _add_package_args, _package_mission
 from deeploop.cli.export_mission import _add_export_args, _export_mission
 from deeploop.cli.analyze import _add_analyze_args, _analyze
+from deeploop.cli.bootstrap_support import (
+    _add_preflight_args,
+    _add_provider_ready_args,
+    _add_setup_args,
+    _preflight,
+    _provider_ready,
+    _setup_workspace,
+)
 from deeploop.runtime.recursive_agent_runtime import analyze_budget
 
 _RUN_MISSION_SCRIPT = REPO_ROOT / "scripts" / "mission" / "run_mission.py"
@@ -266,29 +275,52 @@ def _render_launch_summary(payload: dict[str, Any], *, launch_reason: str) -> st
     lines.extend(
         [
             "",
-            "## Next commands",
+            "## Main operator loop",
             "",
-            f"- status: `{_management_command_text('status', Path(mission_state_path))}`",
+            f"1. `{_management_command_text('status', Path(mission_state_path))}`",
+            "   - Start here for the current state and next step.",
+            f"2. `{_management_command_text('inbox', Path(mission_state_path))}`",
+            "   - If `status` says DeepLoop needs you, read the current request here.",
+            f"3. `{_management_command_text('resume', Path(mission_state_path))}`",
+            "   - After the fix or choice is ready, hand control back to DeepLoop.",
+            "",
+            "## Advanced commands",
+            "",
             f"- logs: `{_management_command_text('logs', Path(mission_state_path))}`",
             f"- decisions: `{_management_command_text('decisions', Path(mission_state_path))}`",
-            f"- inbox: `{_management_command_text('inbox', Path(mission_state_path))}`",
             f"- stop: `{_management_command_text('stop', Path(mission_state_path))}`",
         ]
     )
     return "\n".join(lines) + "\n"
 
 
+def _render_command_entries(*, heading: str, commands: list[dict[str, Any]]) -> list[str]:
+    lines = [heading, ""]
+    for index, entry in enumerate(commands, start=1):
+        lines.append(f"{index}. `{entry.get('command')}`")
+        if entry.get("description"):
+            lines.append(f"   - {entry.get('description')}")
+    return lines
+
+
 def _render_exact_next_commands(console: dict[str, Any]) -> list[str]:
-    lines = ["## Exact next commands", ""]
     commands = console.get("next_commands")
     if isinstance(commands, list) and commands:
-        for index, entry in enumerate(commands, start=1):
-            if not isinstance(entry, dict):
-                continue
-            lines.append(f"{index}. `{entry.get('command')}`")
-            if entry.get("description"):
-                lines.append(f"   - {entry.get('description')}")
-        return lines
+        primary, secondary = partition_operator_commands(commands)
+        lines: list[str] = []
+        if primary:
+            lines.extend(_render_command_entries(heading="## Main operator loop", commands=primary))
+        if secondary:
+            if lines:
+                lines.append("")
+            lines.extend(_render_command_entries(heading="## Advanced commands", commands=secondary))
+        if lines:
+            return lines
+    lines = ["## Commands", ""]
+    if isinstance(commands, list) and commands:
+        normalized = [dict(entry) for entry in commands if isinstance(entry, dict)]
+        if normalized:
+            return _render_command_entries(heading="## Commands", commands=normalized)
     lines.append("No management commands are surfaced right now.")
     return lines
 
@@ -309,6 +341,7 @@ def _render_console_overview(console: dict[str, Any], *, heading: str) -> list[s
         f"- state_reason: {console.get('state_reason')}",
         f"- recommendation: {console.get('recommendation')}",
         f"- continue: {console.get('continue_summary')}",
+        "- operator_loop: `status` -> `inbox` (only when needed) -> `resume`",
     ]
     if console.get("gate_detail"):
         lines.append(f"- gate_detail: `{console.get('gate_detail')}`")
@@ -843,7 +876,7 @@ def _render_inbox(snapshot: dict[str, Any]) -> str:
         lines.append("")
         lines.extend(_render_exact_next_commands(console))
         return "\n".join(lines).rstrip() + "\n"
-    lines.append("Operator inbox is clear. DeepLoop can keep working until a true safety or authority boundary needs review.")
+    lines.append("Operator inbox is clear. Stay on `status`; you only need `inbox` when DeepLoop asks for help.")
     lines.append("")
     lines.extend(_render_exact_next_commands(console))
     return "\n".join(lines) + "\n"
@@ -1245,6 +1278,18 @@ def _handle_init(args: argparse.Namespace) -> int:
     return _init_mission(args)
 
 
+def _handle_setup(args: argparse.Namespace) -> int:
+    return _setup_workspace(args)
+
+
+def _handle_preflight(args: argparse.Namespace) -> int:
+    return _preflight(args)
+
+
+def _handle_provider_ready(args: argparse.Namespace) -> int:
+    return _provider_ready(args)
+
+
 def _handle_package(args: argparse.Namespace) -> int:
     return _package_mission(args)
 
@@ -1287,9 +1332,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Operate DeepLoop autopilot for a mission from one management CLI.",
         epilog=(
-            "Default flow: start the mission, watch status, inspect inbox on hard/operator-needed "
-            "stops, optionally record retry/reroute, then resume. run_mission.py and "
-            "monitor_mission.py stay underneath as backend surfaces."
+            "Default flow: start the mission, use `status` first, open `inbox` only when DeepLoop pauses for "
+            "you, then `resume`. `logs`, `decisions`, `triage`, and repo scripts remain available as "
+            "secondary debugging/operator surfaces."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -1302,7 +1347,8 @@ def build_parser() -> argparse.ArgumentParser:
             description=(
                 f"{help_text} Use a mission_state.json created by `deeploop init` or a previous `deeploop run`. "
                 f"The resolved workspace root is printed at launch; set {WORKSPACE_ROOT_ENV_VAR} before init/start "
-                f"to choose artifact placement."
+                f"to choose artifact placement. After launch, start with `status`; if DeepLoop later pauses, use "
+                f"`inbox`, then `resume`."
             ),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
@@ -1337,8 +1383,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = subparsers.add_parser(
         "status",
-        help="Show the operator console and exact next commands.",
-        description="Show whether autopilot is running, blocked, or exited and exactly what to do next.",
+        help="Show the operator console and the main operator loop.",
+        description="Show whether autopilot is running or paused. Start here, then use `inbox` and `resume` only if DeepLoop needs you.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     status.add_argument("--mission-state", required=True, help="Path to mission_state.json.")
@@ -1374,7 +1420,7 @@ def build_parser() -> argparse.ArgumentParser:
     inbox = subparsers.add_parser(
         "inbox",
         help="Show the current operator request inbox.",
-        description="Show the latest hard-gate or operator-needed request, recommendation, and exact continue commands.",
+        description="Show the latest operator request, recommendation, and the request-specific follow-up after `status` says DeepLoop needs you.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     inbox.add_argument("--mission-state", required=True, help="Path to mission_state.json.")
@@ -1444,7 +1490,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Run a plain researcher project folder through DeepLoop until completion or a true operator boundary. "
             "Unlike `deeploop init` + `deeploop start`, this one-shot flow bootstraps or reuses mission state and "
-            "keeps extending bounded runtime passes for you."
+            "keeps extending bounded runtime passes for you. If it pauses, stay on `status`, `inbox`, and `resume`."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
@@ -1463,6 +1509,43 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_init_args(init_p)
     init_p.set_defaults(handler=_handle_init)
+
+    setup_p = subparsers.add_parser(
+        "setup",
+        help="Create the external DeepLoop workspace scaffold under the resolved workspace root.",
+        description=(
+            "Create the expected DeepLoop data, runs, scratch, ledger, and package directories for this machine. "
+            "This is the installed-CLI equivalent of the repo checkout `make setup` shortcut."
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_setup_args(setup_p)
+    setup_p.set_defaults(handler=_handle_setup)
+
+    preflight_p = subparsers.add_parser(
+        "preflight",
+        help="Validate the installed DeepLoop public bootstrap environment.",
+        description=(
+            "Check Python version, operating system, workspace root availability, and required external DeepLoop directories. "
+            "This is the installed-CLI equivalent of the repo checkout `make public-bootstrap-preflight` shortcut."
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_preflight_args(preflight_p)
+    preflight_p.set_defaults(handler=_handle_preflight)
+
+    provider_ready_p = subparsers.add_parser(
+        "provider-ready",
+        help="Check machine-level provider setup without collapsing provider selection into setup.",
+        description=(
+            "Validate machine-level provider readiness for a provider family or provider-selection profile. "
+            "This command resolves the provider family if needed, but it still checks setup only; "
+            "provider/model selection remains a separate mission/runtime contract."
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_provider_ready_args(provider_ready_p)
+    provider_ready_p.set_defaults(handler=_handle_provider_ready)
 
     package_p = subparsers.add_parser(
         "package",
