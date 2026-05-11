@@ -282,7 +282,7 @@ def _run_project(args: argparse.Namespace) -> int:
                     project_root=resolved_project_root,
                     resume_command=_run_resume_command(args, project_root=resolved_project_root),
                 )
-                if raw_project_root.exists()
+                if raw_project_root.exists() and explicit_configs
                 else None
             )
             if provider_gate is not None:

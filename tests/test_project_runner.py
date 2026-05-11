@@ -63,6 +63,47 @@ class ProjectRunnerTests(unittest.TestCase):
         self.assertIn("deeploop inbox --mission-state /repo/demo/.deeploop/mission_state.json", stderr.getvalue())
         self.assertIn("deeploop resume --mission-state /repo/demo/.deeploop/mission_state.json", stderr.getvalue())
 
+    def test_run_project_with_plain_folder_prefers_bootstrap_over_provider_gate(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        project_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "plain-folder-bootstrap-first"
+        shutil.rmtree(project_root, ignore_errors=True)
+        self.addCleanup(lambda: shutil.rmtree(project_root, ignore_errors=True))
+        project_root.mkdir(parents=True, exist_ok=True)
+        args = argparse.Namespace(
+            project_root=str(project_root),
+            mission_id="bootstrap-first",
+            force=False,
+            until_complete=True,
+            chunk_iterations=4,
+            max_total_iterations=12,
+        )
+        result = {
+            "status": "bootstrap-repair-required",
+            "project_root": project_root,
+            "bootstrap_repair": {
+                "status": "required",
+                "reason": "missing-bootstrap-contract",
+                "summary": "Project root needs project-facts.yaml.",
+                "recommendation": "Create project-facts.yaml.",
+            },
+        }
+
+        with (
+            patch("deeploop.cli.run_project._provider_readiness_result") as mock_provider_gate,
+            patch("deeploop.cli.run_project.run_project_until_complete", return_value=result) as mock_run_project,
+        ):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = _run_project(args)
+
+        self.assertEqual(exit_code, 1)
+        mock_provider_gate.assert_not_called()
+        mock_run_project.assert_called_once()
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "bootstrap-repair-required")
+        self.assertIn("could not bootstrap this project root yet", stderr.getvalue())
+        self.assertIn("missing-bootstrap-contract", stderr.getvalue())
+
     def test_run_project_without_project_root_uses_interactive_discovery_flow(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
