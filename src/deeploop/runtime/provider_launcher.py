@@ -96,7 +96,21 @@ def _dedupe_messages(messages: Sequence[str]) -> list[str]:
 def _provider_result_validation_errors(payload: dict[str, object]) -> list[str]:
     errors: list[str] = []
     status = str(payload.get("status") or "").strip().lower()
-    if status not in {"continue", "complete", "completed", "blocked", "failed", "fail", "error", "success", "successful", "succeeded", "ok", "done"}:
+    if status not in {
+        "continue",
+        "complete",
+        "completed",
+        "blocked",
+        "failed",
+        "fail",
+        "error",
+        "success",
+        "successful",
+        "succeeded",
+        "ok",
+        "done",
+        "in_progress",
+    }:
         errors.append("result.status must be a recognized recursive-agent status")
     summary = payload.get("summary")
     if not isinstance(summary, str) or not summary.strip():

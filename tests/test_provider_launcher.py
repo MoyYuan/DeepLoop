@@ -85,6 +85,40 @@ class ProviderLauncherTests(unittest.TestCase):
 
     @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
     @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
+    def test_run_provider_prompt_accepts_in_progress_analysis_payloads(self, mock_popen, _mock_sleep) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            prompt_file = root / "prompt.md"
+            result_json_path = root / "result.json"
+            prompt_file.write_text("hello world", encoding="utf-8")
+
+            process = MagicMock()
+            process.poll.side_effect = [None, None]
+            process.communicate.return_value = ("analysis stdout", "analysis stderr")
+            mock_popen.return_value = process
+
+            result_json_path.write_text(
+                json.dumps(
+                    {
+                        "status": "in_progress",
+                        "summary": "Mission is still in intake.",
+                        "recommended_next_step": "Advance to the next bounded phase.",
+                        "findings": ["The provider returned an operator-facing analysis payload."],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            completed = run_provider_prompt(prompt_file, result_json_path=result_json_path, cwd=root)
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stdout, "analysis stdout")
+        self.assertEqual(completed.stderr, "analysis stderr")
+        process.terminate.assert_called_once()
+        process.kill.assert_not_called()
+
+    @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
+    @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
     def test_run_provider_prompt_materializes_execution_result_from_runtime_outputs(
         self, mock_popen, _mock_sleep
     ) -> None:
