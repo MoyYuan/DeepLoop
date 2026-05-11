@@ -1,0 +1,53 @@
+version: 1
+contract_id: gate-2-real-runtime-validation
+canonical_public_docs:
+  - docs/release/release-maintenance.md
+  - scripts/release/README.md
+source_lane_contract: configs/runtime/gate-2-runtime-lanes.yaml
+default_evidence_root: workspace://runs/deeploop/release_validation/gate-2
+proof_boundary:
+  durable_evidence_summary_required: true
+  manual_notes_required: true
+  hidden_state_disallowed: true
+  machine_auth_not_automated: true
+lanes:
+  local-qwen-openai-compatible:
+    validation_surface: deeploop-analyze
+    bootstrap_project: examples/translation-budget-ladder
+    runtime_artifact_root: runtime/gate_2_validation/local-qwen-openai-compatible
+    required_env_vars:
+      - OPENAI_API_KEY
+      - OPENAI_BASE_URL
+    manual_boundary_notes:
+      - Confirm the host-local OpenAI-compatible server for Qwen/Qwen3.6-27B was started outside DeepLoop before this validation run.
+      - Record any host-specific sizing, quantization, or launch constraints that mattered for this proof.
+    analyze_task: >-
+      Summarize the current mission status, identify one bounded next step, and call out one risk that the operator should monitor.
+      Keep the response concise and write the required JSON result only.
+    accepted_result_statuses:
+      - completed
+      - in_progress
+      - blocked
+  copilot-cli-gpt-5-mini-coding-agent:
+    validation_surface: recursive-agent-runtime
+    bootstrap_project: examples/translation-budget-ladder
+    manual_boundary_notes:
+      - Confirm the machine was already authenticated for Copilot CLI use before this validation run.
+      - Keep the validation action read-only on the copied project and let DeepLoop record the runtime artifacts.
+    loop_name_prefix: gate-2-copilot-cli-validation
+    max_iterations: 1
+    accepted_loop_statuses:
+      - completed
+      - max-iterations
+    accepted_iteration_statuses:
+      - complete
+      - continue
+    validation_action:
+      role: planner
+      kind: runtime-validation
+      task: >-
+        Review the current mission summary, write one short operator-facing validation note under the sandbox outputs,
+        and return a valid recursive-agent JSON result. Avoid follow-up continuation unless the runtime contract truly needs it.
+      notes:
+        - Keep manual machine auth explicit outside repo automation.
+        - Do not mutate the copied project folder.

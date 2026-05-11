@@ -49,9 +49,8 @@ Packaging always emits a blocked-or-promotable review artifact so operators can
 see exactly which gates remain open before release.
 
 Release review artifacts now also snapshot the current Gate 2 runtime-lane
-contract so package-level promotion records stay aligned with the broader
-release proof boundary, even though package promotion alone does not satisfy
-Gate 2.
+contract so package-level promotion records stay aligned with the broader release
+proof boundary, even though package promotion alone does not satisfy Gate 2.
 
 ## Broader public release gates
 
@@ -75,7 +74,7 @@ In the current release story, keep the split explicit:
   `make docker-release-validate`, `make docs-build`)
 - **Gate 2** is the separate real-runtime proof on the approved local Qwen
   OpenAI-compatible lane plus the Copilot CLI `gpt-5-mini` coding-agent lane,
-  as defined by `configs/runtime/gate-2-runtime-lanes.yaml`
+  recorded through `scripts/release/real_runtime_validation.py`
 - package promotion artifacts and approvals contribute to the release bundle,
   but they do not replace Gate 2 durable runtime evidence
 
