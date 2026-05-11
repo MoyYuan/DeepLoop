@@ -85,6 +85,29 @@ class ReleaseDockerValidationTests(unittest.TestCase):
             f"deeploop-release-validation:pypi-{version}",
         )
 
+    def test_zero_start_smoke_materializes_selected_starter_and_stops_for_provider_setup(self) -> None:
+        mission_id = "release-docker-validation-zero-start"
+        self.addCleanup(
+            lambda: in_container_smoke._cleanup_mission_artifacts(mission_id, remove_discovery_config=True)
+        )
+
+        result = in_container_smoke._run_zero_start_bundled_starter_provider_gate_smoke(
+            mission_id=mission_id,
+        )
+        self.addCleanup(lambda: shutil.rmtree(Path(result["project_root"]), ignore_errors=True))
+
+        self.assertEqual(result["workflow"], "zero-start-bundled-starter")
+        self.assertEqual(result["starter_project"], "translation-budget-ladder")
+        self.assertEqual(result["provider_family"], "copilot-cli")
+        self.assertIn("Copilot CLI", result["next_step"])
+        self.assertIn("deeploop run --project-root", result["resume_command"])
+        self.assertEqual(
+            result["recheck_command"],
+            "deeploop provider-ready --selection-profile control-plane-copilot-cli",
+        )
+        self.assertTrue(Path(result["project_root"]).joinpath("docs", "budget-and-baselines.md").exists())
+        self.assertTrue(Path(result["discovery_config_path"]).exists())
+
     def test_discovery_first_smoke_tracks_defaults_without_mutation(self) -> None:
         mission_id = "release-docker-validation-discovery"
         self.addCleanup(
@@ -116,15 +139,24 @@ class ReleaseDockerValidationTests(unittest.TestCase):
         )
 
         self.assertEqual(result["workflow"], "partial-project-folder-repair")
-        self.assertEqual(result["repair_exit_code"], 2)
+        self.assertEqual(result["repair_exit_code"], 1)
         self.assertEqual(result["repair_signal"], "missing-bootstrap-contract")
+        self.assertTrue(Path(result["starter_scaffold_path"]).exists())
+        self.assertTrue(str(result["expected_target_path"]).endswith("partial-project-folder/project-facts.yaml"))
+
+    def test_operator_handoff_surface_smoke_renders_status_inbox_resume_loop(self) -> None:
+        mission_id = "release-docker-validation-operator-handoff"
+        self.addCleanup(lambda: in_container_smoke._cleanup_mission_artifacts(mission_id))
+
+        result = in_container_smoke._run_operator_handoff_surface_smoke(
+            mission_id=mission_id,
+        )
+
+        self.assertEqual(result["workflow"], "operator-handoff-surface")
+        self.assertTrue(Path(result["mission_state_path"]).exists())
         self.assertEqual(
-            result["missing_paths"],
-            [
-                "project-facts.yaml",
-                "docs/project-brief.md",
-                "data/store_snapshot.csv",
-            ],
+            result["continue_command"],
+            f"deeploop resume --mission-state {result['mission_state_path']}",
         )
 
 

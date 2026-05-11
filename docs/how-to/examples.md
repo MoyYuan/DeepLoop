@@ -1,7 +1,13 @@
 # Examples
 
 DeepLoop's public-safe starter projects live in the repo-root `examples/`
-directory.
+directory and are also bundled into the installed package for the interactive
+first-run flow.
+
+If you installed `deeploop` as a package without the repo, use plain
+`deeploop run --until-complete` to choose one of the bundled starters and
+materialize it under `WORKSPACE_ROOT/projects/`. If you cloned the repo too,
+you can also copy examples directly from `examples/`.
 
 ## Canonical onboarding example
 
@@ -20,7 +26,13 @@ examples/translation-budget-ladder/
     └── budget-and-baselines.md
 ```
 
-Use it as-is or copy it into your own `<project-folder>` before editing:
+Use the installed bundled-starter flow:
+
+```text
+deeploop run --until-complete
+```
+
+Or, from a repo checkout, copy it into your own `<project-folder>` before editing:
 
 ```text
 cp -R examples/translation-budget-ladder <project-folder>
@@ -49,9 +61,17 @@ mission before kickoff.
 If the folder is too incomplete for either path, DeepLoop exits with
 bootstrap-repair guidance instead of mutating the example or your project root.
 
-If `deeploop run` stops for operator review instead of finishing, reuse
-the printed `<mission-state.json>` with `deeploop status`, `deeploop inbox`,
-and `deeploop resume`.
+If `deeploop run` pauses instead of finishing, reuse the printed
+`<mission-state.json>` with the same simple operator loop:
+
+```text
+deeploop status --mission-state <mission-state.json>
+deeploop inbox --mission-state <mission-state.json>
+deeploop resume --mission-state <mission-state.json>
+```
+
+Use `logs`, `decisions`, `retry`, `reroute`, or `triage` only when `status` or
+`inbox` says you need the extra detail.
 
 Lower-level repo scripts remain available as fallback surfaces when you are
 debugging repo internals rather than using the public CLI:

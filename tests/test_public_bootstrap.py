@@ -85,6 +85,46 @@ class PublicBootstrapTests(unittest.TestCase):
         self.assertIn("workspace_root: PASS", completed.stdout)
         self.assertIn("external_dirs: PASS", completed.stdout)
 
+    def test_deeploop_setup_creates_all_dirs_needed_for_fresh_home_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fresh_home = Path(tmpdir) / "home"
+            fresh_home.mkdir(parents=True, exist_ok=True)
+            env = os.environ.copy()
+            env["HOME"] = str(fresh_home)
+
+            setup = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/mission/manage_mission.py",
+                    "setup",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(setup.returncode, 0, setup.stdout + setup.stderr)
+            self.assertIn("DeepLoop workspace scaffold ready", setup.stdout)
+            self.assertIn("deeploop preflight", setup.stdout)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "scripts/mission/manage_mission.py",
+                    "preflight",
+                ],
+                cwd=REPO_ROOT,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        self.assertIn("workspace_root: PASS", completed.stdout)
+        self.assertIn("external_dirs: PASS", completed.stdout)
+
     def test_make_setup_creates_all_dirs_needed_for_fresh_home_preflight(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             fresh_home = Path(tmpdir) / "home"
@@ -121,6 +161,33 @@ class PublicBootstrapTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         self.assertIn("workspace_root: PASS", completed.stdout)
         self.assertIn("external_dirs: PASS", completed.stdout)
+
+    def test_run_project_reports_missing_project_root_before_bootstrap_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fresh_home = Path(tmpdir) / "home"
+            fresh_home.mkdir(parents=True, exist_ok=True)
+            env = os.environ.copy()
+            env["HOME"] = str(fresh_home)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "mission" / "run_project.py"),
+                    "--project-root",
+                    "examples/translation-budget-ladder",
+                    "--until-complete",
+                ],
+                cwd=fresh_home,
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(completed.returncode, 2, completed.stdout + completed.stderr)
+        self.assertIn("Project root does not exist:", completed.stderr)
+        self.assertIn("Repo-local `examples/...` paths are only available", completed.stderr)
+        self.assertNotIn("bootstrap repair", completed.stderr.lower())
 
     @patch("deeploop.runtime.mission_executor_registry.package_mission_artifacts")
     @patch("deeploop.runtime.mission_executor_registry.run_recursive_agent_loop")

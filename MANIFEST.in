@@ -2,3 +2,4 @@ recursive-include configs *.yaml *.yml *.json
 recursive-include schemas *.json
 recursive-include scripts/mission *.py
 recursive-include scripts/runtime *.py
+recursive-include examples *.md *.yaml *.yml

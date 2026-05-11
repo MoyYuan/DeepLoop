@@ -2,20 +2,37 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
+from deeploop.cli.bootstrap_support import check_provider_readiness
+from deeploop.mission.mission_discovery import run_interactive_discovery
 from deeploop.mission.project_bootstrap import render_bootstrap_repair_lines
-from deeploop.mission.project_runner import _jsonify, run_project_until_complete
+from deeploop.mission.project_runner import (
+    _find_explicit_mission_configs,
+    _jsonify,
+    run_config_until_complete,
+    run_project_until_complete,
+)
+
+_DEFAULT_RUN_CHUNK_ITERATIONS = 8
+_DEFAULT_RUN_MAX_TOTAL_ITERATIONS = 256
+_DEFAULT_FIRST_RUN_SELECTION_PROFILE = "control-plane-copilot-cli"
 
 
 def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--project-root",
-        required=True,
-        help="Path to the plain researcher project folder. `deeploop run` bootstraps or reuses the mission state for you.",
+        help=(
+            "Optional path to the plain researcher project folder. If omitted, DeepLoop starts an "
+            "interactive first-run flow and can create a bundled starter project for you."
+        ),
     )
+    parser.add_argument("--mission-idea", help="Optional rough research goal to seed the interactive no-project flow.")
     parser.add_argument("--mission-id", help="Optional override for the generated mission id.")
     parser.add_argument("--force", action="store_true", help="Replace any existing mission root with the same mission id.")
     parser.add_argument(
@@ -23,8 +40,9 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         required=True,
         help=(
-            "Keep extending bounded runtime passes until the mission completes or hits a true operator handoff. "
-            "Use `deeploop init` plus `deeploop start`/`deeploop resume` instead when you want manual control."
+            "Keep extending bounded runtime passes until the mission completes or pauses at a true operator handoff. "
+            "If it pauses, continue with `deeploop status`, `deeploop inbox`, and `deeploop resume`. "
+            "Use `deeploop init` plus `deeploop start` when you want manual kickoff control."
         ),
     )
     parser.add_argument(
@@ -39,23 +57,6 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         default=256,
         help="Absolute mission-runtime iteration budget across the full `--until-complete` run.",
     )
-
-
-def _first_next_command(snapshot: dict[str, Any] | None) -> str | None:
-    if not isinstance(snapshot, dict):
-        return None
-    operator_console = snapshot.get("operator_console")
-    if not isinstance(operator_console, dict):
-        return None
-    next_commands = operator_console.get("next_commands")
-    if not isinstance(next_commands, list):
-        return None
-    for entry in next_commands:
-        if isinstance(entry, dict):
-            command = str(entry.get("command") or "").strip()
-            if command:
-                return command
-    return None
 
 
 def _resume_summary_line(result: dict[str, Any]) -> str | None:
@@ -78,6 +79,95 @@ def _resume_summary_line(result: dict[str, Any]) -> str | None:
     return "; ".join(parts)
 
 
+def _load_run_config(config_path: Path) -> dict[str, Any]:
+    loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _config_provider_readiness_target(config: dict[str, Any]) -> tuple[str | None, str | None]:
+    def _search_provider_selection(value: Any) -> dict[str, Any] | None:
+        if isinstance(value, dict):
+            selection = value.get("provider_selection")
+            if isinstance(selection, dict):
+                return selection
+            for nested in value.values():
+                found = _search_provider_selection(nested)
+                if found is not None:
+                    return found
+        if isinstance(value, list):
+            for item in value:
+                found = _search_provider_selection(item)
+                if found is not None:
+                    return found
+        return None
+
+    selection = _search_provider_selection(config)
+    if selection is None:
+        return (None, _DEFAULT_FIRST_RUN_SELECTION_PROFILE)
+    selection_profile = str(selection.get("profile") or "").strip() or None
+    mission_default = selection.get("mission_default") if isinstance(selection.get("mission_default"), dict) else {}
+    provider_family = (
+        str(selection.get("provider_family") or "").strip()
+        or str(mission_default.get("provider_family") or "").strip()
+        or None
+    )
+    return provider_family, selection_profile or _DEFAULT_FIRST_RUN_SELECTION_PROFILE
+
+
+def _run_resume_command(
+    args: argparse.Namespace,
+    *,
+    project_root: Path | None,
+    mission_id: str | None = None,
+) -> str:
+    command = ["deeploop", "run"]
+    if project_root is not None:
+        command.extend(["--project-root", str(project_root)])
+    resolved_mission_id = mission_id or getattr(args, "mission_id", None)
+    if resolved_mission_id:
+        command.extend(["--mission-id", resolved_mission_id])
+    if getattr(args, "force", False):
+        command.append("--force")
+    chunk_iterations = int(getattr(args, "chunk_iterations", _DEFAULT_RUN_CHUNK_ITERATIONS))
+    max_total_iterations = int(getattr(args, "max_total_iterations", _DEFAULT_RUN_MAX_TOTAL_ITERATIONS))
+    if chunk_iterations != _DEFAULT_RUN_CHUNK_ITERATIONS:
+        command.extend(["--chunk-iterations", str(chunk_iterations)])
+    if max_total_iterations != _DEFAULT_RUN_MAX_TOTAL_ITERATIONS:
+        command.extend(["--max-total-iterations", str(max_total_iterations)])
+    command.append("--until-complete")
+    return shlex.join(command)
+
+
+def _provider_readiness_result(
+    *,
+    config_path: Path | None,
+    project_root: Path | None,
+    resume_command: str,
+) -> dict[str, Any] | None:
+    provider_family: str | None = None
+    selection_profile: str | None = _DEFAULT_FIRST_RUN_SELECTION_PROFILE
+    mission_id: str | None = None
+    if config_path is not None and config_path.exists():
+        config = _load_run_config(config_path)
+        mission = config.get("mission") if isinstance(config.get("mission"), dict) else {}
+        mission_id = str(mission.get("id") or "").strip() or None
+        provider_family, selection_profile = _config_provider_readiness_target(config)
+    report = check_provider_readiness(
+        provider_family=provider_family,
+        selection_profile=selection_profile,
+        resume_command=resume_command,
+    )
+    if report["status"] == "ready":
+        return None
+    return {
+        "status": "provider-readiness-required",
+        "project_root": project_root,
+        "config_path": config_path,
+        "mission_id": mission_id,
+        "provider_readiness": report,
+    }
+
+
 def _noncompleted_summary_lines(result: dict[str, Any]) -> list[str]:
     status = str(result.get("status") or "stopped")
     bootstrap_repair = result.get("bootstrap_repair") if isinstance(result.get("bootstrap_repair"), dict) else None
@@ -87,6 +177,40 @@ def _noncompleted_summary_lines(result: dict[str, Any]) -> list[str]:
             f"- outcome: `{status}`",
             *render_bootstrap_repair_lines(bootstrap_repair, format="plain"),
         ]
+    provider_readiness = (
+        result.get("provider_readiness") if isinstance(result.get("provider_readiness"), dict) else None
+    )
+    if status == "provider-readiness-required" and isinstance(provider_readiness, dict):
+        lines = [
+            "DeepLoop stopped before kickoff because the required provider setup is not ready yet.",
+            f"- outcome: `{status}`",
+            f"- provider_family: `{provider_readiness.get('provider_family')}`",
+            f"- setup_status: `{provider_readiness.get('status')}`",
+        ]
+        selection_profile = str(provider_readiness.get("selection_profile") or "").strip()
+        if selection_profile:
+            lines.append(f"- selection_profile: `{selection_profile}`")
+        summary = str(provider_readiness.get("summary") or "").strip()
+        if summary:
+            lines.append(f"- summary: {summary}")
+        failed_checks = (
+            provider_readiness.get("failed_checks") if isinstance(provider_readiness.get("failed_checks"), list) else []
+        )
+        for check in failed_checks[:4]:
+            label = check.get("name")
+            if check.get("kind") == "python-import":
+                label = ", ".join(check.get("modules", []))
+            lines.append(f"- missing: `{check.get('kind')}` `{label}` — {check.get('message')}")
+        next_step = str(provider_readiness.get("next_step") or "").strip()
+        if next_step:
+            lines.append(f"- next_step: {next_step}")
+        resume_command = str(provider_readiness.get("resume_command") or "").strip()
+        if resume_command:
+            lines.append(f"- resume_command: `{resume_command}`")
+        recheck_command = str(provider_readiness.get("recheck_command") or "").strip()
+        if recheck_command:
+            lines.append(f"- recheck_command: `{recheck_command}`")
+        return lines
     snapshot = result.get("snapshot") if isinstance(result.get("snapshot"), dict) else None
     operator_console = snapshot.get("operator_console") if isinstance(snapshot, dict) else None
     headline = (
@@ -105,11 +229,15 @@ def _noncompleted_summary_lines(result: dict[str, Any]) -> list[str]:
         else ""
     )
     mission_state_path = result.get("mission_state_path")
-    next_command = _first_next_command(snapshot)
+    status_command = f"deeploop status --mission-state {mission_state_path}" if mission_state_path else None
+    inbox_command = f"deeploop inbox --mission-state {mission_state_path}" if mission_state_path else None
+    resume_command = f"deeploop resume --mission-state {mission_state_path}" if mission_state_path else None
     lines = [
-        "DeepLoop did not complete this run.",
+        "DeepLoop paused before completion.",
         f"- outcome: `{status}`",
     ]
+    if mission_state_path:
+        lines.append(f"- mission_state: `{mission_state_path}`")
     if headline:
         lines.append(f"- handoff: {headline}")
     if summary:
@@ -118,13 +246,20 @@ def _noncompleted_summary_lines(result: dict[str, Any]) -> list[str]:
         lines.append("- summary: Reached the total `--max-total-iterations` budget before completion.")
     if recommendation:
         lines.append(f"- recommendation: {recommendation}")
+    if status_command:
+        lines.append(f"- operator_loop: start with `{status_command}`")
+    if inbox_command:
+        lines.append(f"- operator_loop_if_needed: if DeepLoop needs you, open `{inbox_command}`")
+    if resume_command:
+        lines.append(f"- operator_loop_resume: when the fix or choice is ready, run `{resume_command}`")
     resume_line = _resume_summary_line(result)
     if resume_line:
         lines.append(f"- resume: {resume_line}")
-    if next_command:
-        lines.append(f"- next_command: `{next_command}`")
-    elif mission_state_path:
-        lines.append(f"- next_command: `deeploop status --mission-state {mission_state_path}`")
+    if mission_state_path:
+        lines.append(
+            f"- advanced_detail: `deeploop logs --mission-state {mission_state_path}` and "
+            f"`deeploop decisions --mission-state {mission_state_path}` only if `status` is not enough"
+        )
     return lines
 
 
@@ -136,13 +271,67 @@ def _run_project(args: argparse.Namespace) -> int:
             flush=True,
         )
         return 2
-    result = run_project_until_complete(
-        Path(args.project_root),
-        mission_id=getattr(args, "mission_id", None),
-        force=getattr(args, "force", False),
-        chunk_iterations=getattr(args, "chunk_iterations", 8),
-        max_total_iterations=getattr(args, "max_total_iterations", 256),
-    )
+    try:
+        if getattr(args, "project_root", None):
+            raw_project_root = Path(args.project_root).expanduser()
+            resolved_project_root = raw_project_root.resolve()
+            explicit_configs = _find_explicit_mission_configs(resolved_project_root) if raw_project_root.exists() else []
+            provider_gate = (
+                _provider_readiness_result(
+                    config_path=explicit_configs[0] if explicit_configs else None,
+                    project_root=resolved_project_root,
+                    resume_command=_run_resume_command(args, project_root=resolved_project_root),
+                )
+                if raw_project_root.exists() and explicit_configs
+                else None
+            )
+            if provider_gate is not None:
+                result = provider_gate
+            else:
+                result = run_project_until_complete(
+                    raw_project_root,
+                    mission_id=getattr(args, "mission_id", None),
+                    force=getattr(args, "force", False),
+                    chunk_iterations=getattr(args, "chunk_iterations", 8),
+                    max_total_iterations=getattr(args, "max_total_iterations", 256),
+                )
+        else:
+            discovery = run_interactive_discovery(
+                mission_id=getattr(args, "mission_id", None),
+                mission_idea=getattr(args, "mission_idea", None),
+            )
+            if discovery.get("cancelled") and not discovery.get("config_path"):
+                print("run: startup cancelled before DeepLoop created a mission.", flush=True)
+                return 0
+            if not discovery.get("confirmed"):
+                print(f"run: discovery saved compiled config to {discovery['config_path']}", flush=True)
+                print("run: kickoff cancelled; edit the compiled config and re-run when ready", flush=True)
+                return 0
+            config_path = Path(discovery["config_path"]).expanduser().resolve()
+            config = _load_run_config(config_path)
+            mission = config.get("mission") if isinstance(config.get("mission"), dict) else {}
+            target_repo = Path(str(mission.get("target_repo") or "")).expanduser().resolve()
+            provider_gate = _provider_readiness_result(
+                config_path=config_path,
+                project_root=target_repo,
+                resume_command=_run_resume_command(
+                    args,
+                    project_root=target_repo,
+                    mission_id=str(mission.get("id") or "").strip() or None,
+                ),
+            )
+            if provider_gate is not None:
+                result = provider_gate
+            else:
+                result = run_config_until_complete(
+                    config_path,
+                    force=getattr(args, "force", False),
+                    chunk_iterations=getattr(args, "chunk_iterations", 8),
+                    max_total_iterations=getattr(args, "max_total_iterations", 256),
+                )
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"run: {exc}", file=sys.stderr, flush=True)
+        return 2
     if result["status"] != "completed":
         print("\n".join(_noncompleted_summary_lines(result)), file=sys.stderr, flush=True)
     print(json.dumps(_jsonify(result), indent=2))
@@ -153,7 +342,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Run a plain researcher project folder through DeepLoop until completion or a true operator boundary. "
-            "This command handles init + bounded start/resume loops for you."
+            "When the run pauses, stay on `deeploop status`, `deeploop inbox`, and `deeploop resume`."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )

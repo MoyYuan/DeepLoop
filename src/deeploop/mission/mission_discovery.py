@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+import yaml
+
 from deeploop.core.paths import SCRATCH_DIR
 from deeploop.core.structured_io import write_markdown, write_yaml_mapping
 from deeploop.mission.project_bootstrap import (
@@ -10,6 +12,7 @@ from deeploop.mission.project_bootstrap import (
     compile_mission_contract,
     render_mission_contract_summary_lines,
 )
+from deeploop.mission.starter_projects import DEFAULT_STARTER_ID, bundled_starter_catalog, materialize_starter_project
 from deeploop.project_contract import discover_project_contract
 
 DISCOVERY_QUESTIONS: tuple[tuple[str, str, str], ...] = (
@@ -262,12 +265,48 @@ def _discovery_brief_lines(config: dict[str, Any], answers: dict[str, str]) -> l
     return lines
 
 
+def _choose_starter_project(
+    *,
+    reader: Callable[[str], str],
+    printer: Callable[[str], None],
+) -> str | None:
+    starters = bundled_starter_catalog()
+    if not starters:
+        return DEFAULT_STARTER_ID
+    default_index = next(
+        (index for index, starter in enumerate(starters, start=1) if starter["id"] == DEFAULT_STARTER_ID),
+        1,
+    )
+    printer("mission-discovery: choose a bundled starter project")
+    for index, starter in enumerate(starters, start=1):
+        default_marker = " (default)" if index == default_index else ""
+        printer(f"{index}. {starter['title']}{default_marker} — {starter['description']}")
+    while True:
+        response = _read_discovery_response(
+            reader,
+            f"mission-discovery: Select a starter project [default {default_index}] ",
+        )
+        if response is None:
+            return None
+        if not response:
+            return starters[default_index - 1]["id"]
+        if response.isdigit():
+            index = int(response)
+            if 1 <= index <= len(starters):
+                return starters[index - 1]["id"]
+        for starter in starters:
+            if response == starter["id"]:
+                return starter["id"]
+        printer("mission-discovery: invalid starter selection; choose a listed number or starter id")
+
+
 def compile_discovery_config(
     *,
     mission_idea: str,
     discovery_answers: dict[str, str],
     mission_id: str | None = None,
     project_root: Path | None = None,
+    starter_project_id: str | None = None,
 ) -> dict[str, Any]:
     answers = {"mission_idea": mission_idea, **discovery_answers}
     objective = _normalize_text(answers["mission_idea"])
@@ -282,37 +321,60 @@ def compile_discovery_config(
     if available_assets:
         summary_parts.append(f"Starting context: {available_assets}")
     summary = " ".join(summary_parts)
+    discovery_payload = _discovery_payload(answers)
 
     if project_root is None:
         resolved_mission_id = _normalize_text(mission_id) or f"{_slugify(title)}-mission"
-        discovery_root = SCRATCH_DIR / "mission_discovery_projects" / resolved_mission_id
-        docs_root = discovery_root / "docs"
-        docs_root.mkdir(parents=True, exist_ok=True)
-        constraints = _discovery_constraints(answers)
+        selected_starter_id = starter_project_id or DEFAULT_STARTER_ID
+        discovery_root = materialize_starter_project(
+            starter_id=selected_starter_id,
+            title=title,
+            summary=summary,
+            objective=objective,
+            mission_id=resolved_mission_id,
+        )
+        project_facts_path = discovery_root / "project-facts.yaml"
+        project_facts = yaml.safe_load(project_facts_path.read_text(encoding="utf-8")) or {}
+        if not isinstance(project_facts, dict):
+            project_facts = {}
+        project_section = project_facts.get("project") if isinstance(project_facts.get("project"), dict) else {}
+        existing_constraints = [
+            str(item).strip()
+            for item in project_section.get("constraints", [])
+            if str(item).strip()
+        ]
         discovery_human_inputs = _discovery_contract_human_inputs(answers)
-        discovery_payload = _discovery_payload(answers)
-        project_facts = {
-            "project": {
+        project_section.update(
+            {
                 "name": _slugify(title),
                 "title": title,
                 "summary": summary,
                 "objective": objective,
-                "constraints": constraints,
-                "human_inputs": discovery_human_inputs,
-            },
-            "artifacts": {"docs": ["docs/project-brief.md"]},
-        }
-        write_yaml_mapping(discovery_root / "project-facts.yaml", project_facts)
+                "constraints": _dedupe_strings([*existing_constraints, *_discovery_constraints(answers)]),
+                "human_inputs": {
+                    **(
+                        dict(project_section.get("human_inputs"))
+                        if isinstance(project_section.get("human_inputs"), dict)
+                        else {}
+                    ),
+                    **discovery_human_inputs,
+                    "starter_project": selected_starter_id,
+                },
+            }
+        )
+        project_facts["project"] = project_section
+        write_yaml_mapping(project_facts_path, project_facts)
         base_config = build_mission_config_from_project_root(discovery_root, mission_id=resolved_mission_id)
         base_config["mission"]["human_inputs"] = {
             **(base_config["mission"].get("human_inputs") if isinstance(base_config["mission"].get("human_inputs"), dict) else {}),
             "mission_discovery": discovery_payload,
         }
+        docs_root = discovery_root / "docs"
+        docs_root.mkdir(parents=True, exist_ok=True)
         write_markdown(docs_root / "project-brief.md", _discovery_brief_lines(base_config, answers))
     else:
         resolved_project_root = project_root.expanduser().resolve()
         base_config = build_mission_config_from_project_root(resolved_project_root, mission_id=mission_id)
-        discovery_payload = _discovery_payload(answers)
         discovery_human_inputs = _discovery_contract_human_inputs(answers)
         existing_constraints = [
             str(item).strip()
@@ -374,6 +436,7 @@ def run_interactive_discovery(
 ) -> dict[str, Any]:
     printer("mission-discovery: starting interactive mission formulation")
     contextual_answers: dict[str, str] = {}
+    starter_project_id: str | None = None
     if project_root is not None:
         printer(f"mission-discovery: using project context from {project_root}")
         contextual_answers = _project_context_answers(project_root)
@@ -406,6 +469,10 @@ def run_interactive_discovery(
             if attempts >= MAX_INITIAL_IDEA_ATTEMPTS:
                 printer("mission-discovery: no mission idea provided; canceling discovery")
                 return {"cancelled": True, "confirmed": False, "config": None, "config_path": None}
+    if project_root is None:
+        starter_project_id = _choose_starter_project(reader=reader, printer=printer)
+        if starter_project_id is None:
+            return {"cancelled": True, "confirmed": False, "config": None, "config_path": None}
     answers: dict[str, str] = {"mission_idea": idea}
     for field_id, _label, prompt in DISCOVERY_QUESTIONS:
         _question_prompts(printer=printer, answers=answers)
@@ -423,6 +490,7 @@ def run_interactive_discovery(
         discovery_answers={key: value for key, value in answers.items() if key != "mission_idea"},
         mission_id=mission_id,
         project_root=project_root,
+        starter_project_id=starter_project_id,
     )
     compiled_config_dir = SCRATCH_DIR / "mission_discovery_configs"
     compiled_config_dir.mkdir(parents=True, exist_ok=True)
@@ -444,6 +512,7 @@ def run_interactive_discovery(
         "confirmed": confirmation in {"y", "yes"},
         "config": config,
         "config_path": compiled_config_path,
+        "starter_project_id": starter_project_id,
     }
 
 

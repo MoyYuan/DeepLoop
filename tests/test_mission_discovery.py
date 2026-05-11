@@ -17,7 +17,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from deeploop.core.paths import MISSIONS_DIR, SCRATCH_DIR
+from deeploop.core.paths import MISSIONS_DIR, PROJECTS_DIR, SCRATCH_DIR
 from deeploop.cli.init_mission import _init_mission
 from deeploop.mission.mission_discovery import compile_discovery_config, run_interactive_discovery
 
@@ -44,6 +44,7 @@ class MissionDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(config["mission"]["id"], mission_id)
         self.assertEqual(config["mission"]["human_inputs"]["mission_discovery"]["mode"], "interactive")
+        self.assertEqual(config["mission"]["human_inputs"]["starter_project"], "starter-general-research")
         self.assertEqual(
             config["mission"]["human_inputs"]["mission_discovery"]["answers"]["mission_idea"],
             "Explore promising residual-vs-direct forecasting directions for the dataset.",
@@ -51,11 +52,12 @@ class MissionDiscoveryTests(unittest.TestCase):
         self.assertIn("temporal leakage", " ".join(config["mission"]["constraints"]))
         self.assertTrue((discovery_root / "project-facts.yaml").exists())
         self.assertTrue((discovery_root / "docs" / "project-brief.md").exists())
+        self.assertTrue(discovery_root.is_relative_to(PROJECTS_DIR))
 
     def test_init_mission_script_supports_interactive_discovery_before_kickoff(self) -> None:
         mission_id = "interactive-discovery-cli-test"
         mission_root = MISSIONS_DIR / mission_id
-        discovery_root = SCRATCH_DIR / "mission_discovery_projects" / mission_id
+        discovery_root = PROJECTS_DIR / mission_id
         discovery_config_path = SCRATCH_DIR / "mission_discovery_configs" / f"{mission_id}.yaml"
         shutil.rmtree(mission_root, ignore_errors=True)
         shutil.rmtree(discovery_root, ignore_errors=True)
@@ -76,6 +78,7 @@ class MissionDiscoveryTests(unittest.TestCase):
             ],
             input="\n".join(
                 [
+                    "1",
                     "A CSV dataset, a README, and a simple baseline.",
                     "Improve validation MAE over baseline and document slice behavior.",
                     "Guard against temporal leakage and entity overlap.",
@@ -109,6 +112,7 @@ class MissionDiscoveryTests(unittest.TestCase):
         self.assertEqual(mission_state["mission_id"], mission_id)
         self.assertIn("temporal leakage", " ".join(mission_state["constraints"]))
         self.assertEqual(mission_state["human_inputs"]["mission_discovery"]["mode"], "interactive")
+        self.assertEqual(mission_state["human_inputs"]["starter_project"], "starter-general-research")
         self.assertEqual(
             mission_state["human_inputs"]["mission_discovery"]["answers"]["mission_idea"],
             "Figure out a leakage-safe research plan for a tabular forecasting dataset.",
@@ -118,7 +122,7 @@ class MissionDiscoveryTests(unittest.TestCase):
     def test_init_mission_script_discovery_cancel_keeps_compiled_config_without_launching(self) -> None:
         mission_id = "interactive-discovery-cli-cancel-test"
         mission_root = MISSIONS_DIR / mission_id
-        discovery_root = SCRATCH_DIR / "mission_discovery_projects" / mission_id
+        discovery_root = PROJECTS_DIR / mission_id
         discovery_config_path = SCRATCH_DIR / "mission_discovery_configs" / f"{mission_id}.yaml"
         shutil.rmtree(mission_root, ignore_errors=True)
         shutil.rmtree(discovery_root, ignore_errors=True)
@@ -138,6 +142,7 @@ class MissionDiscoveryTests(unittest.TestCase):
             ],
             input="\n".join(
                 [
+                    "1",
                     "Dataset notes and a baseline.",
                     "Improve benchmark score without leakage.",
                     "Avoid train/test contamination.",
@@ -248,6 +253,7 @@ class MissionDiscoveryTests(unittest.TestCase):
     def test_run_interactive_discovery_preserves_blank_followup_answers_as_missing(self) -> None:
         responses = iter(
             [
+                "1",
                 "A baseline notebook and dataset.",
                 "",
                 "Watch for leakage.",
@@ -273,6 +279,34 @@ class MissionDiscoveryTests(unittest.TestCase):
         checklist = result["config"]["mission"]["human_inputs"]["mission_discovery"]["checklist"]
         success_criteria = next(item for item in checklist if item["id"] == "success_criteria")
         self.assertEqual(success_criteria["status"], "missing")
+
+    def test_run_interactive_discovery_accepts_starter_id_input(self) -> None:
+        responses = iter(
+            [
+                "starter-general-research",
+                "Have rough notes only.",
+                "Beat a simple baseline.",
+                "Avoid leakage.",
+                "4 GPU-hours.",
+                "Mission memo.",
+                "Prefer rigor.",
+                "Need benchmark sign-off.",
+                "n",
+            ]
+        )
+
+        result = run_interactive_discovery(
+            mission_id="interactive-discovery-starter-id-test",
+            mission_idea="Research a cautious starter path.",
+            reader=lambda prompt: next(responses),
+            printer=lambda message: None,
+        )
+        self.addCleanup(lambda: Path(result["config_path"]).unlink(missing_ok=True))
+        self.addCleanup(lambda: shutil.rmtree(Path(result["config"]["mission"]["target_repo"]), ignore_errors=True))
+
+        self.assertFalse(result["cancelled"])
+        self.assertFalse(result["confirmed"])
+        self.assertEqual(result["starter_project_id"], "starter-general-research")
 
     def test_run_interactive_discovery_prefills_answers_from_project_context(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "mission_discovery" / "project_context"

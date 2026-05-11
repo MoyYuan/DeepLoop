@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+PRIMARY_OPERATOR_COMMAND_LABELS = ("status", "inbox", "resume")
+
 
 def management_commands(mission_state_path: Path) -> dict[str, str]:
     mission_state_arg = str(mission_state_path)
@@ -10,6 +12,23 @@ def management_commands(mission_state_path: Path) -> dict[str, str]:
         name: f"deeploop {name} --mission-state {mission_state_arg}"
         for name in ("status", "logs", "decisions", "inbox", "resume", "retry", "reroute", "triage", "stop")
     }
+
+
+def partition_operator_commands(commands: list[Mapping[str, Any]] | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not isinstance(commands, list):
+        return [], []
+    primary: list[dict[str, Any]] = []
+    secondary: list[dict[str, Any]] = []
+    for entry in commands:
+        if not isinstance(entry, Mapping):
+            continue
+        normalized = dict(entry)
+        label = str(normalized.get("label") or "").strip().lower()
+        if label in PRIMARY_OPERATOR_COMMAND_LABELS:
+            primary.append(normalized)
+        else:
+            secondary.append(normalized)
+    return primary, secondary
 
 
 def operator_response(request: Mapping[str, Any] | None) -> dict[str, Any] | None:
@@ -130,8 +149,11 @@ def operator_console_snapshot(
 
     headline = "STOPPED — DeepLoop is not currently running."
     summary = "No operator-facing mission summary is available yet."
-    recommendation = "Run `deeploop status` or `deeploop logs` to inspect the current mission state."
-    continue_summary = "Start or resume once the next step is clear."
+    recommendation = (
+        "Start with `deeploop status`. If DeepLoop later pauses for you, stay on "
+        "`status`, `inbox`, then `resume`."
+    )
+    continue_summary = "Use `status` first. Use `inbox` only when DeepLoop is waiting on you."
     gate_class = "none"
     gate_detail = None
     stop_reason = None
@@ -184,63 +206,63 @@ def operator_console_snapshot(
         ] or alternatives
         gate_class = str(blocker.get("kind") or blocker.get("gate") or "operator-review")
         gate_detail = str(blocker.get("risk_class") or blocker.get("label") or gate_class)
-        headline = "BLOCKED — review the request, then resume when ready."
+        headline = "PAUSED — DeepLoop needs an operator decision before it can continue."
         summary = str(current_request.get("summary") or blocker.get("reason") or "DeepLoop opened the operator inbox.")
         recommendation = str(
             recommendation_payload.get("summary")
-            or "Review the request, make the smallest safe change, then resume."
+            or "Start with `status`, open `inbox`, make the smallest safe change or choice, then `resume`."
         )
         stop_reason = str(blocker.get("reason") or failures.get("completion_reason") or summary)
         requires_action = True
-        continue_summary = "Open the inbox, fix or reroute the blocked step, optionally record feedback, then resume."
+        continue_summary = "Use `status`, then `inbox`, then `resume` once the fix or decision is ready."
         next_commands = [
+            {
+                "label": "status",
+                "command": commands["status"],
+                "description": "Start here to confirm that DeepLoop is paused and what it is waiting on.",
+            },
+            {
+                "label": "inbox",
+                "command": commands["inbox"],
+                "description": "Read the active operator request and the recommended smallest safe fix.",
+            },
+            {
+                "label": "resume",
+                "command": str(current_request.get("continue_command") or commands["resume"]),
+                "description": "After the fix or decision is ready, hand control back to DeepLoop.",
+            },
             *(
                 [
                     {
                         "label": "triage",
                         "command": commands["triage"],
-                        "description": "Run the bounded triage hook before choosing retry or reroute.",
+                        "description": "Advanced: run the bounded triage hook before choosing retry or reroute.",
                     }
                 ]
                 if blocked_entries and str(context.get("mode") or "") == "managed"
                 else []
             ),
             {
-                "label": "inbox",
-                "command": commands["inbox"],
-                "description": "Review the active operator request and recommendation.",
-            },
-            {
-                "label": "status",
-                "command": commands["status"],
-                "description": "Confirm the current mission state and latest blocked work.",
-            },
-            {
                 "label": "retry",
                 "command": f'{commands["retry"]} --note "<what changed>"',
-                "description": "Record that the blocked path was fixed in-scope and should be retried on resume.",
+                "description": "Advanced: record that the current in-scope path was fixed before resume.",
             },
             {
                 "label": "reroute",
                 "command": f'{commands["reroute"]} --note "<new plan>"',
-                "description": "Record that the mission should resume on a smaller or alternate in-scope path.",
-            },
-            {
-                "label": "resume",
-                "command": str(current_request.get("continue_command") or commands["resume"]),
-                "description": "Resume autopilot once the blocker has been addressed.",
+                "description": "Advanced: record that DeepLoop should resume on a smaller or alternate path.",
             },
         ]
         if isinstance(current_response, Mapping):
             action = str(current_response.get("action") or "operator-action")
             continue_summary = (
-                f"Operator feedback `{action}` is already recorded. Finish the change, then resume."
+                f"Operator feedback `{action}` is already recorded. Finish the change if needed, then `resume`."
             )
             next_commands = [
                 {
-                    "label": "resume",
-                    "command": str(current_request.get("continue_command") or commands["resume"]),
-                    "description": "Resume autopilot with the recorded operator decision in place.",
+                    "label": "status",
+                    "command": commands["status"],
+                    "description": "Re-check the current state before handing control back to DeepLoop.",
                 },
                 {
                     "label": "inbox",
@@ -248,9 +270,9 @@ def operator_console_snapshot(
                     "description": "Review the active request and recorded operator feedback.",
                 },
                 {
-                    "label": "status",
-                    "command": commands["status"],
-                    "description": "Re-check the mission state before resuming.",
+                    "label": "resume",
+                    "command": str(current_request.get("continue_command") or commands["resume"]),
+                    "description": "Resume DeepLoop with the recorded operator decision in place.",
                 },
             ]
     elif isinstance(latest_soft_gate, Mapping):
@@ -266,19 +288,19 @@ def operator_console_snapshot(
         headline = (
             "RUNNING — DeepLoop is still working through a soft gate."
             if is_running
-            else "STOPPED — the last run ended after a soft-gate recovery path."
+            else "PAUSED — DeepLoop stopped after a bounded recovery attempt."
         )
         summary = str(
             latest_soft_gate.get("reason")
             or f"DeepLoop surfaced `{risk_class}` as a soft gate and kept control."
         )
         recommendation = (
-            "Let DeepLoop keep control. Soft gates prefer retry, reroute, or downscope before the inbox opens."
+            "Start with `status`. If DeepLoop actually needs you, `inbox` will show it. Otherwise `resume` starts another bounded pass."
         )
         continue_summary = (
             "No operator action is required right now."
             if is_running
-            else "Inspect the last soft-gate recovery, then resume if you want DeepLoop to continue."
+            else "Use `status`, check `inbox` only if needed, then `resume` when you want another bounded pass."
         )
         requires_action = not is_running
         alternatives = [
@@ -301,33 +323,41 @@ def operator_console_snapshot(
             {
                 "label": "status",
                 "command": commands["status"],
-                "description": "Refresh the autopilot summary.",
+                "description": "Start here to confirm whether the last stop was only a bounded recovery pause.",
             },
+            *(
+                [
+                    {
+                        "label": "inbox",
+                        "command": commands["inbox"],
+                        "description": "Usually clear here, but check if `status` says DeepLoop is waiting on you.",
+                    },
+                    {
+                        "label": "resume",
+                        "command": commands["resume"],
+                        "description": "Start another bounded pass when you want DeepLoop to continue.",
+                    },
+                ]
+                if not is_running
+                else []
+            ),
             {
                 "label": "decisions",
                 "command": commands["decisions"],
-                "description": "Inspect the latest mission decision if you want more detail.",
+                "description": "Advanced: inspect the latest recovery decision if `status` is not enough.",
             },
             {
                 "label": "logs",
                 "command": commands["logs"],
-                "description": "Inspect the detached process logs if the soft recovery looks stuck.",
+                "description": "Advanced: inspect the detached process logs if the recovery looks stuck.",
             },
         ]
-        if not is_running:
-            next_commands.append(
-                {
-                    "label": "resume",
-                    "command": commands["resume"],
-                    "description": "Resume autopilot if you want another bounded pass after the soft-gate stop.",
-                }
-            )
         if preferred_actions:
             recommendation += f" Preferred soft recovery actions: `{', '.join(preferred_actions)}`."
     elif mission_status == "completed":
         headline = "COMPLETED — DeepLoop finished this mission."
         summary = str(failures.get("completion_reason") or "DeepLoop reached a completed mission state.")
-        recommendation = "Inspect the current mission status, decisions, and packaged outputs."
+        recommendation = "Use `status` for the final snapshot. Open `decisions` or `logs` only if you need extra detail."
         continue_summary = "No operator action is required unless you want to launch another bounded run."
         next_commands = [
             {
@@ -355,7 +385,7 @@ def operator_console_snapshot(
             or failures.get("completion_reason")
             or "Autopilot still owns the current mission step."
         )
-        recommendation = "Let DeepLoop keep running. Use the management surface only when you want more detail or need to stop."
+        recommendation = "Let DeepLoop keep running. Use `status` first for updates; `logs` and `decisions` are only for extra detail."
         continue_summary = "No operator action is required right now."
         next_commands = [
             {
@@ -390,29 +420,37 @@ def operator_console_snapshot(
             or failures.get("last_blocker")
             or "The detached mission process exited or has not started yet."
         )
-        recommendation = "Inspect status, logs, and decisions, then resume only after the blocker is understood."
-        continue_summary = "Resume only after the blocker is understood and the next step is safe."
+        recommendation = (
+            "Start with `status`. If DeepLoop opened a request, use `inbox`. "
+            "Use `logs` or `decisions` only when `status` is not enough, then `resume` once the stop is understood."
+        )
+        continue_summary = "Use `status` first, `inbox` if needed, then `resume` only after the stop is understood."
         requires_action = mission_status in {"blocked", "failed"}
         next_commands = [
             {
                 "label": "status",
                 "command": commands["status"],
-                "description": "Refresh the operator console summary.",
+                "description": "Start here to see why DeepLoop stopped and whether it left you a clean handoff.",
             },
             {
-                "label": "logs",
-                "command": commands["logs"],
-                "description": "Inspect the detached mission log tail.",
-            },
-            {
-                "label": "decisions",
-                "command": commands["decisions"],
-                "description": "Inspect the latest mission decisions and blocked work.",
+                "label": "inbox",
+                "command": commands["inbox"],
+                "description": "Check whether DeepLoop opened an operator request for this stop.",
             },
             {
                 "label": "resume",
                 "command": commands["resume"],
-                "description": "Resume autopilot once the blocker is addressed.",
+                "description": "Only after the stop is understood or fixed, hand control back to DeepLoop.",
+            },
+            {
+                "label": "decisions",
+                "command": commands["decisions"],
+                "description": "Advanced: inspect the latest mission decisions and blocked work.",
+            },
+            {
+                "label": "logs",
+                "command": commands["logs"],
+                "description": "Advanced: inspect the detached mission log tail.",
             },
         ]
 
@@ -481,6 +519,7 @@ def mode_summary(mode: str) -> str:
 __all__ = [
     "management_commands",
     "mode_summary",
+    "partition_operator_commands",
     "operator_console_snapshot",
     "operator_response",
     "operator_surface_fields",

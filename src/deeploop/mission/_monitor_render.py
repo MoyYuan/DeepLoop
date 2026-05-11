@@ -4,7 +4,17 @@ import json
 from typing import Any, Mapping
 
 from deeploop.mission._monitor_classification import _runtime_recovery_entries
+from deeploop.mission._operator_surface import partition_operator_commands
 from deeploop.mission._operator_surface import operator_response as _operator_response
+
+
+def _render_command_section(*, heading: str, commands: list[dict[str, Any]]) -> list[str]:
+    lines = [heading, ""]
+    for index, entry in enumerate(commands, start=1):
+        lines.append(f"{index}. `{entry.get('command')}`")
+        if entry.get("description"):
+            lines.append(f"   - {entry.get('description')}")
+    return lines
 
 
 def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
@@ -57,6 +67,7 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
             f"- stop_reason: {operator_console.get('stop_reason') or 'n/a'}",
             f"- recommendation: {operator_console.get('recommendation')}",
             f"- continue: {operator_console.get('continue_summary')}",
+            "- operator_loop: `status` -> `inbox` (only when needed) -> `resume`",
         ]
     )
     if operator_console.get("budget_summary"):
@@ -100,16 +111,15 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
     else:
         lines.append("- No alternative operator paths are surfaced right now.")
 
-    lines.extend(["", "## Exact next commands", ""])
-    if next_commands:
-        for index, entry in enumerate(next_commands, start=1):
-            if not isinstance(entry, Mapping):
-                continue
-            lines.append(f"{index}. `{entry.get('command')}`")
-            if entry.get("description"):
-                lines.append(f"   - {entry.get('description')}")
-    else:
-        lines.append("- No management commands are available yet.")
+    primary_commands, secondary_commands = partition_operator_commands(
+        [dict(entry) for entry in next_commands if isinstance(entry, Mapping)]
+    )
+    if primary_commands:
+        lines.extend(["", *_render_command_section(heading="## Main operator loop", commands=primary_commands)])
+    if secondary_commands:
+        lines.extend(["", *_render_command_section(heading="## Advanced commands", commands=secondary_commands)])
+    if not primary_commands and not secondary_commands:
+        lines.extend(["", "## Commands", "", "- No management commands are available yet."])
 
     lines.extend(
         [

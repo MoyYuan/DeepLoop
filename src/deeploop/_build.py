@@ -20,6 +20,7 @@ class build_py(_build_py):
             "schemas",
             "scripts/mission",
             "scripts/runtime",
+            "examples",
         )
         for relative_dir in asset_dirs:
             source = repo_root / relative_dir

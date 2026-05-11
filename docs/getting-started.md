@@ -1,13 +1,12 @@
 # Getting started
 
-This is the shortest supported path from clone to a first running mission. You
+This is the shortest supported path from install to a first running mission. You
 do not need to understand every runtime detail before you start.
 
 ## What you need
 
-- the DeepLoop repo
-- either a minimal plain-folder project with `project-facts.yaml` plus docs, or
-  an explicit mission config
+- either a rough mission idea, your own plain-folder project, or a repo checkout
+  if you want direct access to the public example
 - a terminal
 - a supported environment (today: Linux with Python 3.11 and the documented
   workspace roots)
@@ -81,36 +80,50 @@ onboarding validate today; outside it, expect gaps.
 2. Prepare the workspace:
 
    ```text
-   export DEEPLOOP_WORKSPACE_ROOT="$HOME/Workspaces"  # optional; choose before init/start
-   make setup
+    export DEEPLOOP_WORKSPACE_ROOT="$HOME/Workspaces"  # optional; choose before init/start
+    deeploop setup
+    deeploop preflight
    ```
 
-   DeepLoop stores mission state, scratch data, ledgers, and packages under the
-   resolved workspace root. `deeploop init` and `deeploop start` print that root
-   so case-sensitive path splits are visible. If `DEEPLOOP_WORKSPACE_ROOT` is
-   unset, DeepLoop uses an existing unambiguous `~/Workspaces`, `~/workspace`,
-   or `~/workspaces` directory, then falls back to `~/workspaces`.
+    DeepLoop stores mission state, scratch data, starter projects, ledgers, and
+    packages under the resolved workspace root. `deeploop init` and
+    `deeploop start` print that root so case-sensitive path splits are visible.
+    If `DEEPLOOP_WORKSPACE_ROOT` is unset, DeepLoop uses an existing
+    unambiguous `~/Workspaces`, `~/workspace`, or `~/workspaces` directory,
+    then falls back to `~/workspaces`.
 
-3. Validate the public bootstrap path:
+3. If you are in a repo checkout, the contributor validation path is:
 
    ```text
+   make setup
    make public-bootstrap-check
    ```
 
-   This is the clean-room validation contract used by public CI.
+    `make public-bootstrap-check` is the clean-room repo-checkout validation
+    contract used by public CI. It is optional for package-only installs because
+    those installs do not include the repo-local Makefile or bundled examples.
 
 4. Prepare machine-level provider availability with
-   [Provider setup](reference/provider-setup.md).
+    [Provider setup](reference/provider-setup.md).
 
-   This setup contract is intentionally limited to machine readiness:
+    This setup contract is intentionally limited to machine readiness:
 
    - which tools must exist on the machine
    - which env vars/auth prerequisites are expected
-   - which readiness checks should pass before mission execution
+    - which readiness checks should pass before mission execution
 
-   It does **not** choose the provider or model for a specific mission. That
-   mission/runtime selection contract now lives in
-   [Provider selection](reference/provider-selection.md).
+    It does **not** choose the provider or model for a specific mission. That
+    mission/runtime selection contract now lives in
+    [Provider selection](reference/provider-selection.md).
+
+    The fastest first-run readiness shortcut is:
+
+    ```text
+    deeploop provider-ready --selection-profile control-plane-copilot-cli
+    ```
+
+    This resolves the default first-run selection profile to its underlying
+    provider family, but it still checks setup only.
 
 5. Declare mission/runtime provider selection with
    [Provider selection](reference/provider-selection.md).
@@ -119,32 +132,51 @@ onboarding validate today; outside it, expect gaps.
 
    - choose provider family per mission, loop, role, or phase
    - choose backend and model alias/identifier
-   - define allowed fallbacks and override points
-   - keep secrets and credential values outside repo config
+    - define allowed fallbacks and override points
+    - keep secrets and credential values outside repo config
 
-6. Start from the canonical public example or your own plain-folder project:
+    `deeploop run` calls the same provider-readiness surface before kickoff. If
+    setup is missing, DeepLoop stops early with the exact missing requirement,
+    one next step, and a resume command instead of making you reconcile both
+    provider docs first.
 
-    ```text
-    cp -R examples/translation-budget-ladder <project-folder>
-    ```
+6. Run DeepLoop:
 
-    `examples/translation-budget-ladder/` is the canonical public example. The
-    proof-matrix fixture under `tests/_proof_fixtures/plain_folder/` remains
-    validation-only. See [Examples](how-to/examples.md) and
-    [Plain-folder starter](how-to/plain-folder-starter.md) for the public-safe
-    plain-folder contract.
+    - start from nothing:
 
-    Fastest happy path:
+      ```text
+      deeploop run --until-complete
+      ```
 
-   ```text
-   deeploop run --project-root <project-folder> --until-complete
-   ```
+      This is the primary first-run story. DeepLoop starts an interactive
+      kickoff, asks for your mission idea, lets you choose a bundled starter,
+      creates a project under `WORKSPACE_ROOT/projects/`, compiles a mission,
+      and launches it.
 
-     This is the shortest supported "use DeepLoop on a real project folder"
-     path. It bootstraps the mission from the folder itself, then keeps running
-     until completion, a true operator boundary, or total-iteration exhaustion.
-     If it stops for operator review, use the returned `<mission-state.json>`
-     with the `deeploop` commands below.
+    - start from your own project folder:
+
+      ```text
+      deeploop run --project-root <project-folder> --until-complete
+      ```
+
+      This uses the same front door, but bootstraps from your existing facts and
+      docs instead of creating a bundled starter project.
+
+    - start from the canonical public example if you are in a repo checkout:
+
+      ```text
+      cp -R examples/translation-budget-ladder <project-folder>
+      deeploop run --project-root <project-folder> --until-complete
+      ```
+
+      `examples/translation-budget-ladder/` is the canonical public example, but
+      direct `examples/...` paths are repo-local. Package installs should use
+      plain `deeploop run` or point `--project-root` at their own folder.
+
+    This is the shortest supported end-to-end path. It keeps running until
+    completion, a true operator boundary, or total-iteration exhaustion. If it
+    pauses, keep the operator loop simple: start with `status`, open `inbox`
+    only when DeepLoop needs you, then `resume`.
 
     > **Important:** `deeploop run` automatically detects explicit mission
     > configs in `<project-folder>/.deeploop/missions/*.yaml`. If one or more
@@ -198,13 +230,13 @@ onboarding validate today; outside it, expect gaps.
    deeploop init --config <mission-config.yaml> --force
    ```
 
-7. If you initialized a mission state, start it with the canonical operator CLI:
+7. If you initialized a mission state explicitly, start it with the canonical operator CLI:
 
    ```text
    deeploop start --mission-state <mission-state.json>
    ```
 
-8. Check the operator console:
+8. Check the operator console first:
 
    ```text
    deeploop status --mission-state <mission-state.json>
@@ -216,11 +248,12 @@ onboarding validate today; outside it, expect gaps.
    deeploop watch --mission-state <mission-state.json>
    ```
 
-   Use `logs` or `decisions` only when you need more detail than `status`.
-   When measurable adaptation or recovery signals exist, `status` now surfaces
-   the ratchet, latest reroute, and temporary-gap hints directly.
+   `status` is the front door after every pause. Use `logs` or `decisions` only
+   when you need more detail than `status`. When measurable adaptation or
+   recovery signals exist, `status` now surfaces the ratchet, latest reroute,
+   and temporary-gap hints directly.
 
-9. If DeepLoop asks for help, inspect the inbox:
+9. If `status` says DeepLoop needs you, inspect the inbox:
 
    ```text
    deeploop inbox --mission-state <mission-state.json>
@@ -231,7 +264,8 @@ onboarding validate today; outside it, expect gaps.
    managed mode staged the next bounded recovery step, you can usually review
    that note and go straight to `resume`.
 
-10. If you changed the path, record it with `retry` or `reroute`, then `resume`:
+10. When the fix or choice is ready, `resume`. If you changed the path yourself,
+    you can record that first with `retry` or `reroute`:
 
     ```text
     deeploop retry --mission-state <mission-state.json> --note "<what changed>"
