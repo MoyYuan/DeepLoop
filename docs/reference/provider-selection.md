@@ -45,6 +45,7 @@ the first-class mission/runtime selection set:
 - machine-readable registry: `configs/runtime/provider-selection-registry.yaml`
 - companion machine-setup contract: `docs/reference/provider-setup.md`
 - companion machine-setup registry: `configs/runtime/provider-setup-registry.yaml`
+- Gate 2 runtime-lane registry: `configs/runtime/gate-2-runtime-lanes.yaml`
 - local backend defaults and ladder input: `configs/runtime/backend-policy.yaml`
 - recursive-loop policy surface: `configs/runtime/recursive-agent-runtime.yaml`
 - recursive-loop example with selection block:
@@ -85,6 +86,21 @@ The machine-readable registry defines these public profiles:
   loop explicitly pins a model
 - fallback posture: no cross-provider fallback by default
 
+### `gate2-coding-agent-copilot-gpt5-mini`
+
+- provider family: `copilot-cli`
+- backend: `copilot-cli`
+- intended role/loop: coding-agent validation through the recursive-agent path
+- model selection: explicit `model.alias: gpt-5-mini`
+- fallback posture: no model or cross-provider fallback; the Gate 2 lane is
+  pinned on purpose
+- notes:
+  - this is the current approved Gate 2 coding-agent runtime lane
+  - machine auth stays in [Provider setup](provider-setup.md); this profile only
+    pins the runtime selection
+  - release proof for this lane must record durable mission/runtime artifacts
+    with the resolved provider family, backend, and model alias
+
 ### `local-transformers-execution`
 
 - provider family: `local-transformers`
@@ -114,6 +130,27 @@ The machine-readable registry defines these public profiles:
   - the current public adapter covers structured prompt/result flows such as
     `deeploop analyze`
   - tool-using recursive-agent execution still remains on `copilot-cli`
+  - local versus commercial deployment remains a profile choice inside this
+    family, not a new first-class provider family
+
+### `gate2-local-qwen3_6-27b-openai`
+
+- provider family: `openai-compatible-api`
+- backend: `openai-compatible-api`
+- intended surface: Gate 2 prompt/result control-plane proof on a host-local
+  OpenAI-compatible endpoint
+- deployment profile: `local-qwen3_6-27b-openai`
+- host execution profile: `qwen3_6-27b-openai-local`
+- model selection: pin `model.identifier: Qwen/Qwen3.6-27B` and
+  `model.endpoint_alias: local-qwen-openai`
+- fallback posture: stay on the OpenAI-compatible family; downgrade only through
+  an explicit local model ladder and record the downgrade
+- notes:
+  - this is the current approved Gate 2 local Qwen lane
+  - treat local serving as a deployment profile inside the OpenAI-compatible
+    family, not as a new public provider family
+  - DeepLoop does not start the host-local server, provision auth, or turn this
+    prompt/result lane into the Copilot-style coding-agent path
 
 ### `anthropic-api-control-plane`
 
@@ -175,6 +212,11 @@ currently delegates `copilot-cli` requests to the Copilot adapter and
 `openai-compatible-api` requests to the OpenAI-compatible control-plane adapter.
 The `provider_selection` block remains the canonical selection contract for that
 loop.
+
+The shipped example at
+`configs/runtime/recursive-agent-runtime-provider.example.yaml` now pins the
+`gate2-coding-agent-copilot-gpt5-mini` profile so the concrete Gate 2
+coding-agent lane is explicit on this runtime surface.
 
 ### `configs/sandbox/agent-launch-policy.yaml`
 

@@ -21,6 +21,8 @@ That claim is backed by:
 - that Docker harness now rechecks canonical bootstrap, blocked operator handoff,
   messy-start clarifications/defaults, discovery-first onboarding, and bounded
   bootstrap-repair diagnostics in the same clean room
+- provider-free smoke remains baseline-only release evidence; it does **not** by
+  itself satisfy the separate Gate 2 runtime proof
 - an eligible-for-promotion plain-folder proof matrix across 3 materially
   different workflow shapes
 - a real release-candidate review and promotion path with required approvals
@@ -61,7 +63,13 @@ beyond bounded-support alpha.
 
 ## Current release gate
 
-The public release gate is still intentionally compact:
+The public release gate is still intentionally compact, but it now has a clear
+**Gate 1 vs Gate 2** split:
+
+### Gate 1 — baseline install/bootstrap proof
+
+Gate 1 is the required baseline for every PR and every release. On the current
+public-alpha path it means:
 
 - `make public-bootstrap-check`
 - `make docker-release-validate`
@@ -69,9 +77,41 @@ The public release gate is still intentionally compact:
 - publish PyPI only from a published GitHub Release whose tag matches
   `project.version`
 
-That gate is what keeps the public claim aligned with the tested UX: the fast
-plain-folder path, messy-start onboarding/discovery, bounded bootstrap repair,
-and the current release automation boundary.
+Gate 1 proves the documented install/onboarding path, the clean-room Docker
+bootstrap smoke, and the public docs claim. It does **not** prove a live
+provider-backed runtime by itself.
+
+### Gate 2 — real runtime proof contract
+
+Gate 2 is required before coordinated release signoff and for high-risk changes
+that touch onboarding, packaging, provider wiring, runtime routing, Docker,
+CLI quickstarts, or docs-command claims.
+
+The current approved Gate 2 phase requires both lanes from
+`configs/runtime/gate-2-runtime-lanes.yaml`:
+
+1. **local Qwen via an OpenAI-compatible lane**
+2. **Copilot CLI with GPT-5 mini (`gpt-5-mini`) for the coding-agent lane**
+
+What counts as Gate 2 proof:
+
+- a real LLM-backed mission/runtime path on each approved lane
+- durable mission/runtime evidence recorded for each lane, plus the resolved
+  provider family, backend, and model/profile metadata
+- explicit notes for the host-local Qwen setup boundary and the manual Copilot
+  CLI authentication boundary
+
+What does **not** count as Gate 2 proof:
+
+- provider-free smoke by itself
+- Docker clean-room bootstrap proof alone
+- an unrecorded shell transcript with no durable artifacts
+- a commercial OpenAI-compatible endpoint in this approved phase
+
+That gate split is what keeps the public claim aligned with the tested UX: the
+fast plain-folder path, messy-start onboarding/discovery, bounded bootstrap
+repair, the current release automation boundary, and the approved Gate 2
+runtime target.
 
 ## Honest non-claims
 

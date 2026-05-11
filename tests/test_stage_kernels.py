@@ -567,6 +567,27 @@ class StageKernelTests(unittest.TestCase):
         self.assertEqual(plan.resolved_backend, "local-transformers")
         self.assertIn("switch backend", plan.fallback_ladder)
 
+    def test_qwen36_27b_local_openai_execution_profile_resolves_conservative_vllm_defaults(self) -> None:
+        plan = _resolve_execution_profile(
+            "qwen3_6-27b-openai-local",
+            model_cfg={
+                "family": "qwen3.6",
+                "identifier": "Qwen/Qwen3.6-27B",
+                "backend": "vllm",
+                "max_new_tokens": 512,
+            },
+            prompts=[" ".join(["alpha"] * 96)],
+        )
+
+        self.assertEqual(plan.source, "inference-family-contract")
+        self.assertEqual(plan.resolved_profile, "qwen3_6-27b-openai-local")
+        self.assertEqual(plan.contract_backend, "vllm")
+        self.assertEqual(plan.resolved_backend, "vllm")
+        self.assertEqual(plan.context_bucket, "short")
+        self.assertEqual(plan.prompt_token_budget, 512)
+        self.assertEqual(plan.max_new_tokens, 256)
+        self.assertEqual(plan.batch_probe_order, (2, 1))
+
     def test_generation_tokenizer_uses_left_padding_and_pad_token(self) -> None:
         tokenizer = type(
             "Tokenizer",

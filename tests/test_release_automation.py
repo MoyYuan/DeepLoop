@@ -89,6 +89,7 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertIn("claim-state-floor", review["failed_gate_ids"])
         self.assertIn("required-approvals", review["failed_gate_ids"])
         self.assertIn("provenance-review", review["missing_approvals"])
+        self.assertEqual(review["gate_2_runtime_contract"]["phase_id"], "current-approved-phase")
 
     def test_review_blocks_when_replication_evidence_is_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -104,6 +105,8 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertFalse(review["eligible_for_promotion"])
         self.assertIn("replication-evidence", review["failed_gate_ids"])
         self.assertIn("evidence-policy-linkage", review["failed_gate_ids"])
+        lane_ids = {lane["lane_id"] for lane in review["gate_2_runtime_contract"]["required_lanes"]}
+        self.assertIn("copilot-cli-gpt-5-mini-coding-agent", lane_ids)
 
     def test_review_accepts_replicated_package_with_equivalent_rigor_and_approvals(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -130,6 +133,13 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertTrue(review["eligible_for_promotion"])
         self.assertEqual(review["decision"], "promotable")
         self.assertNotIn("claim-state-floor", review["failed_gate_ids"])
+        copilot_lane = next(
+            lane
+            for lane in review["gate_2_runtime_contract"]["required_lanes"]
+            if lane["lane_id"] == "copilot-cli-gpt-5-mini-coding-agent"
+        )
+        self.assertEqual(copilot_lane["model_expectation"]["alias"], "gpt-5-mini")
+        self.assertTrue(review["gate_2_runtime_contract"]["proof_boundary"]["manual_machine_auth_remains_explicit"])
 
     def test_review_and_promotion_materialize_when_all_gates_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -171,6 +181,9 @@ class ReleaseAutomationTests(unittest.TestCase):
             self.assertEqual(promotion["decision"], "promoted-release-candidate")
             self.assertTrue(release_automation["eligible_for_promotion"])
             self.assertEqual(release_automation["review_artifacts"]["promotion"], str(promotion_path))
+            self.assertEqual(rendered["gate_2_runtime_contract"]["phase_id"], "current-approved-phase")
+            self.assertIn("## Gate 2 runtime contract", materialized["review_markdown"].read_text(encoding="utf-8"))
+            self.assertEqual(release_automation["gate_2_runtime_contract"]["phase_id"], "current-approved-phase")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,80 @@
+version: 1
+contract_id: gate-2-runtime-lanes
+canonical_public_docs:
+  - docs/release/README.md
+  - docs/release/release-maintenance.md
+  - docs/reference/provider-setup.md
+  - docs/reference/provider-selection.md
+  - docs/design/recursive-agent-runtime.md
+approved_phase:
+  id: current-approved-phase
+  description: Gate 2 release signoff requires one local OpenAI-compatible Qwen lane and one Copilot CLI coding-agent lane.
+baseline_install_boundary:
+  provider_free_smoke: baseline-only
+  docker_clean_room: required-for-release
+  notes:
+    - Provider-free bootstrap and smoke are the release baseline install proof, not the final real runtime proof.
+    - The Docker release-validation harness remains the canonical clean-room install and bootstrap proof.
+gate_2_proof_boundary:
+  fresh_environment_required: true
+  bootstrap_without_hidden_state: true
+  durable_mission_runtime_evidence_required: true
+  manual_machine_auth_remains_explicit: true
+  commercial_openai_compatible_lane_required: false
+  notes:
+    - Gate 2 requires real LLM-backed mission/runtime behavior, not only provider readiness.
+    - Record durable mission/runtime artifacts for every approved lane so release proof does not depend on shell output alone.
+    - Machine authentication for coding-agent CLI contracts stays an explicit manual prerequisite outside repo automation.
+required_lanes:
+  - lane_id: local-qwen-openai-compatible
+    category: openai-compatible-endpoint
+    selection_profile: gate2-local-qwen3_6-27b-openai
+    provider_family: openai-compatible-api
+    backend: openai-compatible-api
+    deployment_profile: local-qwen3_6-27b-openai
+    host_execution_profile: qwen3_6-27b-openai-local
+    model_expectation:
+      family: qwen
+      identifier: Qwen/Qwen3.6-27B
+      deployment: local-openai-compatible
+      endpoint_alias: local-qwen-openai
+    auth_boundary:
+      automated_repo_checks:
+        - OPENAI_API_KEY present in the runtime shell
+      manual_requirements:
+        - Set OPENAI_BASE_URL outside the repo to the host-local OpenAI-compatible endpoint that serves Qwen/Qwen3.6-27B.
+        - Set OPENAI_API_KEY outside the repo to whatever the local server expects; some local servers accept a placeholder token, but DeepLoop never provisions or stores it.
+        - If the local server depends on gated or private weights, provision that access outside repo automation before startup.
+    environment_expectations:
+      control_plane_env: deeploop
+      serving_env: llm-or-host-equivalent
+      suggested_serving_env_file: environment.llm.yml
+      host_specific:
+        - Keep the OpenAI-compatible server process outside DeepLoop; the repo does not start, supervise, or tune that local server for you.
+        - GPU sizing, precision/quantization choice, and server launch flags for Qwen/Qwen3.6-27B remain host-specific and must be validated on the operator machine.
+    fallback_or_downgrade_guidance:
+      - First lower context length, max new tokens, or request concurrency while staying on the same host-local OpenAI-compatible lane.
+      - If the dense 27B profile is not stable on the host, record an explicit downgrade to qwen3_5-mid-fp16 or single-gpu-8b-9b-fp16 rather than silently switching providers.
+      - Do not count a commercial OpenAI-compatible endpoint as equivalent proof for this local runtime lane.
+    proof_requirements:
+      - Run from a fresh or disposable environment on the documented install path.
+      - Validate bootstrap and mission execution without hidden local state.
+      - Record durable mission/runtime artifacts plus provider family, backend, and model/profile metadata.
+  - lane_id: copilot-cli-gpt-5-mini-coding-agent
+    category: coding-agent-cli
+    selection_profile: gate2-coding-agent-copilot-gpt5-mini
+    provider_family: copilot-cli
+    backend: copilot-cli
+    model_expectation:
+      alias: gpt-5-mini
+    auth_boundary:
+      automated_repo_checks:
+        - copilot --help
+        - python scripts/runtime/invoke_provider_prompt.py --help
+      manual_requirements:
+        - The machine is already authenticated for Copilot CLI use before mission execution.
+        - Release proof records that machine auth was satisfied outside repo automation.
+    proof_requirements:
+      - Run a real coding-agent mission/runtime lane that materially depends on live Copilot CLI output.
+      - Keep manual machine auth explicit instead of treating provider readiness as implicit runtime proof.
+      - Record durable mission/runtime artifacts plus provider family, backend, and model/profile metadata.

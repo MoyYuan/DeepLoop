@@ -13,6 +13,7 @@
     "package_manifest_path",
     "package_digest",
     "package_claim_state",
+    "gate_2_runtime_contract",
     "decision",
     "eligible_for_promotion",
     "gates",
@@ -34,6 +35,82 @@
     "package_manifest_path": { "type": "string", "minLength": 1 },
     "package_digest": { "type": "string", "minLength": 8 },
     "package_claim_state": { "type": "string", "minLength": 1 },
+    "gate_2_runtime_contract": {
+      "type": "object",
+      "required": [
+        "policy_path",
+        "phase_id",
+        "baseline_boundary",
+        "proof_boundary",
+        "required_lanes"
+      ],
+      "properties": {
+        "policy_path": { "type": "string", "minLength": 1 },
+        "phase_id": { "type": "string", "minLength": 1 },
+        "baseline_boundary": {
+          "type": "object",
+          "required": ["provider_free_smoke", "docker_clean_room"],
+          "properties": {
+            "provider_free_smoke": { "type": "string", "minLength": 1 },
+            "docker_clean_room": { "type": "string", "minLength": 1 },
+            "notes": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "proof_boundary": {
+          "type": "object",
+          "required": [
+            "fresh_environment_required",
+            "bootstrap_without_hidden_state",
+            "durable_mission_runtime_evidence_required",
+            "manual_machine_auth_remains_explicit",
+            "commercial_openai_compatible_lane_required"
+          ],
+          "properties": {
+            "fresh_environment_required": { "type": "boolean" },
+            "bootstrap_without_hidden_state": { "type": "boolean" },
+            "durable_mission_runtime_evidence_required": { "type": "boolean" },
+            "manual_machine_auth_remains_explicit": { "type": "boolean" },
+            "commercial_openai_compatible_lane_required": { "type": "boolean" },
+            "notes": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        },
+        "required_lanes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "lane_id",
+              "category",
+              "selection_profile",
+              "provider_family",
+              "backend",
+              "model_expectation",
+              "proof_requirements"
+            ],
+            "properties": {
+              "lane_id": { "type": "string", "minLength": 1 },
+              "category": { "type": "string", "minLength": 1 },
+              "selection_profile": { "type": "string", "minLength": 1 },
+              "provider_family": { "type": "string", "minLength": 1 },
+              "backend": { "type": "string", "minLength": 1 },
+              "model_expectation": { "type": "object" },
+              "auth_boundary": { "type": "object" },
+              "proof_requirements": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
     "decision": { "type": "string", "enum": ["blocked", "promotable"] },
     "eligible_for_promotion": { "type": "boolean" },
     "gates": {

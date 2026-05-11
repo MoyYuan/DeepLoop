@@ -22,6 +22,7 @@ related_runtime_surfaces:
   backend_policy: configs/runtime/backend-policy.yaml
   recursive_agent_runtime_policy: configs/runtime/recursive-agent-runtime.yaml
   recursive_agent_runtime_example: configs/runtime/recursive-agent-runtime-provider.example.yaml
+  gate_2_runtime_lanes: configs/runtime/gate-2-runtime-lanes.yaml
   sandbox_launch_policy: configs/sandbox/agent-launch-policy.yaml
   run_manifest_template: configs/manifests/run-manifest-template.json
 resolution_axes:
@@ -65,6 +66,30 @@ selection_profiles:
       provider_family_switch: disallowed-by-default
       backend_switch: disallowed
       model_fallback: operator-local alias fallback only
+  gate2-coding-agent-copilot-gpt5-mini:
+    status: implemented
+    intended_roles:
+      - planner
+      - execution-operator
+    intended_loops:
+      - recursive-agent
+    provider_family: copilot-cli
+    backend: copilot-cli
+    release_gate: gate-2
+    model_selection:
+      mode: explicit-required
+      default_behavior: pin the Gate 2 coding-agent runtime lane to the Copilot CLI gpt-5-mini alias
+      allowed_fields:
+        - model.alias
+      required_model:
+        alias: gpt-5-mini
+      notes:
+        - keep machine auth in provider setup; this profile only pins the Gate 2 coding-agent lane
+        - record durable mission/runtime artifacts with the resolved provider family, backend, and model alias
+    fallbacks:
+      provider_family_switch: disallowed-by-default
+      backend_switch: disallowed
+      model_fallback: disallowed
   local-transformers-execution:
     status: implemented
     intended_roles:
@@ -128,6 +153,34 @@ selection_profiles:
     notes:
       - runtime support currently covers prompt/result control-plane flows that return structured JSON
       - recursive-agent tool execution remains on the copilot-cli path
+      - local versus commercial deployment remains a profile choice inside this provider family, not a new first-class family
+  gate2-local-qwen3_6-27b-openai:
+    status: implemented
+    provider_family: openai-compatible-api
+    backend: openai-compatible-api
+    release_gate: gate-2
+    deployment_profile: local-qwen3_6-27b-openai
+    host_execution_profile: qwen3_6-27b-openai-local
+    intended_surfaces:
+      - deeploop analyze
+      - provider-launcher prompt/result flows
+    model_selection:
+      mode: explicit-required
+      default_behavior: pin the Gate 2 local OpenAI-compatible runtime lane to a host-local endpoint serving Qwen/Qwen3.6-27B
+      allowed_fields:
+        - model.identifier
+        - model.endpoint_alias
+      required_model:
+        identifier: Qwen/Qwen3.6-27B
+        endpoint_alias: local-qwen-openai
+      notes:
+        - treat this as a local deployment profile inside the OpenAI-compatible provider family, not a separate public provider family
+        - keep OPENAI_BASE_URL and OPENAI_API_KEY external/manual even when the endpoint is host-local
+        - record the resolved endpoint alias and model identifier in durable mission/runtime artifacts
+    fallbacks:
+      provider_family_switch: disallowed-by-default
+      backend_switch: provider-native
+      model_fallback: explicit-model-ladder-only
   anthropic-api-control-plane:
     status: reserved-runtime-adapter
     provider_family: anthropic-api
