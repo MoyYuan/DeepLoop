@@ -107,16 +107,31 @@ users. See [Examples](examples.md) for the public example surface.
 
 ## First-run path
 
-Once your folder exists, the supported bootstrap path is:
+The unified first-run path is:
 
 ```text
-make public-bootstrap-check
+deeploop setup
+deeploop preflight
+deeploop run --until-complete
+```
+
+That no-argument path creates a bundled starter project under
+`WORKSPACE_ROOT/projects/` and launches the same mission flow a user gets from
+an existing folder.
+
+If that run pauses, stay on the same operator loop every time: `status`,
+`inbox`, then `resume`. Treat `logs`, `decisions`, `retry`, `reroute`, and
+`triage` as secondary detail surfaces.
+
+Once your own folder exists, the matching existing-project path is:
+
+```text
 deeploop run --project-root <project-folder> --until-complete
 ```
 
-`make public-bootstrap-check` proves the install, workspace setup, repo
-contract, and plain-folder bootstrap surfaces on a clean Linux + Python 3.11
-environment.
+If you are in a repo checkout, `make public-bootstrap-check` still proves the
+install, workspace setup, repo contract, and plain-folder bootstrap surfaces on
+a clean Linux + Python 3.11 environment.
 
 ## Messy starts and repair boundaries
 

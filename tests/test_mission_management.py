@@ -229,7 +229,11 @@ class MissionManagementTests(unittest.TestCase):
         self.assertEqual(metadata["command"][-1], "7")
         self.assertIn("DeepLoop autopilot started", stdout.getvalue())
         self.assertIn("workspace_root", stdout.getvalue())
+        self.assertIn("## Main operator loop", stdout.getvalue())
         self.assertIn("deeploop status", stdout.getvalue())
+        self.assertIn("deeploop inbox", stdout.getvalue())
+        self.assertIn("deeploop resume", stdout.getvalue())
+        self.assertIn("## Advanced commands", stdout.getvalue())
         self.assertIn("deeploop start", log_path.read_text(encoding="utf-8"))
 
     def test_start_uses_configured_launch_env_when_present(self) -> None:
@@ -512,7 +516,9 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIn("operator_state: `operator-action-required`", status_stdout.getvalue())
         self.assertIn("next_step_owner: `operator`", status_stdout.getvalue())
         self.assertIn("focus_action: `run-baseline`", status_stdout.getvalue())
-        self.assertIn("## Exact next commands", status_stdout.getvalue())
+        self.assertIn("operator_loop: `status` -> `inbox` (only when needed) -> `resume`", status_stdout.getvalue())
+        self.assertIn("## Main operator loop", status_stdout.getvalue())
+        self.assertIn("## Advanced commands", status_stdout.getvalue())
         self.assertIn("latest_decision", status_stdout.getvalue())
         self.assertIn("## Operator inbox", status_stdout.getvalue())
         self.assertIn("demo-operator-request", status_stdout.getvalue())
@@ -556,7 +562,9 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIn("## Operator summary", inbox_stdout.getvalue())
         self.assertIn("attention_level: `action-required`", inbox_stdout.getvalue())
         self.assertIn("resume_policy: `resume-after-fix`", inbox_stdout.getvalue())
-        self.assertIn("## Exact next commands", inbox_stdout.getvalue())
+        self.assertIn("operator_loop: `status` -> `inbox` (only when needed) -> `resume`", inbox_stdout.getvalue())
+        self.assertIn("## Main operator loop", inbox_stdout.getvalue())
+        self.assertIn("## Advanced commands", inbox_stdout.getvalue())
         self.assertIn("continue_command", inbox_stdout.getvalue())
 
     def test_stop_requests_shutdown_for_tracked_launch(self) -> None:
@@ -617,6 +625,7 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIn("watch", completed.stdout)
         self.assertIn("analyze", completed.stdout)
         self.assertIn("analyze-budget", completed.stdout)
+        self.assertIn("provider-ready", completed.stdout)
 
     def test_retry_records_operator_feedback_and_guides_resume(self) -> None:
         test_root = _fresh_test_root("retry_records_feedback")
@@ -709,6 +718,7 @@ class MissionManagementTests(unittest.TestCase):
 
         self.assertEqual(result, 0)
         self.assertIn("## Resume handoff", stdout.getvalue())
+        self.assertIn("## Main operator loop", stdout.getvalue())
         self.assertIn("operator_feedback: `reroute`", stdout.getvalue())
         self.assertIn("operator_note: downscope to the in-sandbox path", stdout.getvalue())
 

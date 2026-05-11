@@ -1,14 +1,14 @@
 # DeepLoop
 
-> Structured research missions from a local project folder — with visible autonomy boundaries, durable mission state, and an explicit operator inbox.
+> Structured research missions from a bundled starter or local project folder — with visible autonomy boundaries, durable mission state, and an explicit operator inbox.
 
-DeepLoop helps researchers and operators run structured work from the artifacts already on disk instead of rebuilding everything around one long chat. It keeps the loop moving, pauses only at real safety, authority, or support boundaries, and makes the path legible when you need to inspect or redirect it.
+DeepLoop helps researchers and operators run structured work from existing artifacts or a bundled starter instead of rebuilding everything around one long chat. It keeps the loop moving, pauses only at real safety, authority, or support boundaries, and makes the path legible when you need to inspect or redirect it.
 
 DeepLoop **owns behavior** and orchestration; substrate repos own reusable domain or science rules.
 
 ## Why it matters
 
-- **Start from real project artifacts:** bootstrap from a plain project folder, not just a prompt.
+- **Start from a real folder or a bundled starter:** use the same mission flow either way.
 - **Keep control visible:** `status`, `inbox`, and `resume` make the operator inbox explicit when DeepLoop needs a real decision.
 - **Inspect the loop:** operator-facing summaries expose runtime telemetry, inner-loop progress, stage-kernel activity, reroutes, and temporary gaps instead of hiding them in raw JSON.
 - **Keep evidence close to the work:** your project folder stays focused on facts, docs, and outputs while DeepLoop keeps durable mission state.
@@ -29,12 +29,12 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
    two-clone hybrid workflows, and the documented Conda path — use
    [Getting started](docs/getting-started.md).
 
-2. **Prepare the workspace and validate the supported path**
+2. **Prepare the workspace**
 
    ```text
-   export DEEPLOOP_WORKSPACE_ROOT="$HOME/Workspaces"  # optional; choose before init/start
-   make setup
-   make public-bootstrap-check
+   export DEEPLOOP_WORKSPACE_ROOT="$HOME/Workspaces"  # optional; choose before init/run/start
+   deeploop setup
+   deeploop preflight
    ```
 
    DeepLoop prints the resolved workspace root during `deeploop init` and
@@ -42,34 +42,66 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
    unambiguous `~/Workspaces`, `~/workspace`, or `~/workspaces` directory, then
    falls back to `~/workspaces`.
 
+   If you are in a repo checkout and want the contributor validation path too:
+
+   ```text
+   make setup
+   make public-bootstrap-check
+   ```
+
 3. **Prepare a provider**
+   - quickest first-run machine check:
+
+     ```text
+     deeploop provider-ready --selection-profile control-plane-copilot-cli
+     ```
+
    - [Provider setup](docs/reference/provider-setup.md)
    - [Provider selection](docs/reference/provider-selection.md)
 
-4. **Run the canonical example or your own plain-folder project**
-   - canonical example: [`examples/translation-budget-ladder/`](examples/translation-budget-ladder/)
-   - optional copy step:
+   `deeploop run` now performs the same machine-level readiness check before
+   kickoff for the default first-run control-plane profile. If setup is still
+   missing, it stops with the exact missing requirement, one next step, and a
+   resume command.
+
+4. **Run DeepLoop**
+   - start from nothing with the installed bundled starters:
+
+     ```text
+     deeploop run --until-complete
+     ```
+
+     DeepLoop opens an interactive kickoff, asks for your mission idea, lets
+     you choose a bundled starter, materializes a project under
+     `WORKSPACE_ROOT/projects/`, compiles a mission, and launches the same
+     operator loop as every other path.
+
+   - start from your own folder with the same command surface:
+
+     ```text
+     deeploop run --project-root <project-folder> --until-complete
+     ```
+
+   - start from the repo example if you also cloned DeepLoop:
 
      ```text
      cp -R examples/translation-budget-ladder PROJECT_FOLDER
+     deeploop run --project-root PROJECT_FOLDER --until-complete
      ```
 
-    - fastest path:
+     Repo-local `examples/...` paths only exist in a DeepLoop source checkout.
+     Package installs still get bundled starters through plain `deeploop run`.
 
-     ```text
-     deeploop run --project-root examples/translation-budget-ladder --until-complete
-     ```
-
-      > **Note:** If `<project-folder>/.deeploop/missions/*.yaml` files exist, `deeploop run`
-      > automatically uses the first one instead of bootstrapping a blank mission.
-      > For a plain folder with no existing config, it bootstraps from the folder's facts.
+     > **Note:** If `<project-folder>/.deeploop/missions/*.yaml` files exist, `deeploop run`
+     > automatically uses the first one instead of bootstrapping a blank mission.
+     > For a plain folder with no existing config, it bootstraps from the folder's facts.
       > If the folder is rough but still recognizable, DeepLoop can initialize with
       > disclosed clarifications/defaults and keep the project folder unchanged. To
       > target a specific explicit config directly, use `deeploop init --config
       > <mission-config.yaml>` followed by `deeploop start --mission-state
       > <mission-state.json>`.
 
-    - discovery / operator path:
+   - advanced discovery / operator path:
 
       ```text
       deeploop init --project-root PROJECT_FOLDER --force
@@ -92,20 +124,27 @@ DeepLoop **owns behavior** and orchestration; substrate repos own reusable domai
    deeploop resume --mission-state MISSION_STATE_PATH
    ```
 
-The `deeploop` CLI is the single entry point — `run`, `init`, `status`, `inbox`, `resume`, and more are all subcommands.
+   Start with `status`. Open `inbox` only when DeepLoop pauses for you. Use
+   `logs`, `decisions`, `retry`, `reroute`, or `triage` only when the surfaced
+   handoff says you need more detail or a managed-mode override.
+
+The `deeploop` CLI is the single entry point — `run`, `init`, `status`, `inbox`,
+`resume`, and more are all subcommands.
 
 ## Readiness at a glance
 
-- **Fastest supported path:** Linux, Python 3.11+, `pip install deeploop`, `make setup`, `make public-bootstrap-check`, then `deeploop run --project-root <project-folder> --until-complete`
+- **Unified first run:** Linux, Python 3.11+, `pip install deeploop`, `deeploop setup`, `deeploop preflight`, then `deeploop run --until-complete`
+- **Same front door for existing work:** use `deeploop run --project-root <project-folder> --until-complete`
+- **Repo-checkout validation path:** `make setup`, `make public-bootstrap-check`, and direct access to `examples/translation-budget-ladder/`
 - **Messy starts are supported:** rough plain-folder projects can initialize with disclosed clarifications/defaults, or you can use `deeploop init --discover ...` for a guided kickoff
 - **Repair stays bounded:** if the folder is missing the plain-folder bootstrap contract, DeepLoop exits with bootstrap-repair guidance and suggested starter inputs instead of silently rewriting project files
-- **Current release gate:** `make public-bootstrap-check`, `make docker-release-validate`, and `make docs-build`, with PyPI publish only from a published GitHub Release whose tag matches `project.version`
+- **Current baseline release proof:** `make public-bootstrap-check`, `make docker-release-validate`, and `make docs-build`
 
 ## Best fit today
 
-DeepLoop is best when you already have:
+DeepLoop is best when you have:
 
-- a project folder on disk
+- either a project folder on disk or a clear enough idea to start from a bundled starter
 - a clear mission or question
 - an operator who can check `status` and respond when the operator inbox opens
 - a need for bounded autonomy, durable state, and evidence-aware summaries

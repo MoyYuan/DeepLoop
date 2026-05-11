@@ -26,9 +26,8 @@ Keep one contract in mind while you operate: the project folder is a minimal fac
 8. Run `deeploop resume --mission-state <mission-state.json>` when the fix is
    in place or `status` says resume is optional.
 
-If you got here from `deeploop run` after an operator stop, skip the
-`start` step and go straight to `status` or `inbox` with the returned
-`<mission-state.json>`.
+If you got here from `deeploop run` after an operator stop, skip the `start`
+step. The loop is still the same: `status`, `inbox`, then `resume`.
 
 You do not need to memorize every state label before your first run. The
 important questions are:
@@ -56,13 +55,19 @@ down.
 | `triage` | Run the bounded managed-mode triage hook when intervention hooks are enabled |
 | `stop` | Stop the detached mission process |
 
-Most operators live on these four commands:
+Most operators only need this loop:
 
 ```text
-deeploop start --mission-state <mission-state.json>
 deeploop status --mission-state <mission-state.json>
 deeploop inbox --mission-state <mission-state.json>
 deeploop resume --mission-state <mission-state.json>
+```
+
+Add `start` only when you initialized the mission explicitly and have not kicked
+it off yet:
+
+```text
+deeploop start --mission-state <mission-state.json>
 ```
 
 ## What to expect next
@@ -83,9 +88,10 @@ deeploop resume --mission-state <mission-state.json>
 - If you only want to watch, use `status`; add `watch` for repeated polls.
 - If `operator_state` is `operator-action-required`, use `inbox`.
 - If `operator_state` is `autopilot-recovering`, let DeepLoop keep control.
-- If you changed something, record it with `retry` or `reroute`.
 - If `resume_policy` says the fix is in place or resume is optional, use
   `resume`.
+- If you changed something and want that recorded, use `retry` or `reroute`
+  before `resume`.
 - If `operator_state` is `needs-investigation`, inspect before you resume.
 
 ## What `status` is telling you

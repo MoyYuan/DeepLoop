@@ -3,13 +3,33 @@ from __future__ import annotations
 import argparse
 import importlib.metadata
 import json
+import os
 import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from deeploop.core.paths import EXPECTED_EXTERNAL_DIRS, MISSIONS_DIR, SCRATCH_DIR, WORKSPACE_ROOT
+import yaml
+
+from deeploop.core.paths import EXPECTED_EXTERNAL_DIRS, MISSIONS_DIR, PROJECTS_DIR, SCRATCH_DIR, WORKSPACE_ROOT
+
+SCRIPT_REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT_SRC_ROOT = SCRIPT_REPO_ROOT / "src"
+IMPORTED_DEEPLOOP_PATH = Path(sys.modules["deeploop.core.paths"].__file__).resolve()
+
+
+def _deeploop_subprocess_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    resolved_env = dict(os.environ if env is None else env)
+    if IMPORTED_DEEPLOOP_PATH.is_relative_to(SCRIPT_SRC_ROOT):
+        pythonpath_entries = [str(SCRIPT_SRC_ROOT)]
+        existing_pythonpath = str(resolved_env.get("PYTHONPATH") or "").strip()
+        if existing_pythonpath:
+            pythonpath_entries.extend(
+                entry for entry in existing_pythonpath.split(os.pathsep) if entry and entry != str(SCRIPT_SRC_ROOT)
+            )
+        resolved_env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
+    return resolved_env
 
 
 def _run_capture(
@@ -17,9 +37,17 @@ def _run_capture(
     *,
     input_text: str | None = None,
     expected_returncode: int | None = 0,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     print(f"+ {shlex.join(command)}", flush=True)
-    completed = subprocess.run(command, check=False, capture_output=True, input=input_text, text=True)
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        input=input_text,
+        text=True,
+        env=_deeploop_subprocess_env(env),
+    )
     if completed.stdout:
         print(completed.stdout.rstrip())
     if completed.stderr:
@@ -29,8 +57,51 @@ def _run_capture(
     return completed
 
 
-def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return _run_capture(command)
+def _run(command: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    return _run_capture(command, env=env)
+
+
+def _deeploop_command(*args: str) -> list[str]:
+    resolved = shutil.which("deeploop")
+    if resolved is not None:
+        return [resolved, *args]
+    return [sys.executable, "-m", "deeploop.mission.mission_management", *args]
+
+
+def _python_bin_only_env() -> dict[str, str]:
+    env = _deeploop_subprocess_env()
+    env["PATH"] = str(Path(sys.executable).expanduser().resolve().parent)
+    return env
+
+
+def _extract_trailing_json(stdout: str) -> dict:
+    decoder = json.JSONDecoder()
+    for start in reversed([index for index, char in enumerate(stdout) if char == "{"]):
+        try:
+            payload, end = decoder.raw_decode(stdout[start:])
+        except ValueError:
+            continue
+        if stdout[start + end :].strip():
+            continue
+        if isinstance(payload, dict):
+            return payload
+    raise SystemExit("docker-smoke: command output did not end with a JSON object")
+
+
+def _run_json_capture(
+    command: list[str],
+    *,
+    input_text: str | None = None,
+    expected_returncode: int | None = 0,
+    env: dict[str, str] | None = None,
+) -> tuple[subprocess.CompletedProcess[str], dict]:
+    completed = _run_capture(
+        command,
+        input_text=input_text,
+        expected_returncode=expected_returncode,
+        env=env,
+    )
+    return completed, _extract_trailing_json(completed.stdout)
 
 
 def _copy_project(source: Path, destination_root: Path) -> Path:
@@ -69,11 +140,16 @@ def _discovery_config_path(mission_id: str) -> Path:
     return SCRATCH_DIR / "mission_discovery_configs" / f"{mission_id}.yaml"
 
 
+def _starter_project_root(mission_id: str) -> Path:
+    return PROJECTS_DIR / mission_id.removesuffix("-mission")
+
+
 def _cleanup_mission_artifacts(mission_id: str, *, remove_discovery_config: bool = False) -> None:
     shutil.rmtree(_mission_root(mission_id), ignore_errors=True)
     shutil.rmtree(_package_root(mission_id), ignore_errors=True)
     if remove_discovery_config:
         _discovery_config_path(mission_id).unlink(missing_ok=True)
+        shutil.rmtree(_starter_project_root(mission_id), ignore_errors=True)
 
 
 def _package_mission(state_path: Path) -> tuple[dict, Path, Path, Path]:
@@ -151,6 +227,98 @@ def _run_translation_bootstrap(repo_root: Path, smoke_root: Path, *, mission_id:
         "mission_state_path": str(state_path),
         "mission_status": mission_state.get("status"),
         "current_phase": mission_state.get("current_phase"),
+    }
+
+
+def _run_zero_start_bundled_starter_provider_gate_smoke(*, mission_id: str) -> dict:
+    _cleanup_mission_artifacts(mission_id, remove_discovery_config=True)
+    completed, payload = _run_json_capture(
+        _deeploop_command(
+            "run",
+            "--mission-id",
+            mission_id,
+            "--force",
+            "--until-complete",
+        ),
+        input_text="\n".join(
+            [
+                "Find a good starter path for benchmarking translation robustness.",
+                "translation-budget-ladder",
+                "Bundled translation benchmark docs and baselines copied from the installed package.",
+                "Beat the strongest bundled baseline on at least one translation direction.",
+                "Avoid leakage and keep the holdout split fixed.",
+                "Stay within 12 GPU-hours and at most 2 concurrent jobs.",
+                "Compiled mission, execution checklist, and final memo.",
+                "Prefer reliable benchmark progress over novelty.",
+                "Need provider setup confirmation before runtime kickoff.",
+                "y",
+            ]
+        )
+        + "\n",
+        expected_returncode=1,
+        env=_python_bin_only_env(),
+    )
+    if payload.get("status") != "provider-readiness-required":
+        raise SystemExit("docker-smoke: zero-start run did not stop at provider readiness")
+    if "required provider setup is not ready yet" not in completed.stderr:
+        raise SystemExit("docker-smoke: zero-start run did not explain the provider readiness stop")
+
+    project_root = Path(str(payload.get("project_root") or "")).expanduser().resolve()
+    config_path = Path(str(payload.get("config_path") or "")).expanduser().resolve()
+    if not project_root.exists():
+        raise SystemExit(f"docker-smoke: zero-start project root was not created: {project_root}")
+    if not config_path.exists():
+        raise SystemExit(f"docker-smoke: zero-start discovery config was not written: {config_path}")
+    mission_state_path = _mission_root(mission_id) / "mission_state.json"
+    if mission_state_path.exists():
+        raise SystemExit("docker-smoke: zero-start provider stop should happen before mission initialization")
+
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    mission_cfg = config.get("mission") if isinstance(config.get("mission"), dict) else {}
+    if Path(str(mission_cfg.get("target_repo") or "")).expanduser().resolve() != project_root:
+        raise SystemExit("docker-smoke: zero-start config target_repo did not match the materialized starter")
+    mission_human_inputs = mission_cfg.get("human_inputs") if isinstance(mission_cfg.get("human_inputs"), dict) else {}
+    if mission_human_inputs.get("starter_project") != "translation-budget-ladder":
+        raise SystemExit("docker-smoke: zero-start run did not record the selected bundled starter")
+
+    required_files = [
+        project_root / "project-facts.yaml",
+        project_root / "docs" / "project-brief.md",
+        project_root / "docs" / "benchmark-and-metrics.md",
+        project_root / "docs" / "budget-and-baselines.md",
+    ]
+    if any(not path.exists() for path in required_files):
+        raise SystemExit("docker-smoke: zero-start run did not materialize the expected bundled starter files")
+
+    provider_readiness = (
+        payload.get("provider_readiness") if isinstance(payload.get("provider_readiness"), dict) else {}
+    )
+    if provider_readiness.get("provider_family") != "copilot-cli":
+        raise SystemExit("docker-smoke: zero-start run did not resolve the expected provider family")
+    if provider_readiness.get("status") != "action-required":
+        raise SystemExit("docker-smoke: zero-start run did not report action-required provider readiness")
+    next_step = str(provider_readiness.get("next_step") or "")
+    if "Copilot CLI" not in next_step:
+        raise SystemExit("docker-smoke: zero-start run did not surface the expected next setup step")
+    resume_command = str(provider_readiness.get("resume_command") or "")
+    if f"deeploop run --project-root {project_root}" not in resume_command:
+        raise SystemExit("docker-smoke: zero-start run did not provide the expected resume command")
+    recheck_command = str(provider_readiness.get("recheck_command") or "")
+    if recheck_command != "deeploop provider-ready --selection-profile control-plane-copilot-cli":
+        raise SystemExit("docker-smoke: zero-start run did not provide the expected readiness recheck command")
+    failed_checks = provider_readiness.get("failed_checks") if isinstance(provider_readiness.get("failed_checks"), list) else []
+    if not any(str(check.get("name") or "") == "copilot" for check in failed_checks):
+        raise SystemExit("docker-smoke: zero-start run did not record the missing Copilot CLI check")
+
+    return {
+        "workflow": "zero-start-bundled-starter",
+        "project_root": str(project_root),
+        "discovery_config_path": str(config_path),
+        "starter_project": mission_human_inputs.get("starter_project"),
+        "provider_family": provider_readiness.get("provider_family"),
+        "next_step": next_step,
+        "resume_command": resume_command,
+        "recheck_command": recheck_command,
     }
 
 
@@ -327,27 +495,31 @@ def _run_partial_project_folder_repair_smoke(repo_root: Path, smoke_root: Path, 
     project_root = smoke_root / "partial-project-folder"
     _write_partial_project_folder(project_root)
     before_paths = _snapshot_project_files(project_root)
-    completed = _run_capture(
-        [
-            "deeploop-init-mission",
+    completed, payload = _run_json_capture(
+        _deeploop_command(
+            "run",
             "--project-root",
             str(project_root),
             "--mission-id",
             mission_id,
             "--force",
-        ],
-        expected_returncode=2,
+            "--until-complete",
+        ),
+        expected_returncode=1,
     )
     stderr = completed.stderr
-    required_markers = [
-        "project-root bootstrap needs repair",
-        "missing-bootstrap-contract",
-        "project-facts.yaml",
-        "docs/project-brief.md",
-        "data/store_snapshot.csv",
-    ]
-    if any(marker not in stderr for marker in required_markers):
+    if payload.get("status") != "bootstrap-repair-required":
+        raise SystemExit("docker-smoke: partial project repair smoke did not return the repair status")
+    repair = payload.get("bootstrap_repair") if isinstance(payload.get("bootstrap_repair"), dict) else {}
+    if str(repair.get("reason") or "") != "missing-bootstrap-contract":
+        raise SystemExit("docker-smoke: partial project repair smoke did not report the expected repair reason")
+    required_markers = ["could not bootstrap this project root", "missing-bootstrap-contract", "project-facts.yaml"]
+    if any(marker.lower() not in stderr.lower() for marker in required_markers):
         raise SystemExit("docker-smoke: partial project repair smoke missed the expected repair diagnostics")
+    detected_inputs = repair.get("detected_inputs") if isinstance(repair.get("detected_inputs"), dict) else {}
+    detected_data = detected_inputs.get("data") if isinstance(detected_inputs.get("data"), list) else []
+    if not any(str(item.get("path") or "") == "data/store_snapshot.csv" for item in detected_data if isinstance(item, dict)):
+        raise SystemExit("docker-smoke: partial project repair smoke did not preserve the detected dataset input")
     if (project_root / ".deeploop").exists():
         raise SystemExit("docker-smoke: partial project repair unexpectedly wrote local .deeploop state")
     _assert_project_unmutated(project_root, before_paths)
@@ -356,12 +528,121 @@ def _run_partial_project_folder_repair_smoke(repo_root: Path, smoke_root: Path, 
         "workflow": "partial-project-folder-repair",
         "project_root": str(project_root),
         "repair_exit_code": completed.returncode,
-        "repair_signal": "missing-bootstrap-contract",
-        "missing_paths": [
-            "project-facts.yaml",
-            "docs/project-brief.md",
-            "data/store_snapshot.csv",
+        "repair_signal": repair.get("reason"),
+        "starter_scaffold_path": repair.get("starter_scaffold_path"),
+        "expected_target_path": repair.get("starter_target_path"),
+    }
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_jsonl(path: Path, payloads: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(payload) + "\n" for payload in payloads), encoding="utf-8")
+
+
+def _operator_handoff_request(mission_state_path: Path, *, mission_id: str) -> dict:
+    return {
+        "schema_version": 1,
+        "request_id": "docker-smoke-operator-request",
+        "mission_id": mission_id,
+        "created_at": "2026-04-12T20:01:00Z",
+        "status": "open",
+        "summary": "Autopilot paused at `sandbox-boundary`: attempted write outside mutable roots.",
+        "explanation": "DeepLoop stopped because the requested write crossed the sandbox boundary.",
+        "blocker": {
+            "kind": "hard-gate",
+            "gate": "hard",
+            "risk_class": "sandbox-boundary",
+            "label": "sandbox escape / writes outside allowed mutable roots",
+            "reason": "attempted write outside mutable roots",
+            "default_response": "stop-and-escalate",
+            "preferred_actions": [],
+            "hard_gate_profile": "minimal",
+        },
+        "context": {
+            "mission_state_path": str(mission_state_path),
+            "runtime_root": str(mission_state_path.parent / "runtime" / "mission_outer_runtime"),
+            "mode": "sandboxed-yolo",
+            "phase": "execution",
+            "next_phase": "critique",
+            "decision_id": "docker-smoke-decision",
+            "decision_type": "local-eval",
+            "action_id": "run-baseline",
+            "action_kind": "local-eval",
+            "action_task": "Run the bounded baseline evaluation.",
+            "branch_id": None,
+            "executor_id": "stage-kernel",
+        },
+        "recommendation": {
+            "summary": "Adjust the write target so the action stays inside the sandbox, then resume autopilot.",
+            "pros": ["Keeps the default safety posture."],
+            "cons": ["Requires a quick operator review."],
+        },
+        "alternatives": [
+            {
+                "option_id": "adjust-and-resume",
+                "summary": "Keep the action inside the sandbox.",
+                "pros": ["Preserves sandboxed-yolo."],
+                "cons": ["May require a smaller change."],
+                "next_steps": [f"deeploop resume --mission-state {mission_state_path}"],
+            }
         ],
+        "next_steps": [
+            f"deeploop inbox --mission-state {mission_state_path}",
+            f"deeploop resume --mission-state {mission_state_path}",
+        ],
+        "continue_command": f"deeploop resume --mission-state {mission_state_path}",
+    }
+
+
+def _run_operator_handoff_surface_smoke(*, mission_id: str) -> dict:
+    _cleanup_mission_artifacts(mission_id)
+    mission_root = _mission_root(mission_id)
+    state_path = mission_root / "mission_state.json"
+    mission_state = {
+        "mission_id": mission_id,
+        "mode": "sandboxed-yolo",
+        "title": "Docker validation operator handoff",
+        "current_phase": "execution",
+        "next_phase": "critique",
+        "status": "blocked",
+        "autonomy_status": {"state": "paused", "reason": "sandbox boundary"},
+        "next_actions": {"summary": "Adjust the sandbox target.", "actions": []},
+    }
+    request = _operator_handoff_request(state_path, mission_id=mission_id)
+    _write_json(state_path, mission_state)
+    _write_json(mission_root / "current_operator_request.json", request)
+    _write_jsonl(mission_root / "mission_operator_requests.jsonl", [request])
+    _write_jsonl(
+        mission_root / "ledger.jsonl",
+        [{"timestamp": "2026-04-12T20:00:00Z", "actor": "mission-runtime", "event": "blocked", "status": "blocked"}],
+    )
+
+    status_completed = _run_capture(_deeploop_command("status", "--mission-state", str(state_path)))
+    inbox_completed = _run_capture(_deeploop_command("inbox", "--mission-state", str(state_path)))
+    if "PAUSED — DeepLoop needs an operator decision before it can continue." not in status_completed.stdout:
+        raise SystemExit("docker-smoke: status did not render the expected paused operator handoff")
+    if f"deeploop status --mission-state {state_path}" not in status_completed.stdout:
+        raise SystemExit("docker-smoke: status did not surface the primary operator loop")
+    if f"deeploop inbox --mission-state {state_path}" not in status_completed.stdout:
+        raise SystemExit("docker-smoke: status did not surface the inbox command")
+    if f"deeploop resume --mission-state {state_path}" not in status_completed.stdout:
+        raise SystemExit("docker-smoke: status did not surface the resume command")
+    if "## Current request" not in inbox_completed.stdout:
+        raise SystemExit("docker-smoke: inbox did not render the current operator request")
+    if "attempted write outside mutable roots" not in inbox_completed.stdout:
+        raise SystemExit("docker-smoke: inbox did not preserve the blocker summary")
+    if f"deeploop resume --mission-state {state_path}" not in inbox_completed.stdout:
+        raise SystemExit("docker-smoke: inbox did not surface the request-specific resume command")
+
+    return {
+        "workflow": "operator-handoff-surface",
+        "mission_state_path": str(state_path),
+        "continue_command": request["continue_command"],
     }
 
 
@@ -395,9 +676,13 @@ def main(argv: list[str] | None = None) -> int:
     smoke_root.mkdir(parents=True, exist_ok=True)
 
     help_commands = [
-        ["deeploop", "--help"],
+        _deeploop_command("--help"),
+        _deeploop_command("run", "--help"),
+        _deeploop_command("provider-ready", "--help"),
+        _deeploop_command("status", "--help"),
+        _deeploop_command("inbox", "--help"),
+        _deeploop_command("resume", "--help"),
         ["deeploop-init-mission", "--help"],
-        ["deeploop-run-project", "--help"],
         ["deeploop-package-mission", "--help"],
         ["deeploop-analyze", "--help"],
     ]
@@ -405,6 +690,9 @@ def main(argv: list[str] | None = None) -> int:
         _run(command)
 
     smoke_cases = [
+        _run_zero_start_bundled_starter_provider_gate_smoke(
+            mission_id=f"{args.mission_id}-zero-start",
+        ),
         _run_translation_bootstrap(repo_root, smoke_root, mission_id=args.mission_id),
         _run_literature_operator_package_smoke(
             repo_root,
@@ -425,6 +713,9 @@ def main(argv: list[str] | None = None) -> int:
             repo_root,
             smoke_root,
             mission_id=f"{args.mission_id}-repair",
+        ),
+        _run_operator_handoff_surface_smoke(
+            mission_id=f"{args.mission_id}-operator-handoff",
         ),
     ]
 

@@ -39,9 +39,9 @@ class ProjectRunnerTests(unittest.TestCase):
             "mission_state_path": Path("/repo/demo/.deeploop/mission_state.json"),
             "snapshot": {
                 "operator_console": {
-                    "headline": "BLOCKED — review the request, then resume when ready.",
+                    "headline": "PAUSED — DeepLoop needs an operator decision before it can continue.",
                     "summary": "Autopilot paused at `sandbox-boundary`: attempted write outside mutable roots.",
-                    "recommendation": "Review the hard gate, keep the mission inside the current safety boundary if possible, then resume autopilot.",
+                    "recommendation": "Start with `status`, open `inbox`, make the smallest safe change or choice, then `resume`.",
                     "next_commands": [
                         {
                             "command": "deeploop inbox --mission-state /repo/demo/.deeploop/mission_state.json",
@@ -57,19 +57,153 @@ class ProjectRunnerTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 1)
         self.assertEqual(json.loads(stdout.getvalue())["status"], "operator-review-required")
-        self.assertIn("DeepLoop did not complete this run.", stderr.getvalue())
-        self.assertIn("BLOCKED — review the request", stderr.getvalue())
+        self.assertIn("DeepLoop paused before completion.", stderr.getvalue())
+        self.assertIn("PAUSED — DeepLoop needs an operator decision", stderr.getvalue())
+        self.assertIn("deeploop status --mission-state /repo/demo/.deeploop/mission_state.json", stderr.getvalue())
         self.assertIn("deeploop inbox --mission-state /repo/demo/.deeploop/mission_state.json", stderr.getvalue())
+        self.assertIn("deeploop resume --mission-state /repo/demo/.deeploop/mission_state.json", stderr.getvalue())
+
+    def test_run_project_without_project_root_uses_interactive_discovery_flow(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        args = argparse.Namespace(
+            project_root=None,
+            mission_idea="Find a good starter path.",
+            mission_id="interactive-run",
+            force=False,
+            until_complete=True,
+            chunk_iterations=4,
+            max_total_iterations=12,
+        )
+        result = {
+            "status": "completed",
+            "project_root": Path("/tmp/workspaces/projects/interactive-run"),
+            "mission_state_path": Path("/tmp/workspaces/runs/deeploop/missions/interactive-run/mission_state.json"),
+        }
+
+        with (
+            patch("deeploop.cli.run_project.run_interactive_discovery") as mock_discovery,
+            patch(
+                "deeploop.cli.run_project._load_run_config",
+                return_value={"mission": {"id": "interactive-run", "target_repo": "/workspaces/projects/interactive-run"}},
+            ),
+            patch("deeploop.cli.run_project._provider_readiness_result", return_value=None),
+            patch("deeploop.cli.run_project.run_config_until_complete", return_value=result) as mock_run_config,
+        ):
+            mock_discovery.return_value = {
+                "cancelled": False,
+                "confirmed": True,
+                "config_path": Path("/tmp/interactive-run.yaml"),
+            }
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = _run_project(args)
+
+        self.assertEqual(exit_code, 0)
+        mock_discovery.assert_called_once()
+        mock_run_config.assert_called_once()
+        self.assertEqual(json.loads(stdout.getvalue())["status"], "completed")
+        self.assertEqual(stderr.getvalue(), "")
+
+    def test_run_project_without_project_root_surfaces_provider_readiness_guidance(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        args = argparse.Namespace(
+            project_root=None,
+            mission_idea="Find a good starter path.",
+            mission_id="interactive-run",
+            force=False,
+            until_complete=True,
+            chunk_iterations=4,
+            max_total_iterations=12,
+        )
+        provider_result = {
+            "status": "provider-readiness-required",
+            "project_root": Path("/workspaces/projects/interactive-run"),
+            "config_path": Path("/workspaces/scratch/interactive-run.yaml"),
+            "provider_readiness": {
+                "status": "action-required",
+                "provider_family": "copilot-cli",
+                "selection_profile": "control-plane-copilot-cli",
+                "summary": "Machine-level provider setup is incomplete for `copilot-cli`.",
+                "failed_checks": [
+                    {
+                        "kind": "required-tool",
+                        "name": "copilot",
+                        "message": "not found on PATH",
+                    }
+                ],
+                "next_step": "Install the Copilot CLI and complete its machine authentication on this machine.",
+                "resume_command": "deeploop run --project-root /workspaces/projects/interactive-run --mission-id interactive-run --chunk-iterations 4 --max-total-iterations 12 --until-complete",
+                "recheck_command": "deeploop provider-ready --selection-profile control-plane-copilot-cli",
+            },
+        }
+
+        with (
+            patch("deeploop.cli.run_project.run_interactive_discovery") as mock_discovery,
+            patch(
+                "deeploop.cli.run_project._load_run_config",
+                return_value={"mission": {"id": "interactive-run", "target_repo": "/workspaces/projects/interactive-run"}},
+            ),
+            patch("deeploop.cli.run_project._provider_readiness_result", return_value=provider_result),
+            patch("deeploop.cli.run_project.run_config_until_complete") as mock_run_config,
+        ):
+            mock_discovery.return_value = {
+                "cancelled": False,
+                "confirmed": True,
+                "config_path": Path("/workspaces/scratch/interactive-run.yaml"),
+            }
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = _run_project(args)
+
+        self.assertEqual(exit_code, 1)
+        mock_run_config.assert_not_called()
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "provider-readiness-required")
+        self.assertIn("required provider setup is not ready yet", stderr.getvalue())
+        self.assertIn("copilot-cli", stderr.getvalue())
+        self.assertIn("Install the Copilot CLI", stderr.getvalue())
+        self.assertIn("deeploop run --project-root /workspaces/projects/interactive-run", stderr.getvalue())
+
+    def test_run_project_without_project_root_reports_cancelled_discovery(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        args = argparse.Namespace(
+            project_root=None,
+            mission_idea=None,
+            mission_id=None,
+            force=False,
+            until_complete=True,
+            chunk_iterations=4,
+            max_total_iterations=12,
+        )
+
+        with patch("deeploop.cli.run_project.run_interactive_discovery") as mock_discovery:
+            mock_discovery.return_value = {
+                "cancelled": True,
+                "confirmed": False,
+                "config_path": None,
+            }
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = _run_project(args)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("startup cancelled before DeepLoop created a mission", stdout.getvalue())
+        self.assertEqual(stderr.getvalue(), "")
 
     def test_run_project_help_explains_until_complete_and_manual_flow(self) -> None:
         parser = argparse.ArgumentParser()
         _add_run_args(parser)
 
         help_text = parser.format_help()
+        normalized_help = " ".join(help_text.split())
 
-        self.assertIn("bootstraps or reuses the mission", help_text)
-        self.assertIn("deeploop init", help_text)
-        self.assertIn("deeploop start", help_text)
+        self.assertIn("interactive first-run flow", normalized_help)
+        self.assertIn("bundled starter project", normalized_help)
+        self.assertIn("deeploop init", normalized_help)
+        self.assertIn("deeploop start", normalized_help)
+        self.assertIn("deeploop status", normalized_help)
+        self.assertIn("deeploop inbox", normalized_help)
+        self.assertIn("deeploop resume", normalized_help)
 
     def test_initialize_mission_from_project_root_reuses_existing_state_without_force(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "resume-existing"

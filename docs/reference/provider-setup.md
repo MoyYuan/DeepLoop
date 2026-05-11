@@ -58,6 +58,21 @@ documented separately.
 `backend-policy.yaml` remains useful for local inference defaults, but it is not
 the canonical source for the full machine-level provider setup contract.
 
+## Guided readiness check
+
+Use DeepLoop's thin provider-readiness surface when you want the machine-level
+setup answer directly:
+
+```text
+deeploop provider-ready --provider-family copilot-cli
+deeploop provider-ready --selection-profile control-plane-copilot-cli
+```
+
+The `--selection-profile` form resolves the provider family from
+`configs/runtime/provider-selection-registry.yaml`, but it still validates
+**setup only**. It does not choose a model, mutate mission config, or replace
+the separate provider-selection contract.
+
 ## Family requirements
 
 ### Copilot CLI

@@ -13,19 +13,19 @@ log, branch log, and runtime summary.
 ## What command should I start with?
 
 Use `deeploop status --mission-state <mission-state.json>`. It is the canonical
-operator console and tells you the current state, the recommended next step,
-and the exact next commands. The repo-level
+operator console and the start of the main loop: `status`, `inbox`, then
+`resume`. The repo-level
 `python scripts/mission/manage_mission.py` surface still exists as a fallback
 for debugging and automation.
 
 ## What should I do if DeepLoop stops?
 
-Open `status` first.
+Open `status` first and stay on the same loop:
 
 - If it shows `operator-action-required`, read `inbox`, make the smallest safe
   fix, then resume.
-- If it shows `needs-investigation`, inspect `logs` and `decisions` before
-  resuming.
+- If it shows `needs-investigation`, inspect `logs` and `decisions` only when
+  `status` is not enough before resuming.
 - If it shows `autopilot-ready-to-resume`, the last run ended after a soft-gate
   recovery path and another bounded `resume` is optional.
 - In managed mode, use `triage` first when a blocked queue exposes intervention

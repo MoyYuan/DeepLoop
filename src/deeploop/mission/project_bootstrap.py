@@ -178,6 +178,22 @@ def _slugify(value: str) -> str:
     return slug or "deeploop-project"
 
 
+def resolve_project_root_for_bootstrap(project_root: Path) -> Path:
+    expanded = project_root.expanduser()
+    resolved = expanded.resolve()
+    if not expanded.exists():
+        message = f"Project root does not exist: {resolved}."
+        if expanded.parts and expanded.parts[0] == "examples":
+            message += (
+                " Repo-local `examples/...` paths are only available from a DeepLoop source checkout; "
+                "package installs should point `--project-root` at your own folder or clone the repo to use the bundled examples."
+            )
+        raise FileNotFoundError(message)
+    if not expanded.is_dir():
+        raise ValueError(f"Project root is not a directory: {resolved}")
+    return resolved
+
+
 def _relative_to_project_root(path: Path, project_root: Path) -> str:
     try:
         return str(path.resolve().relative_to(project_root.resolve()))
@@ -928,7 +944,7 @@ def render_mission_contract_summary_lines(
 
 
 def build_mission_config_from_project_root(project_root: Path, *, mission_id: str | None = None) -> dict[str, Any]:
-    repo_root = project_root.expanduser().resolve()
+    repo_root = resolve_project_root_for_bootstrap(project_root)
     contract = discover_project_contract(repo_root)
     bootstrap_repair = _bootstrap_repair_payload(contract, repo_root)
     project_metadata = contract.get("project_metadata") if isinstance(contract.get("project_metadata"), dict) else {}

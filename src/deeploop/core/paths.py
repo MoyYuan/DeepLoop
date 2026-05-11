@@ -91,6 +91,7 @@ LEDGER_DIR = RUNS_DIR / "ledger"
 RESEARCH_MEMORY_DIR = LEDGER_DIR / "research_memory"
 FINDINGS_DIR = RUNS_DIR / "findings"
 SANDBOXES_DIR = SCRATCH_DIR / "sandboxes"
+PROJECTS_DIR = WORKSPACE_ROOT / "projects"
 COPILOT_RULES_PATH = Path.home() / ".copilot" / "copilot-instructions.md"
 WORKSPACE_RULES_PATH = WORKSPACE_ROOT / "AGENTS.md"
 
@@ -106,8 +107,21 @@ EXPECTED_EXTERNAL_DIRS = (
     RESEARCH_MEMORY_DIR,
     FINDINGS_DIR,
     SANDBOXES_DIR,
+    PROJECTS_DIR,
 )
 EXPECTED_SUBSTRATE_REPOS: tuple[Path, ...] = ()
+
+
+def ensure_expected_external_dirs() -> tuple[list[Path], list[Path]]:
+    created: list[Path] = []
+    existing: list[Path] = []
+    for path in EXPECTED_EXTERNAL_DIRS:
+        if path.exists():
+            existing.append(path)
+        else:
+            created.append(path)
+        path.mkdir(parents=True, exist_ok=True)
+    return created, existing
 
 __all__ = [
     "CHECKPOINT_DIR",
@@ -116,12 +130,14 @@ __all__ = [
     "DEFAULT_WORKSPACE_ROOT",
     "EXPECTED_EXTERNAL_DIRS",
     "EXPECTED_SUBSTRATE_REPOS",
+    "ensure_expected_external_dirs",
     "FINDINGS_DIR",
     "LAUNCHES_DIR",
     "LEDGER_DIR",
     "RESEARCH_MEMORY_DIR",
     "MISSIONS_DIR",
     "PACKAGES_DIR",
+    "PROJECTS_DIR",
     "COMMON_WORKSPACE_ROOT_NAMES",
     "REPO_ROOT",
     "RUNS_DIR",
