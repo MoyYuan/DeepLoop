@@ -154,24 +154,24 @@ selection_profiles:
       - runtime support currently covers prompt/result control-plane flows that return structured JSON
       - recursive-agent tool execution remains on the copilot-cli path
       - local versus commercial deployment remains a profile choice inside this provider family, not a new first-class family
-  gate2-local-qwen3_6-27b-openai:
+  gate2-local-qwen3_5-9b-openai:
     status: implemented
     provider_family: openai-compatible-api
     backend: openai-compatible-api
     release_gate: gate-2
-    deployment_profile: local-qwen3_6-27b-openai
-    host_execution_profile: qwen3_6-27b-openai-local
+    deployment_profile: local-qwen3_5-9b-openai
+    host_execution_profile: qwen3_5-9b-openai-local
     intended_surfaces:
       - deeploop analyze
       - provider-launcher prompt/result flows
     model_selection:
       mode: explicit-required
-      default_behavior: pin the Gate 2 local OpenAI-compatible runtime lane to a host-local endpoint serving Qwen/Qwen3.6-27B
+      default_behavior: pin the Gate 2 local OpenAI-compatible runtime lane to a host-local endpoint serving Qwen/Qwen3.5-9B
       allowed_fields:
         - model.identifier
         - model.endpoint_alias
       required_model:
-        identifier: Qwen/Qwen3.6-27B
+        identifier: Qwen/Qwen3.5-9B
         endpoint_alias: local-qwen-openai
       notes:
         - treat this as a local deployment profile inside the OpenAI-compatible provider family, not a separate public provider family

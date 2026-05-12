@@ -95,7 +95,7 @@ Release signoff now has two different proof layers:
 
 The current approved Gate 2 phase is intentionally narrow and must stay honest:
 
-1. **local Qwen via the OpenAI-compatible lane**
+1. **local Qwen3.5-9B via the OpenAI-compatible lane**
 2. **Copilot CLI with GPT-5 mini for the coding-agent lane**
 3. **no commercial OpenAI-compatible lane in this phase**
 
@@ -146,7 +146,7 @@ python scripts/release/real_runtime_validation.py \
   --operator <operator> \
   --machine-label <machine> \
   --manual-note "fresh env + documented install path used for Gate 2" \
-  --lane-note "local-qwen-openai-compatible=host-local Qwen/OpenAI-compatible server was started outside DeepLoop" \
+  --lane-note "local-qwen-openai-compatible=host-local Qwen/Qwen3.5-9B OpenAI-compatible server was started outside DeepLoop" \
   --lane-note "copilot-cli-gpt-5-mini-coding-agent=machine was already authenticated for Copilot CLI before the run"
 ```
 
@@ -175,7 +175,7 @@ Those records are the proof bundle. They must show:
 
 - both approved lanes passed
 - the recorded provider family, backend, and model/profile metadata
-- manual boundary notes for host-local Qwen setup and Copilot CLI machine auth
+- manual boundary notes for host-local Qwen3.5-9B setup and Copilot CLI machine auth
 - durable mission/runtime artifacts from the actual lane execution
 - provider-free smoke remains baseline-only evidence
 
@@ -183,7 +183,7 @@ Those records are the proof bundle. They must show:
 
 Do not widen the public claim beyond what the harness and lane contract prove:
 
-- current approved lanes are **local Qwen OpenAI-compatible** and **Copilot CLI
+- current approved lanes are **local Qwen3.5-9B OpenAI-compatible** and **Copilot CLI
   `gpt-5-mini`**
 - current phase explicitly excludes a commercial OpenAI-compatible lane
 - `deeploop provider-ready` and Docker smoke are useful prerequisites, not final
@@ -202,7 +202,7 @@ Do not widen the public claim beyond what the harness and lane contract prove:
    documented path when onboarding/docs-command claims changed
 6. complete **Gate 2** with `python scripts/release/real_runtime_validation.py`
    and lane notes for both approved lanes:
-    - local Qwen via an OpenAI-compatible endpoint
+    - local Qwen3.5-9B via an OpenAI-compatible endpoint
     - Copilot CLI with GPT-5 mini for the coding-agent lane
     - keep machine auth explicit and manual for Copilot CLI
     - each run records durable mission/runtime artifacts rather than relying on

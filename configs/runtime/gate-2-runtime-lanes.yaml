@@ -28,21 +28,21 @@ gate_2_proof_boundary:
 required_lanes:
   - lane_id: local-qwen-openai-compatible
     category: openai-compatible-endpoint
-    selection_profile: gate2-local-qwen3_6-27b-openai
+    selection_profile: gate2-local-qwen3_5-9b-openai
     provider_family: openai-compatible-api
     backend: openai-compatible-api
-    deployment_profile: local-qwen3_6-27b-openai
-    host_execution_profile: qwen3_6-27b-openai-local
+    deployment_profile: local-qwen3_5-9b-openai
+    host_execution_profile: qwen3_5-9b-openai-local
     model_expectation:
       family: qwen
-      identifier: Qwen/Qwen3.6-27B
+      identifier: Qwen/Qwen3.5-9B
       deployment: local-openai-compatible
       endpoint_alias: local-qwen-openai
     auth_boundary:
       automated_repo_checks:
         - OPENAI_API_KEY present in the runtime shell
       manual_requirements:
-        - Set OPENAI_BASE_URL outside the repo to the host-local OpenAI-compatible endpoint that serves Qwen/Qwen3.6-27B.
+        - Set OPENAI_BASE_URL outside the repo to the host-local OpenAI-compatible endpoint that serves Qwen/Qwen3.5-9B.
         - Set OPENAI_API_KEY outside the repo to whatever the local server expects; some local servers accept a placeholder token, but DeepLoop never provisions or stores it.
         - If the local server depends on gated or private weights, provision that access outside repo automation before startup.
     environment_expectations:
@@ -51,10 +51,10 @@ required_lanes:
       suggested_serving_env_file: environment.llm.yml
       host_specific:
         - Keep the OpenAI-compatible server process outside DeepLoop; the repo does not start, supervise, or tune that local server for you.
-        - GPU sizing, precision/quantization choice, and server launch flags for Qwen/Qwen3.6-27B remain host-specific and must be validated on the operator machine.
+        - GPU sizing, precision/quantization choice, and server launch flags for Qwen/Qwen3.5-9B remain host-specific and must be validated on the operator machine.
     fallback_or_downgrade_guidance:
       - First lower context length, max new tokens, or request concurrency while staying on the same host-local OpenAI-compatible lane.
-      - If the dense 27B profile is not stable on the host, record an explicit downgrade to qwen3_5-mid-fp16 or single-gpu-8b-9b-fp16 rather than silently switching providers.
+      - If the dedicated 9B Gate 2 profile is not stable on the host, record an explicit downgrade to qwen3_5-mid-fp16 or single-gpu-8b-9b-fp16 rather than silently switching providers.
       - Do not count a commercial OpenAI-compatible endpoint as equivalent proof for this local runtime lane.
     proof_requirements:
       - Run from a fresh or disposable environment on the documented install path.

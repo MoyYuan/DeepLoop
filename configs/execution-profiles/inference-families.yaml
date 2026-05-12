@@ -72,31 +72,32 @@ profiles:
         prompt_tokens: 4096
         max_new_tokens: 512
         batch_probe_order: [2, 1]
-  - id: qwen3_6-27b-openai-local
+  - id: qwen3_5-9b-openai-local
     applies_to:
-      - qwen3.6-27b
-      - Qwen/Qwen3.6-27B
-    model_identifier: Qwen/Qwen3.6-27B
+      - qwen3.5-9b
+      - Qwen/Qwen3.5-9B
+    model_identifier: Qwen/Qwen3.5-9B
     preferred_backend: vllm
     deployment_surface: openai-compatible-api
     gate_2_runtime_lane: local-qwen-openai-compatible
     suggested_serving_env_file: environment.llm.yml
     host_expectations:
-      - This is the documented host-side starting profile behind the OpenAI-compatible Gate 2 Qwen lane, not a separate first-class provider family.
+      - This is the documented host-side starting profile behind the OpenAI-compatible Gate 2 Qwen3.5-9B lane, not a separate first-class provider family.
       - DeepLoop expects the serving stack to be started manually outside repo automation; exact GPU sizing and serving flags remain host-specific.
+      - This explicit Gate 2 profile reuses the conservative single-gpu-8b-9b-fp16 envelope while pinning the verified Qwen/Qwen3.5-9B target.
     context_buckets:
       short:
         prompt_tokens: 512
         max_new_tokens: 256
-        batch_probe_order: [2, 1]
+        batch_probe_order: [8, 4, 2, 1]
       medium:
         prompt_tokens: 2048
-        max_new_tokens: 384
-        batch_probe_order: [1]
+        max_new_tokens: 512
+        batch_probe_order: [4, 2, 1]
       long:
         prompt_tokens: 4096
-        max_new_tokens: 384
-        batch_probe_order: [1]
+        max_new_tokens: 512
+        batch_probe_order: [2, 1]
     fallback_guidance:
       - lower batch size
       - lower max model length

@@ -135,7 +135,7 @@ class RealRuntimeValidationTests(unittest.TestCase):
             "status": "ready",
             "summary": "ready",
             "provider_family": "openai-compatible-api",
-            "selection_profile": "gate2-local-qwen3_6-27b-openai",
+            "selection_profile": "gate2-local-qwen3_5-9b-openai",
         }
         mock_run_provider_prompt.side_effect = _fake_prompt
 
