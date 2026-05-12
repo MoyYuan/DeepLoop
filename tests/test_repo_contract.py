@@ -364,9 +364,9 @@ class RepoContractTests(unittest.TestCase):
         )
         self.assertEqual(config["provider_families"]["openai-compatible-api"]["runtime_integration"], "implemented")
         local_qwen_setup = config["provider_families"]["openai-compatible-api"]["deployment_profiles"][
-            "local-qwen3_6-27b-openai"
+            "local-qwen3_5-9b-openai"
         ]
-        self.assertEqual(local_qwen_setup["model_identifier"], "Qwen/Qwen3.6-27B")
+        self.assertEqual(local_qwen_setup["model_identifier"], "Qwen/Qwen3.5-9B")
         self.assertEqual(local_qwen_setup["environment_expectations"]["suggested_serving_env_file"], "environment.llm.yml")
         self.assertIn(
             "single-gpu-8b-9b-fp16",
@@ -439,13 +439,13 @@ class RepoContractTests(unittest.TestCase):
             config["selection_profiles"]["gate2-coding-agent-copilot-gpt5-mini"]["model_selection"]["required_model"]["alias"],
             "gpt-5-mini",
         )
-        local_qwen_profile = config["selection_profiles"]["gate2-local-qwen3_6-27b-openai"]
+        local_qwen_profile = config["selection_profiles"]["gate2-local-qwen3_5-9b-openai"]
         self.assertEqual(local_qwen_profile["provider_family"], "openai-compatible-api")
-        self.assertEqual(local_qwen_profile["deployment_profile"], "local-qwen3_6-27b-openai")
-        self.assertEqual(local_qwen_profile["host_execution_profile"], "qwen3_6-27b-openai-local")
+        self.assertEqual(local_qwen_profile["deployment_profile"], "local-qwen3_5-9b-openai")
+        self.assertEqual(local_qwen_profile["host_execution_profile"], "qwen3_5-9b-openai-local")
         self.assertEqual(
             local_qwen_profile["model_selection"]["required_model"]["identifier"],
-            "Qwen/Qwen3.6-27B",
+            "Qwen/Qwen3.5-9B",
         )
         self.assertEqual(
             config["selection_profiles"]["local-transformers-execution"]["backend"],
@@ -515,10 +515,10 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("local-qwen-openai-compatible", lane_ids)
         self.assertIn("copilot-cli-gpt-5-mini-coding-agent", lane_ids)
         local_qwen_lane = next(lane for lane in config["required_lanes"] if lane["lane_id"] == "local-qwen-openai-compatible")
-        self.assertEqual(local_qwen_lane["selection_profile"], "gate2-local-qwen3_6-27b-openai")
-        self.assertEqual(local_qwen_lane["deployment_profile"], "local-qwen3_6-27b-openai")
-        self.assertEqual(local_qwen_lane["host_execution_profile"], "qwen3_6-27b-openai-local")
-        self.assertEqual(local_qwen_lane["model_expectation"]["identifier"], "Qwen/Qwen3.6-27B")
+        self.assertEqual(local_qwen_lane["selection_profile"], "gate2-local-qwen3_5-9b-openai")
+        self.assertEqual(local_qwen_lane["deployment_profile"], "local-qwen3_5-9b-openai")
+        self.assertEqual(local_qwen_lane["host_execution_profile"], "qwen3_5-9b-openai-local")
+        self.assertEqual(local_qwen_lane["model_expectation"]["identifier"], "Qwen/Qwen3.5-9B")
         self.assertEqual(local_qwen_lane["environment_expectations"]["suggested_serving_env_file"], "environment.llm.yml")
         self.assertIn(
             "qwen3_5-mid-fp16",
@@ -559,11 +559,11 @@ class RepoContractTests(unittest.TestCase):
         contract = yaml.safe_load(
             (REPO_ROOT / "configs" / "execution-profiles" / "inference-families.yaml").read_text(encoding="utf-8")
         )
-        profile = next(item for item in contract["profiles"] if item["id"] == "qwen3_6-27b-openai-local")
-        self.assertEqual(profile["model_identifier"], "Qwen/Qwen3.6-27B")
+        profile = next(item for item in contract["profiles"] if item["id"] == "qwen3_5-9b-openai-local")
+        self.assertEqual(profile["model_identifier"], "Qwen/Qwen3.5-9B")
         self.assertEqual(profile["preferred_backend"], "vllm")
         self.assertEqual(profile["suggested_serving_env_file"], "environment.llm.yml")
-        self.assertEqual(profile["context_buckets"]["short"]["batch_probe_order"], [2, 1])
+        self.assertEqual(profile["context_buckets"]["short"]["batch_probe_order"], [8, 4, 2, 1])
         self.assertIn("single-gpu-8b-9b-fp16", " ".join(profile["fallback_guidance"]))
 
     def test_mission_init_script_materializes_mission_bundle(self) -> None:

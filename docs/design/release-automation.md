@@ -72,7 +72,7 @@ In the current release story, keep the split explicit:
 
 - **Gate 1** is the baseline install/bootstrap/docs proof (`make public-bootstrap-check`,
   `make docker-release-validate`, `make docs-build`)
-- **Gate 2** is the separate real-runtime proof on the approved local Qwen
+- **Gate 2** is the separate real-runtime proof on the approved local Qwen3.5-9B
   OpenAI-compatible lane plus the Copilot CLI `gpt-5-mini` coding-agent lane,
   recorded through `scripts/release/real_runtime_validation.py`
 - package promotion artifacts and approvals contribute to the release bundle,

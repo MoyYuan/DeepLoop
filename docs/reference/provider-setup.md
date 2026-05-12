@@ -161,12 +161,12 @@ as `deeploop analyze`. Tool-using recursive-agent execution still remains on the
 Copilot CLI path. Setup is documented here; mission/runtime provider selection
 is documented separately.
 
-#### Documented local deployment profile: `local-qwen3_6-27b-openai`
+#### Documented local deployment profile: `local-qwen3_5-9b-openai`
 
 The current Gate 2 local OpenAI-compatible lane is a **deployment profile inside
 this family**, not a new provider family:
 
-- target model identifier: `Qwen/Qwen3.6-27B`
+- target model identifier: `Qwen/Qwen3.5-9B`
 - endpoint contract:
   - `OPENAI_BASE_URL` points at a host-local OpenAI-compatible server exposing
     `/v1/chat/completions`
@@ -181,13 +181,13 @@ this family**, not a new provider family:
 - manual / host-specific boundary:
   - DeepLoop does not launch, supervise, or tune the host-local server
   - GPU sizing, precision/quantization choice, and server flags for
-    `Qwen/Qwen3.6-27B` remain host-specific and must be validated on the machine
+    `Qwen/Qwen3.5-9B` remain host-specific and must be validated on the machine
   - if the server depends on gated or private weights, provision access outside
     the repo before startup
 - fallback / downgrade guidance:
   - lower context, max output, or request concurrency first while staying on the
     same OpenAI-compatible lane
-  - if the dense 27B profile is not stable on the host, record an explicit
+  - if the dedicated 9B Gate 2 profile is not stable on the host, record an explicit
     downgrade to `qwen3_5-mid-fp16` or `single-gpu-8b-9b-fp16` from
     `configs/execution-profiles/inference-families.yaml`
 

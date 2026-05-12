@@ -90,7 +90,7 @@ CLI quickstarts, or docs-command claims.
 The current approved Gate 2 phase requires both lanes from
 `configs/runtime/gate-2-runtime-lanes.yaml`:
 
-1. **local Qwen via an OpenAI-compatible lane**
+1. **local Qwen3.5-9B via an OpenAI-compatible lane**
 2. **Copilot CLI with GPT-5 mini (`gpt-5-mini`) for the coding-agent lane**
 
 Use the repo-owned harness:
@@ -99,7 +99,7 @@ Use the repo-owned harness:
 python scripts/release/real_runtime_validation.py \
   --validation-id <release-id> \
   --manual-note "fresh env + documented install path used for Gate 2" \
-  --lane-note "local-qwen-openai-compatible=host-local Qwen/OpenAI-compatible server was started outside DeepLoop" \
+  --lane-note "local-qwen-openai-compatible=host-local Qwen/Qwen3.5-9B OpenAI-compatible server was started outside DeepLoop" \
   --lane-note "copilot-cli-gpt-5-mini-coding-agent=machine was already authenticated for Copilot CLI before the run"
 ```
 

@@ -162,7 +162,7 @@ stronger share claim depends on a bundle of evidence:
    package with the required approvals
 4. a Gate 2 release proof that records real LLM-backed mission/runtime evidence
    on the current approved lanes:
-   - local Qwen via an OpenAI-compatible lane
+   - local Qwen3.5-9B via an OpenAI-compatible lane
    - Copilot CLI with GPT-5 mini for the coding-agent lane
    - use `configs/runtime/gate-2-runtime-lanes.yaml` as the machine-readable
      source of truth for that proof boundary
@@ -187,7 +187,7 @@ DeepLoop's release story sits on top of the engineering tiers:
 - **Gate 2** — required for every release and for high-risk PRs
   - run `python scripts/release/real_runtime_validation.py ...`
   - prove both approved lanes:
-    - local Qwen via the OpenAI-compatible lane
+    - local Qwen3.5-9B via the OpenAI-compatible lane
     - Copilot CLI with `gpt-5-mini` for the coding-agent lane
   - keep manual machine auth explicit and record durable evidence (`gate_2_real_runtime_validation.json` / `.md` and each lane's `validation_record.json` / `.md`)
 - **Gate 3** — broader pre-release or nightly matrix confidence

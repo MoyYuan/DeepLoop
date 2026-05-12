@@ -133,20 +133,20 @@ The machine-readable registry defines these public profiles:
   - local versus commercial deployment remains a profile choice inside this
     family, not a new first-class provider family
 
-### `gate2-local-qwen3_6-27b-openai`
+### `gate2-local-qwen3_5-9b-openai`
 
 - provider family: `openai-compatible-api`
 - backend: `openai-compatible-api`
 - intended surface: Gate 2 prompt/result control-plane proof on a host-local
   OpenAI-compatible endpoint
-- deployment profile: `local-qwen3_6-27b-openai`
-- host execution profile: `qwen3_6-27b-openai-local`
-- model selection: pin `model.identifier: Qwen/Qwen3.6-27B` and
+- deployment profile: `local-qwen3_5-9b-openai`
+- host execution profile: `qwen3_5-9b-openai-local`
+- model selection: pin `model.identifier: Qwen/Qwen3.5-9B` and
   `model.endpoint_alias: local-qwen-openai`
 - fallback posture: stay on the OpenAI-compatible family; downgrade only through
   an explicit local model ladder and record the downgrade
 - notes:
-  - this is the current approved Gate 2 local Qwen lane
+  - this is the current approved Gate 2 local Qwen3.5-9B lane
   - treat local serving as a deployment profile inside the OpenAI-compatible
     family, not as a new public provider family
   - DeepLoop does not start the host-local server, provision auth, or turn this

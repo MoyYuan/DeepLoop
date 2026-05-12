@@ -42,7 +42,7 @@ The current harness is intentionally deterministic and provider-free:
 
 The separate real-runtime release signoff lanes are defined in
 `configs/runtime/gate-2-runtime-lanes.yaml`. In the current approved phase that
-means local Qwen via the OpenAI-compatible lane plus Copilot CLI with `gpt-5-mini`
+ means local Qwen3.5-9B via the OpenAI-compatible lane plus Copilot CLI with `gpt-5-mini`
 for the coding-agent lane, with durable mission/runtime artifacts recorded for
 both.
 
@@ -60,7 +60,7 @@ python scripts/release/real_runtime_validation.py \
   --operator <operator> \
   --machine-label <machine> \
   --manual-note "fresh env + documented install path used for Gate 2" \
-  --lane-note "local-qwen-openai-compatible=host-local Qwen/OpenAI-compatible server was started outside DeepLoop" \
+  --lane-note "local-qwen-openai-compatible=host-local Qwen/Qwen3.5-9B OpenAI-compatible server was started outside DeepLoop" \
   --lane-note "copilot-cli-gpt-5-mini-coding-agent=machine was already authenticated for Copilot CLI before the run"
 ```
 
