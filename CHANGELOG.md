@@ -11,6 +11,29 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.5
+
+Patch release focused on making the current release contract honest after the
+9B Gate 2 lane swap and agent-review promotion changes landed on `main`.
+
+### Changed
+
+- the approved local OpenAI-compatible Gate 2 release lane is now standardized
+  on **Qwen/Qwen3.5-9B** instead of the older 27B profile, and the related
+  provider selection/setup docs and runtime contract now reflect that boundary
+- release-candidate promotion now records durable **agent or human review**
+  records through `required_reviews` instead of requiring explicit human-only
+  approval clicks in the normal release path
+
+### Fixed
+
+- the OpenAI-compatible adapter now accepts additional llama.cpp/Qwen response
+  content shapes so the host-local 9B Gate 2 lane can materialize its required
+  JSON result again
+- recursive-agent prompts now steer simple artifact/result writes toward direct
+  file tools, which restores reliable Copilot CLI Gate 2 handoff behavior during
+  bounded runtime validation
+
 ## 0.1.4
 
 Patch release focused on keeping the published runtime path honest after
