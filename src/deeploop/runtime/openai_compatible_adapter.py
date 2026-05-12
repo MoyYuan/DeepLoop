@@ -66,6 +66,53 @@ def _extract_first_json_object(text: str) -> dict[str, Any]:
     raise ValueError("provider response did not contain a JSON object")
 
 
+def _collect_text_segments(value: Any) -> list[str]:
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    if isinstance(value, list):
+        segments: list[str] = []
+        for item in value:
+            segments.extend(_collect_text_segments(item))
+        return segments
+    if isinstance(value, dict):
+        item_type = str(value.get("type") or "").strip().lower()
+        if item_type and item_type not in {
+            "text",
+            "output_text",
+            "input_text",
+            "reasoning",
+            "reasoning_text",
+            "message",
+            "content",
+        }:
+            return []
+        segments: list[str] = []
+        for key in ("text", "content", "value", "output_text", "reasoning_content", "reasoning"):
+            if key in value:
+                segments.extend(_collect_text_segments(value.get(key)))
+        return segments
+    return []
+
+
+def _extract_choice_response_text(first_choice: dict[str, Any]) -> str:
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        raise RuntimeError("OpenAI-compatible response choice did not include a message object")
+    for candidate in (
+        message.get("content"),
+        message.get("output_text"),
+        first_choice.get("text"),
+        message.get("reasoning_content"),
+        message.get("reasoning"),
+    ):
+        segments = _collect_text_segments(candidate)
+        combined = "\n".join(segment for segment in segments if segment)
+        if combined:
+            return combined
+    raise RuntimeError("OpenAI-compatible response did not include textual assistant content")
+
+
 def _chat_completion_endpoint() -> str:
     base_url = _normalize_api_base_url(os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"))
     return f"{base_url}/chat/completions"
@@ -126,22 +173,7 @@ def _invoke_openai_compatible(prompt_text: str, *, model: str) -> str:
     first_choice = choices[0]
     if not isinstance(first_choice, dict):
         raise RuntimeError("OpenAI-compatible response choice was not an object")
-    message = first_choice.get("message")
-    if not isinstance(message, dict):
-        raise RuntimeError("OpenAI-compatible response choice did not include a message object")
-    content = message.get("content")
-    if isinstance(content, str) and content.strip():
-        return content
-    if isinstance(content, list):
-        text_parts = [
-            str(item.get("text", "")).strip()
-            for item in content
-            if isinstance(item, dict) and item.get("type") == "text"
-        ]
-        combined = "\n".join(part for part in text_parts if part)
-        if combined:
-            return combined
-    raise RuntimeError("OpenAI-compatible response did not include textual assistant content")
+    return _extract_choice_response_text(first_choice)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -304,6 +304,8 @@ def render_prompt(
             "",
             "- This is a fresh-context iteration. Use the provided artifacts and external memory instead of assuming earlier context.",
             "- Write durable outputs only inside the sandbox outputs directory or mission artifact paths.",
+            "- Prefer direct file create/edit tools for sandbox artifacts and agent_result.json; avoid shell-based file creation unless no direct file tool can satisfy the requirement.",
+            "- Finish required file writes directly before concluding the iteration; do not leave simple artifact creation to long-running shell commands.",
             "- Record the next step explicitly when work should continue.",
             "- Do not stop early if the task can be advanced within the available artifacts and tools.",
             "",
