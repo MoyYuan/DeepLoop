@@ -81,7 +81,7 @@ stronger public claim depends on a bundle:
 2. a passing fresh-clone / fresh-home onboarding proof on the documented public
    path
 3. a real promotable release-candidate review for at least one mission package
-   with the required approvals
+   with the required durable reviews
 4. autonomy-gap evidence showing covered temporary gaps are being reduced by
    bounded recovery
 5. this acceptance campaign when you need an additional real-project exam on top

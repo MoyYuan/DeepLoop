@@ -55,7 +55,7 @@ approval-required action. This means public publication, announcement, or any
 equivalent external release step is a **permanent operator-owned authority
 decision**, not an automation gap.
 
-### 3. Release approval requirements
+### 3. Release review requirements
 
 Mission completion does **not** equal public release approval. Release review
 still requires:
@@ -64,8 +64,9 @@ still requires:
 - `licensing-review`
 - `release-operator`
 
-Those approvals stay explicit even when the mission runtime itself completed
-autonomously.
+Those durable review records stay explicit even when the mission runtime itself
+completed autonomously. Designated agents may satisfy the review roles, but a
+human override remains available for the same three review gates.
 
 ## Temporary gap classes
 

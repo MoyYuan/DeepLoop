@@ -212,12 +212,12 @@ Do not widen the public claim beyond what the harness and lane contract prove:
    `validation_record.json` / `.md`)
 8. verify the current proof-matrix review is still eligible for promotion
 9. verify at least one real mission package still has a promotable
-   `release_candidate_review.json` with the required approvals
+   `release_candidate_review.json` with the required durable reviews
 10. run `make test-smoke` when runtime/bootstrap behavior changed
 11. verify README and release docs still match the real proof level, including
     the explicit Gate 1 / Gate 2 boundary, the approved lanes, and the fact
     that this phase excludes a commercial OpenAI-compatible lane
-12. verify operator-only boundaries, provenance, licensing, and approval
+12. verify operator-only boundaries, provenance, licensing, and review
     requirements are still documented honestly
 13. publish the GitHub Release for the tagged version; the PyPI publish workflow
     is triggered from the published release event, not from a bare tag push

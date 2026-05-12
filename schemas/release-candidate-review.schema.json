@@ -19,13 +19,13 @@
     "gates",
     "failed_gate_ids",
     "blocking_reasons",
-    "required_approvals",
-    "missing_approvals",
+    "required_reviews",
+    "missing_reviews",
     "review_artifacts",
     "next_actions"
   ],
   "properties": {
-    "schema_version": { "type": "integer", "const": 1 },
+    "schema_version": { "type": "integer", "const": 2 },
     "policy_name": { "type": "string", "minLength": 1 },
     "policy_version": { "type": "integer", "minimum": 1 },
     "generated_at": { "type": "string", "minLength": 1 },
@@ -137,21 +137,53 @@
       "type": "array",
       "items": { "type": "string" }
     },
-    "required_approvals": {
+    "required_reviews": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["approval_id", "description", "approved"],
+        "required": [
+          "review_id",
+          "description",
+          "status",
+          "satisfied",
+          "evidence_refs",
+          "runtime_metadata",
+          "validation_errors"
+        ],
         "properties": {
-          "approval_id": { "type": "string", "minLength": 1 },
+          "review_id": { "type": "string", "minLength": 1 },
           "description": { "type": "string" },
-          "approved": { "type": "boolean" },
-          "approved_by": { "type": ["string", "null"] },
-          "note": { "type": ["string", "null"] }
+          "status": {
+            "type": "string",
+            "enum": ["satisfied", "missing", "invalid", "pending", "rejected", "needs-follow-up"]
+          },
+          "satisfied": { "type": "boolean" },
+          "reviewer": {
+            "type": ["object", "null"],
+            "required": ["type", "reviewer_id"],
+            "properties": {
+              "type": { "type": "string", "enum": ["agent", "human"] },
+              "reviewer_id": { "type": "string", "minLength": 1 },
+              "role": { "type": ["string", "null"] },
+              "display_name": { "type": ["string", "null"] }
+            }
+          },
+          "reviewed_at": { "type": ["string", "null"] },
+          "note": { "type": ["string", "null"] },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "runtime_metadata": { "type": "object" },
+          "human_override": { "type": "boolean" },
+          "validation_errors": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
         }
       }
     },
-    "missing_approvals": {
+    "missing_reviews": {
       "type": "array",
       "items": { "type": "string" }
     },

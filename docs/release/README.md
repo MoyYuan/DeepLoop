@@ -25,7 +25,8 @@ That claim is backed by:
   itself satisfy the separate Gate 2 runtime proof
 - an eligible-for-promotion plain-folder proof matrix across 3 materially
   different workflow shapes
-- a real release-candidate review and promotion path with required approvals
+- a real release-candidate review and promotion path with durable required
+  reviews
 - explicit governance and autonomy-boundary docs
 - user-facing operator surfaces that now expose ratchet evidence,
   temporary-gap telemetry, and bounded managed-mode recovery hints on the

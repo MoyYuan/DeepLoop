@@ -43,7 +43,7 @@ The release-candidate policy currently enforces:
 3. required artifact categories are present
 4. operator / paper / release summary surfaces are present
 5. release-candidate blockers are empty
-6. required human approvals are recorded
+6. required durable release reviews are recorded
 
 Packaging always emits a blocked-or-promotable review artifact so operators can
 see exactly which gates remain open before release.
@@ -75,27 +75,51 @@ In the current release story, keep the split explicit:
 - **Gate 2** is the separate real-runtime proof on the approved local Qwen3.5-9B
   OpenAI-compatible lane plus the Copilot CLI `gpt-5-mini` coding-agent lane,
   recorded through `scripts/release/real_runtime_validation.py`
-- package promotion artifacts and approvals contribute to the release bundle,
-  but they do not replace Gate 2 durable runtime evidence
+- package promotion artifacts and durable review records contribute to the
+  release bundle, but they do not replace Gate 2 durable runtime evidence
 
-## Approvals
+## Durable review records
 
-`review_release_candidate.py` accepts a JSON or YAML approvals file with this
+`review_release_candidate.py` accepts a JSON or YAML reviews file with this
 shape:
 
 ```yaml
-approvals:
-  - approval_id: provenance-review
-    approved: true
-    approved_by: operator-name
-    note: provenance links checked
-  - approval_id: licensing-review
-    approved: true
-    approved_by: operator-name
-  - approval_id: release-operator
-    approved: true
-    approved_by: operator-name
+reviews:
+  - review_id: provenance-review
+    status: satisfied
+    reviewed_at: 2026-05-12T00:00:00Z
+    reviewer:
+      type: agent
+      reviewer_id: provenance-auditor-v1
+      role: provenance-reviewer
+      display_name: Provenance auditor agent
+    note: Cross-links and copied artifact lineage verified.
+    evidence_refs:
+      - submission_manifest.json
+      - provenance.json
+    runtime_metadata:
+      executor: copilot-cli
+      model: gpt-5-mini
+  - review_id: licensing-review
+    status: satisfied
+    reviewed_at: 2026-05-12T00:05:00Z
+    reviewer:
+      type: agent
+      reviewer_id: licensing-auditor-v1
+      role: licensing-reviewer
+    note: Redistribution and third-party license inventory verified.
+  - review_id: release-operator
+    status: satisfied
+    reviewed_at: 2026-05-12T00:10:00Z
+    reviewer:
+      type: human
+      reviewer_id: operator-name
+    note: Human override confirmed package promotion decision.
 ```
+
+For the required reviews, designated agents must report the policy-matched
+review role. Humans remain a manual override path and can satisfy any review if
+they leave an auditable record with identity, timestamp, and rationale.
 
 When all gates pass, `--promote` writes `release_candidate_promotion.json` into
 the package root as the durable promotion marker.

@@ -82,7 +82,7 @@ soft_gate_inventory:
 
 release_governance:
   claim_state_floor: paper-candidate
-  required_approvals:
+  required_reviews:
     - provenance-review
     - licensing-review
     - release-operator
@@ -95,14 +95,14 @@ release_governance:
     - critique_reports
     - runtime_metadata
   notes:
-    - Release approval is distinct from mission completion.
-    - Public alpha does not remove provenance, licensing, or human release approval.
+    - Release review is distinct from mission completion.
+    - Public alpha does not remove provenance, licensing, or release-operator review requirements.
 
 reduction_policy:
   automate_when_safe:
     - temporary deeploop product gap
   never_hide:
     - permanent safety / authority / governance boundary
-    - release approval requirements
+    - release review requirements
   recent_examples:
     - plain-folder late phases now use executor-backed execution, critique, and replication instead of recursive-only closure

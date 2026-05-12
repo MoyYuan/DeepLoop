@@ -93,7 +93,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("operator-review", config["operator_request_classes"])
         self.assertIn("unrecoverable-failure", config["operator_request_classes"])
         self.assertIn("release_governance", config)
-        self.assertIn("required_approvals", config["release_governance"])
+        self.assertIn("required_reviews", config["release_governance"])
 
     def test_policy_placement_doc_mentions_taxonomy_and_antipattern(self) -> None:
         policy_text = (REPO_ROOT / "docs" / "design" / "policy-placement.md").read_text(encoding="utf-8").lower()

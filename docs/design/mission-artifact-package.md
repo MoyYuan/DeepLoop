@@ -87,7 +87,7 @@ Each package directory contains:
 - `mission_artifact_package.json` — machine-readable artifact map and cross-links
 - `mission_artifact_package.md` — operator handoff / paper drafting / release review summary
 - `release_candidate_review.json` — machine-readable promotion-gate evaluation against the release-candidate policy
-- `release_candidate_review.md` — release review checklist with gate status and missing approvals
+- `release_candidate_review.md` — release review checklist with gate status and missing reviews
 - `artifacts/` — copied mission inputs and outputs, preserving workspace-relative paths
 
 ## CLI
@@ -133,10 +133,10 @@ The output folder must be outside the DeepLoop source clone. If the destination
 already contains files other than `.git`, pass `--force` only when it is safe to
 replace that folder's contents.
 
-To re-run release review or attempt promotion after recording approvals:
+To re-run release review or attempt promotion after recording durable reviews:
 
 ```bash
 python scripts/release/review_release_candidate.py \
   --package-manifest ~/workspaces/runs/deeploop/packages/translation-full-mission/mission_artifact_package.json \
-  --approvals /path/to/release_approvals.yaml
+  --reviews /path/to/release_reviews.yaml
 ```

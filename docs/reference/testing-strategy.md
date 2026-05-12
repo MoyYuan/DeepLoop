@@ -159,7 +159,7 @@ stronger share claim depends on a bundle of evidence:
 2. a passing documented bootstrap/onboarding path from a fresh clone and fresh
    home
 3. a real promotable `release_candidate_review.json` for at least one mission
-   package with the required approvals
+   package with the required durable reviews
 4. a Gate 2 release proof that records real LLM-backed mission/runtime evidence
    on the current approved lanes:
    - local Qwen3.5-9B via an OpenAI-compatible lane

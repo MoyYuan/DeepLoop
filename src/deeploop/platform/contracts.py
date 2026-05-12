@@ -452,7 +452,7 @@ def sync_platform_expansion_bundle(
                     if release_automation
                     else release_review.get("eligible_for_promotion")
                 ),
-                "missing_approvals": list(release_automation.get("missing_approvals", [])) if release_automation else [],
+                "missing_reviews": list(release_automation.get("missing_reviews", [])) if release_automation else [],
                 "failed_gate_ids": list(release_automation.get("failed_gate_ids", [])) if release_automation else [],
                 "scheduler_status": scheduler.get("scheduler_status"),
                 "indexed_memory_status": updated_surfaces.get("indexed_memory", {}).get("status"),

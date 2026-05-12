@@ -21,8 +21,9 @@ claim_states:
     description: artifact package is fit for open release review
     promotion_requirements:
       - paper-candidate evidence or equivalent rigor
-      - provenance and licensing review
-      - human approval
+      - provenance-review record
+      - licensing-review record
+      - release-operator review
 disallowed_shortcuts:
   - exploratory_to_paper-candidate_without_replication
   - exploratory_to_release-candidate
