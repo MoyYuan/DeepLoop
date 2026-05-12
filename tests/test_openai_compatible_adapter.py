@@ -13,6 +13,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from deeploop.runtime.openai_compatible_adapter import (
+    _extract_choice_response_text,
     _extract_first_json_object,
     _normalize_api_base_url,
     build_openai_compatible_prompt_command,
@@ -42,6 +43,32 @@ class OpenAICompatibleAdapterTests(unittest.TestCase):
         )
         self.assertEqual(payload["status"], "completed")
         self.assertEqual(payload["summary"], "done")
+
+    def test_extract_choice_response_text_accepts_output_text_blocks(self) -> None:
+        text = _extract_choice_response_text(
+            {
+                "message": {
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "{\"status\": \"completed\", \"summary\": \"done\"}",
+                        }
+                    ]
+                }
+            }
+        )
+        self.assertEqual(text, "{\"status\": \"completed\", \"summary\": \"done\"}")
+
+    def test_extract_choice_response_text_falls_back_to_reasoning_content(self) -> None:
+        text = _extract_choice_response_text(
+            {
+                "message": {
+                    "content": None,
+                    "reasoning_content": "{\"status\": \"completed\", \"summary\": \"done\"}",
+                }
+            }
+        )
+        self.assertEqual(text, "{\"status\": \"completed\", \"summary\": \"done\"}")
 
     @patch("deeploop.runtime.openai_compatible_adapter._invoke_openai_compatible")
     def test_main_writes_result_json_from_response(self, mock_invoke) -> None:
