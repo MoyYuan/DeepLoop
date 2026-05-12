@@ -13,8 +13,11 @@ overclaiming.
 ## Promotion rules
 
 - no jump from exploratory directly to paper-candidate
-- no release-candidate promotion without provenance and licensing review
-- paper-candidate and release-candidate always require human approval
+- no release-candidate promotion without durable provenance, licensing, and
+  release-operator review records
+- paper-candidate still requires human approval
+- release-candidate review can be satisfied by designated agents or a human
+  override, but the review record must stay durable and auditable
 
 ## Why this matters
 

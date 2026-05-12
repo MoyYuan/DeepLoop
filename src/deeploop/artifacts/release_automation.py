@@ -37,17 +37,24 @@ def load_gate_2_runtime_contract(path: Path = GATE_2_RUNTIME_CONTRACT_PATH) -> d
     return _load_yaml(path)
 
 
-def load_release_candidate_approvals(path: Path | None) -> dict[str, Any]:
+def load_release_candidate_reviews(path: Path | None) -> dict[str, Any]:
     if path is None:
-        return {"approvals": []}
+        return {"reviews": []}
     resolved = path.expanduser().resolve()
     if resolved.suffix.lower() in {".yaml", ".yml"}:
         payload = _load_yaml(resolved)
     else:
         payload = _load_json(resolved)
     if not isinstance(payload, dict):
-        raise ValueError(f"Release approvals must be a mapping: {resolved}")
+        raise ValueError(f"Release reviews must be a mapping: {resolved}")
+    if "reviews" not in payload and isinstance(payload.get("approvals"), list):
+        payload = dict(payload)
+        payload["reviews"] = payload.get("approvals", [])
     return payload
+
+
+def load_release_candidate_approvals(path: Path | None) -> dict[str, Any]:
+    return load_release_candidate_reviews(path)
 
 
 def validate_release_candidate_review(
@@ -86,54 +93,170 @@ def _review_output_paths(policy: dict[str, Any], package_root: Path) -> dict[str
     }
 
 
-def _normalize_approval_records(
+def _normalize_string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if value is None or value == "":
+        return []
+    return [str(value)]
+
+
+def _normalize_review_reviewer(item: dict[str, Any]) -> dict[str, Any] | None:
+    reviewer_payload = item.get("reviewer") if isinstance(item.get("reviewer"), dict) else {}
+    reviewer_type = str(
+        reviewer_payload.get("type") or item.get("reviewer_type") or ("human" if item.get("approved_by") else "")
+    ).strip().lower()
+    reviewer_id = str(
+        reviewer_payload.get("reviewer_id")
+        or item.get("reviewer_id")
+        or item.get("approved_by")
+        or item.get("reviewer")
+        or ""
+    ).strip()
+    reviewer_role = str(reviewer_payload.get("role") or item.get("reviewer_role") or item.get("role") or "").strip()
+    display_name = str(
+        reviewer_payload.get("display_name")
+        or item.get("reviewer_name")
+        or item.get("reviewer_display_name")
+        or ""
+    ).strip()
+    reviewer: dict[str, Any] = {}
+    if reviewer_type:
+        reviewer["type"] = reviewer_type
+    if reviewer_id:
+        reviewer["reviewer_id"] = reviewer_id
+    if reviewer_role:
+        reviewer["role"] = reviewer_role
+    if display_name:
+        reviewer["display_name"] = display_name
+    return reviewer or None
+
+
+def _normalize_review_status(item: dict[str, Any]) -> tuple[str, bool]:
+    explicit = item.get("satisfied")
+    if isinstance(explicit, bool):
+        return ("satisfied" if explicit else "pending", explicit)
+    explicit = item.get("approved")
+    if isinstance(explicit, bool):
+        return ("satisfied" if explicit else "pending", explicit)
+    status = str(item.get("status", "")).strip().lower()
+    if status in {"approved", "complete", "completed", "passed", "satisfied", "accepted", "true", "yes"}:
+        return ("satisfied", True)
+    if status in {"rejected", "failed", "blocked"}:
+        return ("rejected", False)
+    if status in {"needs-follow-up", "needs_follow_up"}:
+        return ("needs-follow-up", False)
+    if status in {"pending", "missing"}:
+        return (status, False)
+    return ("pending", False)
+
+
+def _required_review_definitions(policy: dict[str, Any]) -> list[dict[str, Any]]:
+    if isinstance(policy.get("required_reviews"), list):
+        return [item for item in policy.get("required_reviews", []) if isinstance(item, dict)]
+    legacy_requirements = []
+    for item in policy.get("required_approvals", []):
+        if not isinstance(item, dict):
+            continue
+        legacy_requirements.append(
+            {
+                "id": item.get("id"),
+                "description": item.get("description"),
+                "allowed_reviewer_types": ["human"],
+                "allowed_reviewer_roles": [],
+                "human_override_allowed": True,
+                "satisfies_blockers": item.get("satisfies_blockers", []),
+            }
+        )
+    return legacy_requirements
+
+
+def _normalize_review_records(
     policy: dict[str, Any],
-    approvals: dict[str, Any] | None,
+    reviews: dict[str, Any] | None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    raw_records = approvals.get("approvals", []) if isinstance(approvals, dict) else []
+    raw_records = []
+    if isinstance(reviews, dict):
+        if isinstance(reviews.get("reviews"), list):
+            raw_records = reviews.get("reviews", [])
+        elif isinstance(reviews.get("approvals"), list):
+            raw_records = reviews.get("approvals", [])
     provided: dict[str, dict[str, Any]] = {}
     for item in raw_records:
         if not isinstance(item, dict):
             continue
-        approval_id = str(item.get("approval_id") or item.get("id") or "").strip()
-        if not approval_id:
+        review_id = str(item.get("review_id") or item.get("approval_id") or item.get("id") or "").strip()
+        if not review_id:
             continue
-        explicit = item.get("approved")
-        if isinstance(explicit, bool):
-            approved = explicit
-        else:
-            approved = str(item.get("status", "approved")).strip().lower() in {
-                "approved",
-                "complete",
-                "completed",
-                "passed",
-                "true",
-                "yes",
-            }
-        provided[approval_id] = {
-            "approval_id": approval_id,
-            "approved": approved,
-            "approved_by": item.get("approved_by") or item.get("reviewer"),
-            "note": item.get("note"),
+        status, satisfied = _normalize_review_status(item)
+        provided[review_id] = {
+            "review_id": review_id,
+            "status": status,
+            "satisfied": satisfied,
+            "reviewer": _normalize_review_reviewer(item),
+            "reviewed_at": item.get("reviewed_at") or item.get("approved_at") or item.get("timestamp"),
+            "note": item.get("note") or item.get("rationale"),
+            "evidence_refs": _normalize_string_list(item.get("evidence_refs") or item.get("evidence")),
+            "runtime_metadata": dict(item.get("runtime_metadata", {}))
+            if isinstance(item.get("runtime_metadata"), dict)
+            else {},
         }
 
     results: list[dict[str, Any]] = []
     missing: list[str] = []
-    for requirement in policy.get("required_approvals", []):
-        approval_id = str(requirement.get("id", "")).strip()
-        if not approval_id:
+    for requirement in _required_review_definitions(policy):
+        review_id = str(requirement.get("id", "")).strip()
+        if not review_id:
             continue
-        record = provided.get(approval_id, {})
-        approved = bool(record.get("approved"))
-        if not approved:
-            missing.append(approval_id)
+        record = provided.get(review_id, {})
+        reviewer = record.get("reviewer") if isinstance(record.get("reviewer"), dict) else None
+        reviewer_type = str((reviewer or {}).get("type") or "").strip().lower()
+        reviewer_role = str((reviewer or {}).get("role") or "").strip()
+        validation_errors: list[str] = []
+        satisfied = bool(record.get("satisfied"))
+        if satisfied:
+            if reviewer_type not in {"agent", "human"}:
+                validation_errors.append("reviewer.type must be `agent` or `human`.")
+            if not (reviewer or {}).get("reviewer_id"):
+                validation_errors.append("reviewer.reviewer_id is required for satisfied reviews.")
+            if not record.get("reviewed_at"):
+                validation_errors.append("reviewed_at is required for satisfied reviews.")
+            if not str(record.get("note") or "").strip():
+                validation_errors.append("note is required for satisfied reviews.")
+            allowed_types = {str(item).strip().lower() for item in requirement.get("allowed_reviewer_types", []) if str(item).strip()}
+            allowed_roles = {str(item).strip() for item in requirement.get("allowed_reviewer_roles", []) if str(item).strip()}
+            human_override_allowed = bool(requirement.get("human_override_allowed"))
+            if reviewer_type == "human":
+                if not human_override_allowed and allowed_types and "human" not in allowed_types:
+                    validation_errors.append("human override is not allowed for this review.")
+            else:
+                if allowed_types and reviewer_type not in allowed_types:
+                    validation_errors.append(
+                        f"reviewer.type `{reviewer_type or 'missing'}` is not allowed for `{review_id}`."
+                    )
+                if allowed_roles and reviewer_role not in allowed_roles:
+                    validation_errors.append(
+                        f"reviewer.role `{reviewer_role or 'missing'}` is not allowed for `{review_id}`."
+                    )
+        effective_satisfied = satisfied and not validation_errors
+        if not effective_satisfied:
+            missing.append(review_id)
+        result_status = "satisfied" if effective_satisfied else (
+            "invalid" if validation_errors else str(record.get("status") or "missing")
+        )
         results.append(
             {
-                "approval_id": approval_id,
+                "review_id": review_id,
                 "description": str(requirement.get("description", "")),
-                "approved": approved,
-                "approved_by": record.get("approved_by"),
+                "status": result_status,
+                "satisfied": effective_satisfied,
+                "reviewer": reviewer,
+                "reviewed_at": record.get("reviewed_at"),
                 "note": record.get("note"),
+                "evidence_refs": list(record.get("evidence_refs", [])),
+                "runtime_metadata": dict(record.get("runtime_metadata", {})),
+                "human_override": bool(effective_satisfied and reviewer_type == "human"),
+                "validation_errors": validation_errors,
                 "satisfies_blockers": [str(item).lower() for item in requirement.get("satisfies_blockers", [])],
             }
         )
@@ -145,7 +268,7 @@ def build_release_candidate_review(
     *,
     package_manifest_path: Path,
     policy: dict[str, Any] | None = None,
-    approvals: dict[str, Any] | None = None,
+    reviews: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resolved_policy = policy or load_release_candidate_policy()
     package_root = Path(str(package["package_root"])).expanduser().resolve()
@@ -269,15 +392,16 @@ def build_release_candidate_review(
         + [f"{section}: missing" for section in missing_sections],
     )
 
-    approval_results, missing_approvals = _normalize_approval_records(resolved_policy, approvals)
+    review_results, missing_reviews = _normalize_review_records(resolved_policy, reviews)
+    invalid_reviews = [item["review_id"] for item in review_results if item.get("status") == "invalid"]
 
     release_blockers = [str(item) for item in claim_summary.get("release_candidate_blockers", []) if str(item).strip()]
     satisfied_terms = set()
     if floor_passed:
         satisfied_terms.update({"paper-candidate evidence", "equivalent rigor"})
-    for approval in approval_results:
-        if approval["approved"]:
-            satisfied_terms.update(approval.get("satisfies_blockers", []))
+    for review in review_results:
+        if review["satisfied"]:
+            satisfied_terms.update(review.get("satisfies_blockers", []))
     effective_release_blockers = [
         blocker
         for blocker in release_blockers
@@ -294,11 +418,12 @@ def build_release_candidate_review(
     )
 
     add_gate(
-        "required-approvals",
-        "Required human approvals are recorded.",
-        not missing_approvals,
-        [f"{item['approval_id']}: approved" for item in approval_results if item["approved"]]
-        + [f"{approval_id}: missing" for approval_id in missing_approvals],
+        "required-reviews",
+        "Required durable release reviews are recorded.",
+        not missing_reviews,
+        [f"{item['review_id']}: satisfied" for item in review_results if item["satisfied"]]
+        + [f"{item['review_id']}: invalid" for item in review_results if item.get("status") == "invalid"]
+        + [f"{review_id}: missing" for review_id in missing_reviews],
     )
 
     recommended_actions: list[str] = []
@@ -308,9 +433,13 @@ def build_release_candidate_review(
         )
     if effective_release_blockers:
         recommended_actions.extend(effective_release_blockers[:3])
-    if missing_approvals:
+    if missing_reviews:
         recommended_actions.append(
-            "Record required approvals: " + ", ".join(sorted(missing_approvals)) + "."
+            "Record required reviews: " + ", ".join(sorted(missing_reviews)) + "."
+        )
+    if invalid_reviews:
+        recommended_actions.append(
+            "Repair invalid review records: " + ", ".join(sorted(invalid_reviews)) + "."
         )
     if failed_checks:
         recommended_actions.append(
@@ -328,7 +457,7 @@ def build_release_candidate_review(
         "required_lanes": list(gate_2_contract.get("required_lanes", [])),
     }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "policy_name": str(resolved_policy.get("policy_name", "deeploop-release-candidate-policy")),
         "policy_version": int(resolved_policy.get("version", 1)),
         "generated_at": now_utc(),
@@ -345,8 +474,8 @@ def build_release_candidate_review(
         "gates": gates,
         "failed_gate_ids": failed_gate_ids,
         "blocking_reasons": _dedupe_preserve(effective_release_blockers + recommended_actions),
-        "required_approvals": approval_results,
-        "missing_approvals": missing_approvals,
+        "required_reviews": review_results,
+        "missing_reviews": missing_reviews,
         "review_artifacts": {
             "json": str(review_paths["json"]),
             "markdown": str(review_paths["markdown"]),
@@ -395,11 +524,25 @@ def materialize_release_candidate_review(
         lines.append(f"- `{gate['gate_id']}` — {gate['status']}")
         for detail in gate["details"][:4]:
             lines.append(f"  - {detail}")
-    lines.extend(["", "## Required approvals", ""])
-    for approval in rendered_review["required_approvals"]:
-        state = "approved" if approval["approved"] else "missing"
-        approver = approval["approved_by"] or "unrecorded"
-        lines.append(f"- `{approval['approval_id']}` — {state} ({approver})")
+    lines.extend(["", "## Required reviews", ""])
+    for review in rendered_review["required_reviews"]:
+        reviewer = review.get("reviewer") if isinstance(review.get("reviewer"), dict) else {}
+        reviewer_id = reviewer.get("reviewer_id") or "unrecorded"
+        reviewer_type = reviewer.get("type") or "unknown"
+        role = reviewer.get("role")
+        status = review.get("status") or ("satisfied" if review.get("satisfied") else "missing")
+        reviewer_bits = f"{reviewer_id}, {reviewer_type}"
+        if role:
+            reviewer_bits += f", role={role}"
+        lines.append(f"- `{review['review_id']}` — {status} ({reviewer_bits})")
+        if review.get("reviewed_at"):
+            lines.append(f"  - reviewed_at: {review['reviewed_at']}")
+        if review.get("note"):
+            lines.append(f"  - note: {review['note']}")
+        if review.get("evidence_refs"):
+            lines.append("  - evidence_refs: " + ", ".join(review["evidence_refs"][:3]))
+        for error in review.get("validation_errors", [])[:3]:
+            lines.append(f"  - validation: {error}")
     gate_2_runtime_contract = rendered_review.get("gate_2_runtime_contract", {})
     if gate_2_runtime_contract:
         proof_boundary = gate_2_runtime_contract.get("proof_boundary", {})
@@ -451,7 +594,7 @@ def materialize_release_candidate_promotion(
     resolved_policy = policy or load_release_candidate_policy()
     promotion_path = _review_output_paths(resolved_policy, package_root.expanduser().resolve())["promotion"]
     promotion_payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": now_utc(),
         "policy_name": review["policy_name"],
         "package_id": review["package_id"],
@@ -460,10 +603,10 @@ def materialize_release_candidate_promotion(
         "package_manifest_path": review["package_manifest_path"],
         "release_candidate_review_path": review["review_artifacts"]["json"],
         "approved_gate_ids": [gate["gate_id"] for gate in review["gates"] if gate["status"] == "passed"],
-        "approval_ids": [
-            approval["approval_id"]
-            for approval in review["required_approvals"]
-            if approval["approved"]
+        "review_ids": [
+            required_review["review_id"]
+            for required_review in review["required_reviews"]
+            if required_review["satisfied"]
         ],
         "decision": "promoted-release-candidate",
     }
@@ -483,7 +626,7 @@ def build_package_release_automation(
         "decision": review["decision"],
         "eligible_for_promotion": bool(review["eligible_for_promotion"]),
         "failed_gate_ids": list(review.get("failed_gate_ids", [])),
-        "missing_approvals": list(review.get("missing_approvals", [])),
+        "missing_reviews": list(review.get("missing_reviews", [])),
         "gate_2_runtime_contract": dict(review.get("gate_2_runtime_contract", {})),
         "review_artifacts": review_artifacts,
     }

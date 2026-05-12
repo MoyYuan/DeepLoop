@@ -307,7 +307,7 @@
         "decision",
         "eligible_for_promotion",
         "failed_gate_ids",
-        "missing_approvals",
+        "missing_reviews",
         "gate_2_runtime_contract",
         "review_artifacts"
       ],
@@ -319,7 +319,7 @@
           "type": "array",
           "items": { "type": "string" }
         },
-        "missing_approvals": {
+        "missing_reviews": {
           "type": "array",
           "items": { "type": "string" }
         },

@@ -1409,7 +1409,7 @@ def package_mission_artifacts(
     )
     if not paper_candidate_equivalent:
         release_blockers.append("paper-candidate evidence or equivalent rigor")
-    release_blockers.extend(["provenance and licensing review", "human approval"])
+    release_blockers.extend(["provenance-review record", "licensing-review record", "release-operator review"])
 
     operator_key_ids = artifact_map["mission_specs"][:2] + artifact_map["findings"][:1] + artifact_map["manifests"][:2]
     operator_bullets = [
@@ -1577,9 +1577,9 @@ def package_mission_artifacts(
         policy=release_policy,
     )
     release_bullets.insert(0, f"Release automation decision: {release_review['decision']}.")
-    if release_review["missing_approvals"]:
+    if release_review["missing_reviews"]:
         release_bullets.append(
-            "Missing approvals: " + ", ".join(sorted(release_review["missing_approvals"])) + "."
+            "Missing reviews: " + ", ".join(sorted(release_review["missing_reviews"])) + "."
         )
     if release_review["failed_gate_ids"]:
         release_bullets.append(

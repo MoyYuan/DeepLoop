@@ -12,8 +12,8 @@ if str(SRC_ROOT) not in sys.path:
 
 from deeploop.artifacts.release_automation import (
     build_release_candidate_review,
-    load_release_candidate_approvals,
     load_release_candidate_policy,
+    load_release_candidate_reviews,
     materialize_release_candidate_promotion,
     materialize_release_candidate_review,
 )
@@ -26,7 +26,8 @@ def main() -> int:
     )
     parser.add_argument("--package-manifest", required=True)
     parser.add_argument("--policy")
-    parser.add_argument("--approvals")
+    parser.add_argument("--reviews", help="JSON or YAML release review records.")
+    parser.add_argument("--approvals", help=argparse.SUPPRESS)
     parser.add_argument("--promote", action="store_true")
     parser.add_argument("--json", action="store_true", dest="emit_json")
     args = parser.parse_args()
@@ -34,13 +35,14 @@ def main() -> int:
     package_manifest_path = Path(args.package_manifest).expanduser().resolve()
     package = _load_json(package_manifest_path)
     policy = load_release_candidate_policy(Path(args.policy).expanduser().resolve()) if args.policy else load_release_candidate_policy()
-    approvals = load_release_candidate_approvals(Path(args.approvals).expanduser().resolve()) if args.approvals else None
+    reviews_path = args.reviews or args.approvals
+    reviews = load_release_candidate_reviews(Path(reviews_path).expanduser().resolve()) if reviews_path else None
 
     review = build_release_candidate_review(
         package,
         package_manifest_path=package_manifest_path,
         policy=policy,
-        approvals=approvals,
+        reviews=reviews,
     )
     materialized = materialize_release_candidate_review(
         review,
