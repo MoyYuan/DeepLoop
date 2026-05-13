@@ -2,6 +2,9 @@ PYTHON ?= python3
 MISSION ?=
 QUEUE ?=
 MISSION_STATE ?=
+TEST_WORKSPACE_ROOT := $(abspath ..)
+TEST_RUNTIME_ROOT := $(TEST_WORKSPACE_ROOT)/.deeploop-test-runtime/make-test
+TEST_RUNS_ROOT := $(TEST_RUNTIME_ROOT)/runs/deeploop
 
 .PHONY: \
 	setup repo-check \
@@ -27,7 +30,10 @@ repo-check:
 	@$(PYTHON) scripts/repo_check.py
 
 test:
-	@$(PYTHON) -m unittest discover -s tests -p 'test_*.py' -q
+	@rm -rf "$(TEST_RUNTIME_ROOT)" && \
+	DEEPLOOP_WORKSPACE_ROOT="$(TEST_WORKSPACE_ROOT)" \
+	DEEPLOOP_RUNS_ROOT="$(TEST_RUNS_ROOT)" \
+	$(PYTHON) -m unittest discover -s tests -p 'test_*.py' -q
 
 test-unit:
 	@$(PYTHON) scripts/testing/run_test_tier.py --tier unit
@@ -42,7 +48,10 @@ public-bootstrap-check:
 	@$(MAKE) setup
 	@$(MAKE) public-bootstrap-preflight
 	@$(MAKE) repo-check
-	@$(PYTHON) -m unittest tests.test_project_contract tests.test_project_runner tests.test_public_bootstrap -q
+	@rm -rf "$(TEST_RUNTIME_ROOT)" && \
+	DEEPLOOP_WORKSPACE_ROOT="$(TEST_WORKSPACE_ROOT)" \
+	DEEPLOOP_RUNS_ROOT="$(TEST_RUNS_ROOT)" \
+	$(PYTHON) -m unittest tests.test_project_contract tests.test_project_runner tests.test_public_bootstrap -q
 
 public-bootstrap-preflight:
 	@$(PYTHON) scripts/public_bootstrap_preflight.py
