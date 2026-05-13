@@ -41,7 +41,9 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
         required=True,
         help=(
             "Keep extending bounded runtime passes until the mission completes or pauses at a true operator handoff. "
-            "If it pauses, continue with `deeploop status`, `deeploop inbox`, and `deeploop resume`. "
+            "If it pauses, continue with `deeploop status --mission-state <mission-state.json>`, "
+            "`deeploop inbox --mission-state <mission-state.json>`, and "
+            "`deeploop resume --mission-state <mission-state.json>`. "
             "Use `deeploop init` plus `deeploop start` when you want manual kickoff control."
         ),
     )
@@ -342,7 +344,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Run a plain researcher project folder through DeepLoop until completion or a true operator boundary. "
-            "When the run pauses, stay on `deeploop status`, `deeploop inbox`, and `deeploop resume`."
+            "When the run pauses, stay on `deeploop status --mission-state <mission-state.json>`, "
+            "`deeploop inbox --mission-state <mission-state.json>`, and "
+            "`deeploop resume --mission-state <mission-state.json>`."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )

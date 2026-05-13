@@ -19,9 +19,9 @@ from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
 from deeploop.autonomy.operator_inbox import ensure_operator_inbox_contract
 from deeploop.core.ledger import append_jsonl, make_ledger_entry
 from deeploop.core.paths import MISSIONS_DIR, REPO_ROOT, resolve_workspace_path
-from deeploop.core.structured_io import write_json_object, write_markdown, write_text, write_yaml_mapping
+from deeploop.core.structured_io import write_json_object, write_text, write_yaml_mapping
 from deeploop.mission.mission_memory import sync_mission_memory
-from deeploop.mission.project_bootstrap import render_mission_contract_summary_lines
+from deeploop.mission.mission_summary import sync_mission_summary
 from deeploop.mission.plain_folder_followup import materialize_plain_folder_followups
 from deeploop.mission.mission_state import write_mission_state
 from deeploop.platform.contracts import materialize_platform_expansion_bundle, sync_platform_expansion_bundle
@@ -513,34 +513,8 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     sync_mission_memory(state_path, state, contract=outer_loop)
     sync_platform_expansion_bundle(state_path, mission_state=state)
 
-    summary_path = mission_root / "mission_summary.md"
-    summary_lines = [
-        "# Mission summary",
-        "",
-        f"- mission_id: `{mission_id}`",
-        f"- mode: `{mission_mode}`",
-        *( [f"- mission_profile: `{mission_profile}`"] if mission_profile else [] ),
-        f"- target_repo: `{target_repo}`",
-        f"- objective: {mission_cfg['objective']}",
-        *([f"- constraints: {'; '.join(mission_constraints)}"] if mission_constraints else []),
-        f"- current_phase: `{current_phase}`",
-        f"- contract_snapshot_path: `{contract_snapshot['snapshot_path']}`",
-        f"- platform_root: `{platform_expansion['platform_root']}`",
-        "- platform_surfaces: "
-        + ", ".join(
-            f"`{surface_id}` ({surface.get('status', 'planned')})"
-            for surface_id, surface in sorted(platform_expansion["surfaces"].items())
-        ),
-        f"- project_contract_status: `{project_contract['status']}`",
-        f"- project_contract_root: `{project_contract['contract_root']}`",
-        *( [f"- mission_contract_path: `{mission_contract_path}`"] if mission_contract_path else [] ),
-    ]
-    if mission_contract:
-        summary_lines.extend(["", *render_mission_contract_summary_lines(mission_contract)])
-    write_markdown(
-        summary_path,
-        summary_lines,
-    )
+    summary_path = sync_mission_summary(mission_root, state, write_if_missing=True)
+    assert summary_path is not None
 
     ledger_path = mission_root / "ledger.jsonl"
     append_jsonl(

@@ -245,6 +245,7 @@ class ProjectRunnerTests(unittest.TestCase):
         self.assertIn("deeploop status", normalized_help)
         self.assertIn("deeploop inbox", normalized_help)
         self.assertIn("deeploop resume", normalized_help)
+        self.assertIn("--mission-state <mission-state.json>", normalized_help)
 
     def test_initialize_mission_from_project_root_reuses_existing_state_without_force(self) -> None:
         test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "resume-existing"
