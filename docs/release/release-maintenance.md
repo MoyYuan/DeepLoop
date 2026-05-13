@@ -237,7 +237,7 @@ Do not widen the public claim beyond what the harness and lane contract prove:
 
 ## GitHub release notes draft (`v0.1.6`)
 
-```md
+```text
 ## DeepLoop v0.1.6
 
 This patch release keeps the published Linux + Python 3.11 public-alpha path
@@ -253,13 +253,18 @@ public claim.
   mission summaries now stay in sync with the live mission state through
   completion. The OpenAI-compatible analyze path also now asks providers to
   return raw JSON while DeepLoop writes the result file, avoiding false
-  file-writing dead ends on local 9B Gate 2 runs.
+  file-writing dead ends on local 9B Gate 2 runs. Local loopback Qwen JSON
+  flows now also disable model thinking explicitly so the Gate 2 lane spends
+  its completion budget on the required result payload instead of reasoning
+  text.
 - **Package / release review:** the user-simulation harness documents the
   explicit host-Copilot mount boundary instead of relying on implicit local
   operator knowledge.
 - **Proof / CI:** the release proof now includes the sequential one-hour
   user-simulation matrix alongside the normal Gate 1 bootstrap, docs, and
-  Docker validation surfaces.
+  Docker validation surfaces, and the release unittest targets now isolate
+  their DeepLoop runs root so shared workspace research-memory artifacts do not
+  destabilize the candidate suite.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
   public alpha for the documented Linux path; this release improves UX and proof
   discipline rather than widening autonomy scope.

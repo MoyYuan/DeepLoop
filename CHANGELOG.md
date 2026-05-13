@@ -38,6 +38,9 @@ simulations.
 - OpenAI-compatible result-writing flows now request JSON-object mode, which
   keeps the local Qwen3.5-9B Gate 2 analyze lane from drifting into
   reasoning-only prose
+- local loopback Qwen JSON-result flows now disable model thinking explicitly,
+  which keeps the combined 9B Gate 2 proof lane from exhausting its completion
+  budget on reasoning text before it returns the required JSON payload
 - `deeploop analyze` now tells providers to return raw JSON while DeepLoop
   writes the result file, instead of instructing the model to write directly to
   a filesystem path it cannot touch
@@ -46,6 +49,9 @@ simulations.
 - mission summaries now refresh from current mission state instead of leaving
   `mission_summary.md` stale after the runtime reaches `completed` /
   `final-report`
+- Gate 1 unittest surfaces now run against an isolated DeepLoop runs root during
+  `make test` and `make public-bootstrap-check`, preventing shared workspace
+  research-memory state from destabilizing the release candidate test suite
 
 ## 0.1.5
 
