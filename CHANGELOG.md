@@ -11,6 +11,48 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.6
+
+Patch release focused on making DeepLoop's long-form fresh-user validation more
+durable and fixing runtime UX issues surfaced by those disposable user
+simulations.
+
+### Changed
+
+- DeepLoop now ships a repo-owned disposable Docker user-simulation matrix that
+  runs fresh users sequentially, requires one-hour minimum sessions, records
+  durable scenario/campaign artifacts, and pins the simulation contract to
+  GPT-5.4 mini for the outer user, Copilot CLI `gpt-5-mini` for the control
+  plane, and local Qwen3.5-9B for DeepLoop-carried experiment execution
+- the release-validation Docker image now exposes a dedicated
+  `user-simulation-base` stage, and the testing docs now define how to run the
+  simulation matrix with the explicit host-Copilot mount boundary
+
+### Fixed
+
+- disposable-container runs now have an explicit `--mount-host-copilot`
+  contract for the working Copilot binary/config/session-state mount shape
+- OpenAI-compatible provider launches from a source checkout now bootstrap the
+  repo `src/` path into subprocess `PYTHONPATH`, so repo-local Gate 2 lanes can
+  resolve `deeploop.runtime.openai_compatible_adapter` correctly
+- OpenAI-compatible result-writing flows now request JSON-object mode, which
+  keeps the local Qwen3.5-9B Gate 2 analyze lane from drifting into
+  reasoning-only prose
+- local loopback Qwen JSON-result flows now disable model thinking explicitly,
+  which keeps the combined 9B Gate 2 proof lane from exhausting its completion
+  budget on reasoning text before it returns the required JSON payload
+- `deeploop analyze` now tells providers to return raw JSON while DeepLoop
+  writes the result file, instead of instructing the model to write directly to
+  a filesystem path it cannot touch
+- `deeploop run` guidance now points users toward `--mission-state` when a
+  launch did not produce a resumable mission state
+- mission summaries now refresh from current mission state instead of leaving
+  `mission_summary.md` stale after the runtime reaches `completed` /
+  `final-report`
+- Gate 1 unittest surfaces now run against an isolated DeepLoop runs root during
+  `make test` and `make public-bootstrap-check`, preventing shared workspace
+  research-memory state from destabilizing the release candidate test suite
+
 ## 0.1.5
 
 Patch release focused on making the current release contract honest after the
