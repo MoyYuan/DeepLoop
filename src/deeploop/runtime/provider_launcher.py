@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import time
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Sequence
 
 
+from deeploop.core.paths import REPO_ROOT
 from deeploop.core.phase_defaults import (
     default_kind_for_phase as _default_kind_for_phase,
     default_role_for_phase as _default_role_for_phase,
@@ -21,6 +23,21 @@ _PROVIDER_IDLE_TIMEOUT_SECONDS = {
     "copilot-cli": 900.0,
     "openai-compatible-api": 300.0,
 }
+
+
+def _provider_subprocess_env() -> dict[str, str]:
+    resolved_env = dict(os.environ)
+    repo_src = REPO_ROOT / "src"
+    if not repo_src.is_dir():
+        return resolved_env
+    existing_pythonpath = str(resolved_env.get("PYTHONPATH") or "").strip()
+    pythonpath_entries = [str(repo_src)]
+    if existing_pythonpath:
+        pythonpath_entries.extend(
+            entry for entry in existing_pythonpath.split(os.pathsep) if entry and entry != str(repo_src)
+        )
+    resolved_env["PYTHONPATH"] = os.pathsep.join(pythonpath_entries)
+    return resolved_env
 
 
 def build_provider_prompt_command(
@@ -921,6 +938,7 @@ def run_provider_prompt(
             text=True,
             capture_output=True,
             check=False,
+            env=_provider_subprocess_env(),
         )
 
     process = subprocess.Popen(
@@ -929,6 +947,7 @@ def run_provider_prompt(
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=_provider_subprocess_env(),
     )
     idle_watch_roots: list[Path] = [prompt_file.parent]
     if result_json_path is not None:

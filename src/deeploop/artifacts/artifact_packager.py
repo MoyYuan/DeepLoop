@@ -1104,7 +1104,7 @@ def package_mission_artifacts(
 
     mission_aliases = {mission_id, mission_id.removesuffix("-mission")}
     manifest_search_roots = [
-        WORKSPACE_ROOT / "runs" / target_repo.name,
+        RUNS_DIR.parent / target_repo.name,
         mission_root,
     ]
     manifest_paths = _resolve_manifest_paths(

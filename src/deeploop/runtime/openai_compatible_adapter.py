@@ -7,6 +7,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -132,19 +133,42 @@ def _resolved_model(explicit_model: str | None) -> str:
     return model
 
 
-def _request_payload(prompt_text: str, *, model: str) -> bytes:
+def _is_local_openai_base_url(base_url: str | None) -> bool:
+    raw_base_url = str(base_url or "").strip()
+    if not raw_base_url:
+        return False
+    try:
+        hostname = urlparse(_normalize_api_base_url(raw_base_url)).hostname
+    except ValueError:
+        return False
+    return hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+def _should_disable_qwen_thinking(*, model: str, json_only: bool) -> bool:
+    return bool(
+        json_only
+        and "qwen" in model.lower()
+        and _is_local_openai_base_url(os.environ.get("OPENAI_BASE_URL"))
+    )
+
+
+def _request_payload(prompt_text: str, *, model: str, json_only: bool = False) -> bytes:
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt_text}],
         "temperature": 0,
     }
+    if json_only:
+        payload["response_format"] = {"type": "json_object"}
+    if _should_disable_qwen_thinking(model=model, json_only=json_only):
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
     return json.dumps(payload).encode("utf-8")
 
 
-def _invoke_openai_compatible(prompt_text: str, *, model: str) -> str:
+def _invoke_openai_compatible(prompt_text: str, *, model: str, json_only: bool = False) -> str:
     request = Request(
         _chat_completion_endpoint(),
-        data=_request_payload(prompt_text, model=model),
+        data=_request_payload(prompt_text, model=model, json_only=json_only),
         headers={
             "Authorization": f"Bearer {_required_api_key()}",
             "Content-Type": "application/json",
@@ -185,7 +209,11 @@ def main(argv: list[str] | None = None) -> int:
 
     prompt_file = Path(args.prompt_file).expanduser().resolve()
     prompt_text = prompt_file.read_text(encoding="utf-8")
-    response_text = _invoke_openai_compatible(prompt_text, model=_resolved_model(args.model))
+    response_text = _invoke_openai_compatible(
+        prompt_text,
+        model=_resolved_model(args.model),
+        json_only=bool(args.result_json_path),
+    )
     print(response_text, end="" if response_text.endswith("\n") else "\n")
     if args.result_json_path:
         payload = _extract_first_json_object(response_text)

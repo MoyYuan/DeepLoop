@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -53,6 +54,36 @@ class ProviderLauncherTests(unittest.TestCase):
     def test_build_command_for_openai_compatible_api_requires_prompt_file(self) -> None:
         with self.assertRaises(ValueError):
             build_provider_prompt_command("hello world", provider_family="openai-compatible-api")
+
+    @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
+    @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
+    def test_run_provider_prompt_bootstraps_source_pythonpath_for_openai_compatible_process(
+        self, mock_popen, _mock_sleep
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            prompt_file = root / "prompt.md"
+            result_json_path = root / "result.json"
+            prompt_file.write_text("hello world", encoding="utf-8")
+
+            process = MagicMock()
+            process.poll.side_effect = [None, None]
+            process.communicate.return_value = ("provider stdout", "provider stderr")
+            mock_popen.return_value = process
+
+            result_json_path.write_text(json.dumps({"status": "complete", "summary": "done"}), encoding="utf-8")
+
+            completed = run_provider_prompt(
+                prompt_file,
+                provider_family="openai-compatible-api",
+                result_json_path=result_json_path,
+                cwd=root,
+            )
+
+        self.assertEqual(completed.returncode, 0)
+        _, kwargs = mock_popen.call_args
+        env = kwargs["env"]
+        self.assertEqual(env["PYTHONPATH"].split(os.pathsep)[0], str(SRC_ROOT))
 
     def test_resolve_provider_idle_timeout_prefers_longer_copilot_window(self) -> None:
         self.assertEqual(resolve_provider_idle_timeout_seconds("copilot-cli", None), 900.0)

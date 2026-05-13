@@ -46,7 +46,7 @@ class CorePathsTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {core_paths.WORKSPACE_ROOT_ENV_VAR: str(override_root)},
-            clear=False,
+            clear=True,
         ):
             module = importlib.reload(core_paths)
 
@@ -59,7 +59,7 @@ class CorePathsTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             {core_paths.WORKSPACE_ROOT_ENV_VAR: str(override_root)},
-            clear=False,
+            clear=True,
         ):
             module = importlib.reload(core_paths)
 
@@ -67,6 +67,25 @@ class CorePathsTests(unittest.TestCase):
             module.resolve_workspace_path("workspace://runs/deeploop/packages"),
             override_root.resolve() / "runs" / "deeploop" / "packages",
         )
+
+    def test_runs_root_can_be_overridden_independently_of_workspace_root(self) -> None:
+        workspace_root = REPO_ROOT / "reports" / "test-fixtures" / "workspace-root"
+        runs_root = REPO_ROOT / "reports" / "test-fixtures" / "isolated-runs-root"
+
+        with patch.dict(
+            os.environ,
+            {
+                core_paths.WORKSPACE_ROOT_ENV_VAR: str(workspace_root),
+                core_paths.RUNS_ROOT_ENV_VAR: str(runs_root),
+            },
+            clear=False,
+        ):
+            module = importlib.reload(core_paths)
+
+        self.assertEqual(module.WORKSPACE_ROOT, workspace_root.resolve())
+        self.assertEqual(module.RUNS_DIR, runs_root.resolve())
+        self.assertEqual(module.PACKAGES_DIR, runs_root.resolve() / "packages")
+        self.assertEqual(module.RESEARCH_MEMORY_DIR, runs_root.resolve() / "ledger" / "research_memory")
 
     def test_workspace_root_diagnostics_warns_for_case_split(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

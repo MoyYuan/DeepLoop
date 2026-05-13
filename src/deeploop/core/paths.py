@@ -18,6 +18,7 @@ def _resolve_repo_root() -> Path:
 
 REPO_ROOT = _resolve_repo_root()
 WORKSPACE_ROOT_ENV_VAR = "DEEPLOOP_WORKSPACE_ROOT"
+RUNS_ROOT_ENV_VAR = "DEEPLOOP_RUNS_ROOT"
 FALLBACK_WORKSPACE_ROOT_NAME = "workspaces"
 COMMON_WORKSPACE_ROOT_NAMES = ("Workspaces", "workspace", FALLBACK_WORKSPACE_ROOT_NAME)
 WORKSPACE_URI_PREFIX = "workspace://"
@@ -39,6 +40,13 @@ def _resolve_workspace_root() -> Path:
     override = os.environ.get(WORKSPACE_ROOT_ENV_VAR, "").strip()
     if not override:
         return DEFAULT_WORKSPACE_ROOT
+    return Path(override).expanduser().resolve()
+
+
+def _resolve_runs_dir() -> Path:
+    override = os.environ.get(RUNS_ROOT_ENV_VAR, "").strip()
+    if not override:
+        return WORKSPACE_ROOT / "runs" / "deeploop"
     return Path(override).expanduser().resolve()
 
 
@@ -82,7 +90,7 @@ def workspace_root_diagnostics(project_root: str | Path | None = None) -> list[s
 WORKSPACE_ROOT = _resolve_workspace_root()
 DATA_DIR = WORKSPACE_ROOT / "data" / "deeploop"
 CHECKPOINT_DIR = WORKSPACE_ROOT / "checkpoints" / "deeploop"
-RUNS_DIR = WORKSPACE_ROOT / "runs" / "deeploop"
+RUNS_DIR = _resolve_runs_dir()
 LAUNCHES_DIR = RUNS_DIR / "launches"
 PACKAGES_DIR = RUNS_DIR / "packages"
 SCRATCH_DIR = WORKSPACE_ROOT / "scratch" / "deeploop"
@@ -141,6 +149,7 @@ __all__ = [
     "COMMON_WORKSPACE_ROOT_NAMES",
     "REPO_ROOT",
     "RUNS_DIR",
+    "RUNS_ROOT_ENV_VAR",
     "SANDBOXES_DIR",
     "SCRATCH_DIR",
     "FALLBACK_WORKSPACE_ROOT_NAME",
