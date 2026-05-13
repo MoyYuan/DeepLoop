@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` now declares `0.1.4`, so the
-publishable tag and GitHub Release tag must be `v0.1.4`.
+For the next public release, `pyproject.toml` now declares `0.1.6`, so the
+publishable tag and GitHub Release tag must be `v0.1.6`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -39,10 +39,11 @@ Current preflight posture:
 
 - the public claim stays bounded-support public alpha on the documented Linux +
   Python 3.11 path
-- merged `main` has already been rechecked with the integrated release-baseline
-  unittest sweep, `make docs-build`, and `make public-bootstrap-check`
-- the next release should emphasize installed-runtime import correctness,
-  stale-output recovery hardening, and the strengthened clean-room release gate
+- the merged release candidate should be rechecked with `make
+  public-bootstrap-check`, `make docker-release-validate`, `make docs-build`,
+  and `make test`
+- the next release should emphasize the disposable user-simulation harness,
+  clearer no-mission-state recovery guidance, and synced mission-summary output
   rather than a broader portability or autonomy claim
 
 ## Release gates at a glance
@@ -233,31 +234,32 @@ Do not widen the public claim beyond what the harness and lane contract prove:
         evidence
       - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.1.4`)
+## GitHub release notes draft (`v0.1.6`)
 
 ```md
-## DeepLoop v0.1.4
+## DeepLoop v0.1.6
 
 This patch release keeps the published Linux + Python 3.11 public-alpha path
-honest after wheel install, hardens runtime recovery against stale outputs, and
-adds release-proof coverage for the shipped launcher without widening the public
-claim.
+honest by adding durable long-form fresh-user validation and fixing runtime UX
+issues surfaced by those disposable user simulations, without widening the
+public claim.
 
-- **Install / bootstrap:** the shipped runtime launcher now resolves imports
-  correctly when it is executed from an installed wheel, not only from a repo
-  checkout or runtime cache.
-- **Runtime / operator:** non-execution phase recovery now ignores stale output
-  artifacts even on timestamp ties, so old files do not look like fresh phase
-  completions.
-- **Package / release review:** the release artifact keeps the packaged runtime
-  script executable as shipped, which is now covered by an explicit wheel-based
-  regression test.
-- **Proof / CI:** merged-main release checks were revalidated with targeted
-  provider-launcher/package tests, `make public-bootstrap-check`,
-  `make docs-build`, and the Docker clean-room release validation harness.
+- **Install / bootstrap:** release validation now includes a dedicated
+  disposable user-simulation harness that starts each scenario from a fresh
+  Docker environment and records durable artifacts for review.
+- **Runtime / operator:** `deeploop run` now gives clearer `--mission-state`
+  recovery guidance when a launch did not produce a resumable mission, and
+  mission summaries now stay in sync with the live mission state through
+  completion.
+- **Package / release review:** the user-simulation harness documents the
+  explicit host-Copilot mount boundary instead of relying on implicit local
+  operator knowledge.
+- **Proof / CI:** the release proof now includes the sequential one-hour
+  user-simulation matrix alongside the normal Gate 1 bootstrap, docs, and
+  Docker validation surfaces.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
-  public alpha for the documented Linux path; this release improves UX,
-  resilience, and proof discipline rather than widening autonomy scope.
+  public alpha for the documented Linux path; this release improves UX and proof
+  discipline rather than widening autonomy scope.
 ```
 
 ## Non-goals
