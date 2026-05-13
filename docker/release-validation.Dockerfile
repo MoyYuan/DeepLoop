@@ -36,6 +36,9 @@ RUN python -m pip install /opt/deeploop/dist/*.whl \
         --repo-root /opt/deeploop \
         --install-source wheel
 
+FROM runtime-base AS user-simulation-base
+RUN python -m pip install /opt/deeploop/dist/*.whl
+
 FROM runtime-base AS pypi-validation
 ARG DEEPLOOP_INSTALL_SPEC=deeploop
 RUN python -m pip install "${DEEPLOOP_INSTALL_SPEC}" \
