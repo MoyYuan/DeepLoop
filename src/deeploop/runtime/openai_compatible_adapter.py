@@ -7,6 +7,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -132,6 +133,25 @@ def _resolved_model(explicit_model: str | None) -> str:
     return model
 
 
+def _is_local_openai_base_url(base_url: str | None) -> bool:
+    raw_base_url = str(base_url or "").strip()
+    if not raw_base_url:
+        return False
+    try:
+        hostname = urlparse(_normalize_api_base_url(raw_base_url)).hostname
+    except ValueError:
+        return False
+    return hostname in {"127.0.0.1", "localhost", "::1"}
+
+
+def _should_disable_qwen_thinking(*, model: str, json_only: bool) -> bool:
+    return bool(
+        json_only
+        and "qwen" in model.lower()
+        and _is_local_openai_base_url(os.environ.get("OPENAI_BASE_URL"))
+    )
+
+
 def _request_payload(prompt_text: str, *, model: str, json_only: bool = False) -> bytes:
     payload = {
         "model": model,
@@ -140,6 +160,8 @@ def _request_payload(prompt_text: str, *, model: str, json_only: bool = False) -
     }
     if json_only:
         payload["response_format"] = {"type": "json_object"}
+    if _should_disable_qwen_thinking(model=model, json_only=json_only):
+        payload["chat_template_kwargs"] = {"enable_thinking": False}
     return json.dumps(payload).encode("utf-8")
 
 

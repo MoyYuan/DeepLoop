@@ -15,8 +15,10 @@ if str(SRC_ROOT) not in sys.path:
 from deeploop.runtime.openai_compatible_adapter import (
     _extract_choice_response_text,
     _extract_first_json_object,
+    _is_local_openai_base_url,
     _normalize_api_base_url,
     _request_payload,
+    _should_disable_qwen_thinking,
     build_openai_compatible_prompt_command,
     main,
 )
@@ -75,6 +77,27 @@ class OpenAICompatibleAdapterTests(unittest.TestCase):
         payload = json.loads(_request_payload("prompt", model="demo-model", json_only=True).decode("utf-8"))
         self.assertEqual(payload["response_format"], {"type": "json_object"})
         self.assertEqual(payload["messages"], [{"role": "user", "content": "prompt"}])
+
+    def test_local_qwen_json_payload_disables_thinking(self) -> None:
+        with patch.dict("os.environ", {"OPENAI_BASE_URL": "http://127.0.0.1:8000/v1"}, clear=False):
+            payload = json.loads(_request_payload("prompt", model="Qwen/Qwen3.5-9B", json_only=True).decode("utf-8"))
+        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": False})
+
+    def test_non_local_qwen_payload_does_not_add_chat_template_kwargs(self) -> None:
+        with patch.dict("os.environ", {"OPENAI_BASE_URL": "https://api.example.com/v1"}, clear=False):
+            payload = json.loads(_request_payload("prompt", model="Qwen/Qwen3.5-9B", json_only=True).decode("utf-8"))
+        self.assertNotIn("chat_template_kwargs", payload)
+
+    def test_localhost_detection_accepts_loopback_hosts(self) -> None:
+        self.assertTrue(_is_local_openai_base_url("http://127.0.0.1:8000/v1"))
+        self.assertTrue(_is_local_openai_base_url("http://localhost:8000"))
+        self.assertFalse(_is_local_openai_base_url("https://api.openai.com/v1"))
+
+    def test_qwen_thinking_override_only_applies_to_local_json_flows(self) -> None:
+        with patch.dict("os.environ", {"OPENAI_BASE_URL": "http://127.0.0.1:8000/v1"}, clear=False):
+            self.assertTrue(_should_disable_qwen_thinking(model="Qwen/Qwen3.5-9B", json_only=True))
+            self.assertFalse(_should_disable_qwen_thinking(model="Qwen/Qwen3.5-9B", json_only=False))
+            self.assertFalse(_should_disable_qwen_thinking(model="gpt-4o-mini", json_only=True))
 
     @patch("deeploop.runtime.openai_compatible_adapter._invoke_openai_compatible")
     def test_main_writes_result_json_from_response(self, mock_invoke) -> None:
