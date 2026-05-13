@@ -43,8 +43,9 @@ Current preflight posture:
   public-bootstrap-check`, `make docker-release-validate`, `make docs-build`,
   and `make test`
 - the next release should emphasize the disposable user-simulation harness,
-  clearer no-mission-state recovery guidance, and synced mission-summary output
-  rather than a broader portability or autonomy claim
+  clearer no-mission-state recovery guidance, synced mission-summary output,
+  and the hardened Gate 2 OpenAI-compatible analyze path rather than a broader
+  portability or autonomy claim
 
 ## Release gates at a glance
 
@@ -250,7 +251,9 @@ public claim.
 - **Runtime / operator:** `deeploop run` now gives clearer `--mission-state`
   recovery guidance when a launch did not produce a resumable mission, and
   mission summaries now stay in sync with the live mission state through
-  completion.
+  completion. The OpenAI-compatible analyze path also now asks providers to
+  return raw JSON while DeepLoop writes the result file, avoiding false
+  file-writing dead ends on local 9B Gate 2 runs.
 - **Package / release review:** the user-simulation harness documents the
   explicit host-Copilot mount boundary instead of relying on implicit local
   operator knowledge.

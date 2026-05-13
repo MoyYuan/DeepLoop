@@ -32,6 +32,15 @@ simulations.
 
 - disposable-container runs now have an explicit `--mount-host-copilot`
   contract for the working Copilot binary/config/session-state mount shape
+- OpenAI-compatible provider launches from a source checkout now bootstrap the
+  repo `src/` path into subprocess `PYTHONPATH`, so repo-local Gate 2 lanes can
+  resolve `deeploop.runtime.openai_compatible_adapter` correctly
+- OpenAI-compatible result-writing flows now request JSON-object mode, which
+  keeps the local Qwen3.5-9B Gate 2 analyze lane from drifting into
+  reasoning-only prose
+- `deeploop analyze` now tells providers to return raw JSON while DeepLoop
+  writes the result file, instead of instructing the model to write directly to
+  a filesystem path it cannot touch
 - `deeploop run` guidance now points users toward `--mission-state` when a
   launch did not produce a resumable mission state
 - mission summaries now refresh from current mission state instead of leaving
