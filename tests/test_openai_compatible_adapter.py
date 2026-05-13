@@ -16,6 +16,7 @@ from deeploop.runtime.openai_compatible_adapter import (
     _extract_choice_response_text,
     _extract_first_json_object,
     _normalize_api_base_url,
+    _request_payload,
     build_openai_compatible_prompt_command,
     main,
 )
@@ -70,6 +71,11 @@ class OpenAICompatibleAdapterTests(unittest.TestCase):
         )
         self.assertEqual(text, "{\"status\": \"completed\", \"summary\": \"done\"}")
 
+    def test_request_payload_enables_json_object_mode_for_result_flows(self) -> None:
+        payload = json.loads(_request_payload("prompt", model="demo-model", json_only=True).decode("utf-8"))
+        self.assertEqual(payload["response_format"], {"type": "json_object"})
+        self.assertEqual(payload["messages"], [{"role": "user", "content": "prompt"}])
+
     @patch("deeploop.runtime.openai_compatible_adapter._invoke_openai_compatible")
     def test_main_writes_result_json_from_response(self, mock_invoke) -> None:
         mock_invoke.return_value = "{\"status\": \"completed\", \"summary\": \"done\"}"
@@ -95,3 +101,4 @@ class OpenAICompatibleAdapterTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(payload["status"], "completed")
         self.assertEqual(payload["summary"], "done")
+        self.assertEqual(mock_invoke.call_args.kwargs["json_only"], True)

@@ -132,19 +132,21 @@ def _resolved_model(explicit_model: str | None) -> str:
     return model
 
 
-def _request_payload(prompt_text: str, *, model: str) -> bytes:
+def _request_payload(prompt_text: str, *, model: str, json_only: bool = False) -> bytes:
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt_text}],
         "temperature": 0,
     }
+    if json_only:
+        payload["response_format"] = {"type": "json_object"}
     return json.dumps(payload).encode("utf-8")
 
 
-def _invoke_openai_compatible(prompt_text: str, *, model: str) -> str:
+def _invoke_openai_compatible(prompt_text: str, *, model: str, json_only: bool = False) -> str:
     request = Request(
         _chat_completion_endpoint(),
-        data=_request_payload(prompt_text, model=model),
+        data=_request_payload(prompt_text, model=model, json_only=json_only),
         headers={
             "Authorization": f"Bearer {_required_api_key()}",
             "Content-Type": "application/json",
@@ -185,7 +187,11 @@ def main(argv: list[str] | None = None) -> int:
 
     prompt_file = Path(args.prompt_file).expanduser().resolve()
     prompt_text = prompt_file.read_text(encoding="utf-8")
-    response_text = _invoke_openai_compatible(prompt_text, model=_resolved_model(args.model))
+    response_text = _invoke_openai_compatible(
+        prompt_text,
+        model=_resolved_model(args.model),
+        json_only=bool(args.result_json_path),
+    )
     print(response_text, end="" if response_text.endswith("\n") else "\n")
     if args.result_json_path:
         payload = _extract_first_json_object(response_text)
