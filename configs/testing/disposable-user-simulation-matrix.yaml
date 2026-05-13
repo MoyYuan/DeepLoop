@@ -1,0 +1,52 @@
+version: 1
+contract_id: disposable-user-simulation-matrix
+campaign_defaults:
+  sequential_execution: true
+  disposable_container_per_scenario: true
+  minimum_session_seconds: 3600
+  docker:
+    dockerfile: docker/release-validation.Dockerfile
+    build_target: user-simulation-base
+    image_prefix: deeploop-user-simulation
+    workspace_root: /home/deeploop/Workspaces
+    artifacts_root: /artifacts
+  simulator:
+    boundary: external-user-simulator
+    required_model_alias: gpt-5.4-mini
+    notes:
+      - The outer simulated user is intentionally treated as an external boundary; the repo harness prepares the container, prompt bundle, and policy artifacts.
+      - Use one simulator command at a time so fresh-user sessions remain sequential and durable.
+  deeploop:
+    control_plane:
+      selection_profile: gate2-coding-agent-copilot-gpt5-mini
+      provider_family: copilot-cli
+      backend: copilot-cli
+      model_alias: gpt-5-mini
+    experiment_execution:
+      selection_profile: gate2-local-qwen3_5-9b-openai
+      deployment_profile: local-qwen3_5-9b-openai
+      host_execution_profile: qwen3_5-9b-openai-local
+      provider_family: openai-compatible-api
+      backend: openai-compatible-api
+      model_identifier: Qwen/Qwen3.5-9B
+      endpoint_alias: local-qwen-openai
+      policy_note: All DeepLoop-carried experiments must stay on the local Qwen/Qwen3.5-9B lane for this campaign.
+scenarios:
+  - scenario_id: bundled-starter-translation-budget-ladder
+    title: Bundled starter translation budget ladder
+    summary: Simulate a fresh user who starts from the packaged translation benchmark starter inside a disposable Docker environment.
+    project_shape: bundled-starter
+    starter_id: translation-budget-ladder
+    user_goal: Find a good starting path for benchmarking translation robustness and make bounded progress without changing the runtime-provider contract.
+  - scenario_id: discovery-first-general-research
+    title: Discovery-first general research
+    summary: Simulate a fresh user who starts with no project root and uses the discovery-first path to select the general research starter.
+    project_shape: discovery-first
+    discovery_starter_id: starter-general-research
+    user_goal: Start from a blank slate, use the bundled general-research starter, and keep the first run inside the documented DeepLoop front door.
+  - scenario_id: plain-folder-repair-forecast-rough-notes
+    title: Plain-folder repair and research
+    summary: Simulate a fresh user who brings rough notes and partial files, then relies on DeepLoop's bounded repair and clarification path.
+    project_shape: plain-folder-fixture
+    fixture_path: tests/_proof_fixtures/plain_folder/forecast-rough-notes
+    user_goal: Repair and continue a messy forecasting project without drifting off the pinned runtime lanes.

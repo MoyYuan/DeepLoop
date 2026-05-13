@@ -197,6 +197,46 @@ DeepLoop's release story sits on top of the engineering tiers:
 Provider-free smoke and `deeploop provider-ready` are still useful baseline
 signals, but they do **not** satisfy Gate 2 on their own.
 
+## Disposable user-simulation matrix
+
+When you need a longer fresh-user exam beyond release smoke, DeepLoop now ships
+a disposable Docker user-simulation harness:
+
+```text
+python scripts/testing/run_disposable_user_simulation_matrix.py --prepare-only
+python scripts/testing/run_disposable_user_simulation_matrix.py \
+  --mount-host-copilot \
+  --simulator-command python scripts/testing/run_disposable_user_simulation_outer_user.py ...
+```
+
+Machine-readable campaign defaults live in
+`configs/testing/disposable-user-simulation-matrix.yaml`. The current matrix is
+deliberately opinionated:
+
+- run scenarios **sequentially**, never in parallel
+- use a **fresh disposable container** for each scenario
+- require at least **3600 seconds** of wall time per simulated user
+- treat the outer simulated user as an **explicit external boundary** pinned to
+  `gpt-5.4-mini`
+- pin DeepLoop's control plane to Copilot CLI `gpt-5-mini`
+- pin all DeepLoop-carried experiment execution to the local
+  `Qwen/Qwen3.5-9B` lane through repo-owned runtime and mission inputs
+
+The repo-owned outer-user wrapper reads the generated prompt, contract, and
+runtime-pin artifacts from the matrix runner, then writes durable transcripts
+under each scenario's `artifacts/outer-user-simulation/` directory.
+
+The harness prepares durable scenario contracts, prompt bundles, workspace
+materialization, and DeepLoop runtime-pin files. It does **not** hide simulator
+auth or model access behind repo automation; operator-supplied simulator wrappers
+remain explicit.
+
+When you want the disposable container itself to exercise DeepLoop's pinned
+Copilot `gpt-5-mini` control-plane path, pass `--mount-host-copilot`. That
+flag is an explicit operator opt-in: it mounts the host `copilot` binary and
+`~/.config/gh` read-only plus `~/.copilot` read-write so Copilot can create
+session-state inside the container.
+
 ## Default run policy
 
 Recommended default:
