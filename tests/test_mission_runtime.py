@@ -2194,6 +2194,19 @@ class MissionRuntimeTests(unittest.TestCase):
                 },
             },
         )
+        mission_summary_path = mission_state_path.parent / "mission_summary.md"
+        mission_summary_path.write_text(
+            "\n".join(
+                [
+                    "# Mission summary",
+                    "",
+                    "- current_phase: `idea-intake`",
+                    "- status: `initialized`",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         output_dir = test_root / "stage-run"
         mock_run_stage_from_config.return_value = KernelRunResult(
             stage_id="mechanistic-localization",
@@ -2275,6 +2288,10 @@ class MissionRuntimeTests(unittest.TestCase):
         runtime_summary = json.loads(result["summary_json_path"].read_text(encoding="utf-8"))
         self.assertEqual(runtime_summary["mission"]["status"], "completed")
         self.assertEqual(runtime_summary["mission"]["current_phase"], "final-report")
+        rendered_mission_summary = mission_summary_path.read_text(encoding="utf-8")
+        self.assertIn("- current_phase: `final-report`", rendered_mission_summary)
+        self.assertIn("- status: `completed`", rendered_mission_summary)
+        self.assertNotIn("- current_phase: `idea-intake`", rendered_mission_summary)
         self.assertEqual(
             package_state_snapshots,
             [

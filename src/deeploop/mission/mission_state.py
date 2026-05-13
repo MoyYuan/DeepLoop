@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from deeploop.core.structured_io import load_json_object, write_json_object
+from deeploop.mission.mission_summary import sync_mission_summary_for_state_path
 
 MISSION_STATE_SCHEMA_VERSION = 2
 
@@ -36,7 +37,9 @@ def load_mission_state(path: Path) -> dict[str, Any]:
 
 
 def write_mission_state(path: Path, payload: Mapping[str, Any]) -> None:
-    write_json_object(path, migrate_mission_state(payload))
+    migrated_payload = migrate_mission_state(payload)
+    write_json_object(path, migrated_payload)
+    sync_mission_summary_for_state_path(path, migrated_payload)
 
 
 __all__ = [
