@@ -11,6 +11,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -18,6 +19,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+DEFAULT_OUTPUT_ROOT = REPO_ROOT / "reports" / "local" / "disposable-user-simulation"
+DEFAULT_MANAGED_SANDBOX_TTL_HOURS = 24.0
+DEFAULT_MANAGED_SANDBOX_CLEANUP_POLICY = "delete"
+MANAGED_SANDBOX_ENV = "DEEPLOOP_DISPOSABLE_SIM_USE_MANAGED_SANDBOX"
+TRUTHY_ENV_VALUES = {"1", "true", "yes", "on"}
 
 from deeploop.core.structured_io import write_json_object, write_markdown
 from deeploop.testing.disposable_user_simulation import (
@@ -30,6 +36,13 @@ from deeploop.testing.disposable_user_simulation import (
     runtime_constraints_payload,
     select_scenarios,
 )
+
+
+class ManagedSandboxContext:
+    def __init__(self, *, manager_path: Path, registry_root: Path | None, manifest: dict[str, Any]) -> None:
+        self.manager_path = manager_path
+        self.registry_root = registry_root
+        self.manifest = manifest
 
 
 def _volume_arg(source: Path, target: str, *, read_only: bool = False) -> str:
@@ -86,6 +99,117 @@ def _utc_stamp() -> str:
 
 def _campaign_id(explicit: str | None) -> str:
     return explicit or f"disposable-user-simulation-{_utc_stamp()}"
+
+
+def _default_output_root(campaign_id: str) -> Path:
+    return DEFAULT_OUTPUT_ROOT / campaign_id
+
+
+def _env_flag_enabled(value: str | None) -> bool:
+    return value is not None and value.strip().lower() in TRUTHY_ENV_VALUES
+
+
+def _managed_sandbox_requested(args: argparse.Namespace) -> bool:
+    return bool(getattr(args, "managed_sandbox", False) or _env_flag_enabled(os.environ.get(MANAGED_SANDBOX_ENV)))
+
+
+def _default_sandbox_manager_path() -> Path:
+    return REPO_ROOT.parent / "system-scripts" / "sandbox_manager.py"
+
+
+def _resolve_sandbox_manager_path(override: str | None) -> Path:
+    candidate = Path(override).expanduser().resolve() if override else _default_sandbox_manager_path().resolve()
+    if not candidate.is_file():
+        raise FileNotFoundError(f"Sandbox manager not found: {candidate}")
+    return candidate
+
+
+def _run_sandbox_manager_json(
+    manager_path: Path,
+    command: list[str],
+    *,
+    registry_root: Path | None = None,
+) -> dict[str, Any]:
+    env = dict(os.environ)
+    if registry_root is not None:
+        env["SANDBOX_REGISTRY_ROOT"] = str(registry_root)
+    result = subprocess.run(
+        [sys.executable, str(manager_path), *command, "--json"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        check=False,
+    )
+    if result.returncode != 0:
+        details = result.stderr.strip() or result.stdout.strip() or f"sandbox manager exited with {result.returncode}"
+        raise RuntimeError(f"Sandbox manager command failed: {details}")
+    return json.loads(result.stdout)
+
+
+def _managed_sandbox_summary(context: ManagedSandboxContext) -> dict[str, Any]:
+    manifest = context.manifest
+    integrity = manifest.get("integrity", {})
+    return {
+        "id": manifest["id"],
+        "path": manifest["path"],
+        "state": manifest["state"],
+        "purpose": manifest["purpose"],
+        "type": manifest["type"],
+        "expires_at": manifest["expires_at"],
+        "cleanup_policy": manifest["cleanup_policy"],
+        "manifest_path": integrity.get("manifest_path"),
+        "registry_root": integrity.get("registry_root"),
+        "manager_path": str(context.manager_path),
+    }
+
+
+def _add_managed_sandbox_metadata(
+    payload: dict[str, object],
+    managed_sandbox: ManagedSandboxContext | None,
+) -> dict[str, object]:
+    if managed_sandbox is not None:
+        payload["managed_sandbox"] = _managed_sandbox_summary(managed_sandbox)
+    return payload
+
+
+def _prepare_campaign_output_root(
+    *,
+    args: argparse.Namespace,
+    campaign_id: str,
+) -> tuple[Path, ManagedSandboxContext | None]:
+    requested_output_root = Path(args.output_root).expanduser().resolve() if args.output_root else None
+    if not _managed_sandbox_requested(args):
+        output_root = requested_output_root or _default_output_root(campaign_id)
+        output_root.mkdir(parents=True, exist_ok=True)
+        return output_root, None
+
+    manager_path = _resolve_sandbox_manager_path(getattr(args, "sandbox_manager", None))
+    registry_root = (
+        Path(args.sandbox_registry_root).expanduser().resolve()
+        if getattr(args, "sandbox_registry_root", None)
+        else None
+    )
+    create_command = [
+        "create",
+        "--repo",
+        "deeploop",
+        "--purpose",
+        "disposable user simulation",
+        "--type",
+        "validation",
+        "--cleanup-policy",
+        args.sandbox_cleanup_policy,
+        "--ttl-hours",
+        str(args.sandbox_ttl_hours),
+    ]
+    if requested_output_root is not None:
+        create_command.extend(["--path", str(requested_output_root)])
+    manifest = _run_sandbox_manager_json(manager_path, create_command, registry_root=registry_root)
+    output_root = Path(manifest["path"]).resolve()
+    if not output_root.is_dir():
+        raise RuntimeError(f"Managed sandbox path was not created: {output_root}")
+    return output_root, ManagedSandboxContext(manager_path=manager_path, registry_root=registry_root, manifest=manifest)
 
 
 def _sanitize_tag_suffix(raw: str) -> str:
@@ -377,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--matrix-config", default=str(DEFAULT_MATRIX_PATH), help="Path to the matrix config.")
     parser.add_argument("--campaign-id", help="Optional campaign id override.")
-    parser.add_argument("--output-root", help="Optional output root override.")
+    parser.add_argument("--output-root", help="Optional output root override. With --managed-sandbox, this becomes the tracked sandbox path.")
     parser.add_argument("--docker-bin", default="docker", help="Docker-compatible CLI to invoke.")
     parser.add_argument("--no-pull", action="store_true", help="Skip docker build --pull.")
     parser.add_argument("--skip-build", action="store_true", help="Reuse an existing image tag instead of building a new image.")
@@ -393,6 +517,31 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--prepare-only", action="store_true", help="Only materialize scenario bundles; do not build images, start containers, or run a simulator command.")
+    parser.add_argument(
+        "--managed-sandbox",
+        action="store_true",
+        help="Track the campaign output root with the shared sandbox manager.",
+    )
+    parser.add_argument(
+        "--sandbox-manager",
+        help="Path to system-scripts/sandbox_manager.py. Defaults to ../system-scripts relative to the repo root.",
+    )
+    parser.add_argument(
+        "--sandbox-registry-root",
+        help="Override SANDBOX_REGISTRY_ROOT for managed sandbox metadata and storage.",
+    )
+    parser.add_argument(
+        "--sandbox-ttl-hours",
+        type=float,
+        default=DEFAULT_MANAGED_SANDBOX_TTL_HOURS,
+        help="TTL for managed disposable-user-simulation sandboxes before reap-stale can remove them.",
+    )
+    parser.add_argument(
+        "--sandbox-cleanup-policy",
+        choices=("delete", "archive", "manual"),
+        default=DEFAULT_MANAGED_SANDBOX_CLEANUP_POLICY,
+        help="Cleanup policy recorded for managed disposable-user-simulation sandboxes.",
+    )
     parser.add_argument(
         "--simulator-command",
         nargs=argparse.REMAINDER,
@@ -410,12 +559,9 @@ def main(argv: list[str] | None = None) -> int:
     matrix = load_disposable_user_simulation_matrix(Path(args.matrix_config))
     scenarios = select_scenarios(matrix, list(args.scenario))
     campaign_id = _campaign_id(args.campaign_id)
-    output_root = (
-        Path(args.output_root).expanduser().resolve()
-        if args.output_root
-        else REPO_ROOT / "reports" / "disposable-user-simulation" / campaign_id
-    )
-    output_root.mkdir(parents=True, exist_ok=True)
+    output_root, managed_sandbox = _prepare_campaign_output_root(args=args, campaign_id=campaign_id)
+    if managed_sandbox is not None:
+        write_json_object(output_root / "metadata" / "managed-sandbox.json", managed_sandbox.manifest)
 
     image_tag = args.image_tag or _build_image_tag(matrix.docker.image_prefix, campaign_id)
     if not args.prepare_only and not args.skip_build:
@@ -461,6 +607,7 @@ def main(argv: list[str] | None = None) -> int:
         "runtime_constraints": runtime_constraints_payload(matrix),
         "scenarios": scenario_summaries,
     }
+    _add_managed_sandbox_metadata(campaign_summary, managed_sandbox)
     _write_campaign_summary(output_root, campaign_summary)
     return 1 if status == "failed" else 0
 

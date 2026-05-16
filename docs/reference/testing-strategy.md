@@ -231,6 +231,16 @@ materialization, and DeepLoop runtime-pin files. It does **not** hide simulator
 auth or model access behind repo automation; operator-supplied simulator wrappers
 remain explicit.
 
+By default the campaign root lands under
+`reports/local/disposable-user-simulation/<campaign-id>/` so long-form local
+evidence stays out of repo status unless you explicitly override `--output-root`.
+
+If you want those campaign roots tracked and reaped through the shared workspace
+sandbox registry instead, pass `--managed-sandbox` to the matrix runner. It can
+reuse `../system-scripts/sandbox_manager.py` with the same TTL / cleanup-policy
+controls used in XRTM, and records the returned sandbox manifest under the
+campaign's `metadata/managed-sandbox.json`.
+
 When you want the disposable container itself to exercise DeepLoop's pinned
 Copilot `gpt-5-mini` control-plane path, pass `--mount-host-copilot`. That
 flag is an explicit operator opt-in: it mounts the host `copilot` binary and

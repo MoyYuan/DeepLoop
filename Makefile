@@ -7,7 +7,7 @@ TEST_RUNTIME_ROOT := $(TEST_WORKSPACE_ROOT)/.deeploop-test-runtime/make-test
 TEST_RUNS_ROOT := $(TEST_RUNTIME_ROOT)/runs/deeploop
 
 .PHONY: \
-	setup repo-check \
+	setup clean repo-check \
 	test test-unit test-integration test-mission-runtime test-smoke test-real test-proof-matrix test-acceptance \
 	public-bootstrap-preflight public-bootstrap-check smoke-manifest lint docs-build docs-serve \
 	mission-smoke sanity-gate-smoke record-finding autoexec-smoke \
@@ -25,6 +25,10 @@ setup:
 	@echo "deeploop scaffold ready"
 	@echo "Create env with: conda env create -n deeploop -f environment.yml"
 	@echo "Create local inference env with: conda env create -n llm -f environment.llm.yml"
+
+clean:
+	@find . -type d -name '__pycache__' -prune -exec rm -rf {} +
+	@rm -rf .pytest_cache build dist docs/_build docs/generated site src/*.egg-info tests/_runtime_artifacts reports/local/disposable-user-simulation reports/disposable-user-simulation
 
 repo-check:
 	@$(PYTHON) scripts/repo_check.py
