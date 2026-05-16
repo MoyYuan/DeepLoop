@@ -1003,12 +1003,12 @@ def _timeout_seconds_for_action(
     if phase and isinstance(raw_phase_timeouts, Mapping):
         phase_timeout = raw_phase_timeouts.get(phase)
         if phase_timeout is not None:
-            return max(base_timeout, int(phase_timeout))
+            return max(int(phase_timeout), 1)
     if role == "execution-operator" and isinstance(raw_phase_timeouts, Mapping):
         execution_timeout = raw_phase_timeouts.get("execution")
         if execution_timeout is not None:
-            return max(base_timeout, int(execution_timeout))
-    return base_timeout
+            return max(int(execution_timeout), 1)
+    return max(base_timeout, 1)
 
 
 def _append_unique(values: list[str], item: str | None) -> None:

@@ -4,6 +4,13 @@ max_iterations: 12
 max_consecutive_failures: 2
 timeout_seconds: 1800
 phase_timeout_seconds:
+  idea-intake: 900
+  literature-review: 900
+  question-design: 900
+  benchmark-selection: 900
+  experiment-design: 900
+  critique: 900
+  final-report: 900
   execution: 21600
   replication: 10800
 recent_ledger_limit: 8

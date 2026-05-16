@@ -15,6 +15,9 @@ project:
   human_inputs:
     ideas:
       - Retrieval-augmented QA robustness under distractor-heavy contexts
+    dataset_access: >
+      Use a public retrieval-QA benchmark with distractor-heavy passages, or a
+      documented bounded slice of one, with an explicit holdout split.
     budgets:
       max_gpu_hours: 8
       max_parallel_jobs: 1

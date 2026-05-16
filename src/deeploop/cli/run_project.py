@@ -213,6 +213,26 @@ def _noncompleted_summary_lines(result: dict[str, Any]) -> list[str]:
         if recheck_command:
             lines.append(f"- recheck_command: `{recheck_command}`")
         return lines
+    readiness = result.get("readiness") if isinstance(result.get("readiness"), dict) else None
+    if status == "mission-readiness-required" and isinstance(readiness, dict):
+        lines = [
+            "DeepLoop stopped before kickoff because the mission contract still needs operator input.",
+            f"- outcome: `{status}`",
+            f"- readiness_status: `{readiness.get('status')}`",
+            f"- launch_recommendation: `{readiness.get('launch_recommendation')}`",
+        ]
+        mission_state_path = result.get("mission_state_path")
+        if mission_state_path:
+            lines.append(f"- mission_state: `{mission_state_path}`")
+        mission_summary_path = result.get("mission_summary_path")
+        if mission_summary_path:
+            lines.append(f"- mission_summary: `{mission_summary_path}`")
+        for question in result.get("follow_up_questions", [])[:4]:
+            lines.append(f"- needs_answer: {question}")
+        lines.append(
+            "- next_step: answer the blocking project-contract question(s) in the substrate or mission config, then rerun `deeploop run`."
+        )
+        return lines
     snapshot = result.get("snapshot") if isinstance(result.get("snapshot"), dict) else None
     operator_console = snapshot.get("operator_console") if isinstance(snapshot, dict) else None
     headline = (

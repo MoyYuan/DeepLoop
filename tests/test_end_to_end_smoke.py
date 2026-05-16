@@ -7,6 +7,8 @@ import subprocess
 import sys
 import unittest
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
@@ -110,6 +112,14 @@ class EndToEndSmokeTests(unittest.TestCase):
 
     def test_nontranslation_plain_folder_bootstrap_records_operator_blockers_and_packages(self) -> None:
         project_root = self._copy_plain_folder_fixture("literature-gap-map")
+        project_facts_path = project_root / "project-facts.yaml"
+        project_facts = yaml.safe_load(project_facts_path.read_text(encoding="utf-8")) or {}
+        project_section = project_facts.get("project") if isinstance(project_facts.get("project"), dict) else {}
+        human_inputs = project_section.get("human_inputs") if isinstance(project_section.get("human_inputs"), dict) else {}
+        human_inputs.pop("dataset_access", None)
+        project_section["human_inputs"] = human_inputs
+        project_facts["project"] = project_section
+        project_facts_path.write_text(yaml.safe_dump(project_facts, sort_keys=False), encoding="utf-8")
         before_paths = snapshot_project_tree(project_root)
         mission_id = "end-to-end-smoke-literature"
         mission_root = MISSIONS_DIR / mission_id
