@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import shutil
@@ -171,6 +172,165 @@ class DisposableUserSimulationTests(unittest.TestCase):
             "Qwen/Qwen3.5-9B",
         )
         self.assertEqual(summary["container_mounts"], [])
+
+    def test_main_defaults_output_root_under_reports_local(self) -> None:
+        matrix = load_disposable_user_simulation_matrix(DEFAULT_MATRIX_PATH)
+        scenario = matrix.scenarios[0]
+        captured_roots: list[Path] = []
+
+        def fake_run_scenario(**kwargs):
+            captured_roots.append(kwargs["scenario_root"])
+            return {"status": "prepared"}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            with patch.object(run_disposable_user_simulation_matrix, "REPO_ROOT", repo_root):
+                with patch.object(run_disposable_user_simulation_matrix, "DEFAULT_OUTPUT_ROOT", repo_root / "reports" / "local" / "disposable-user-simulation"):
+                    with patch.object(run_disposable_user_simulation_matrix, "_run_scenario", side_effect=fake_run_scenario):
+                        exit_code = run_disposable_user_simulation_matrix.main(
+                            [
+                                "--prepare-only",
+                                "--campaign-id",
+                                "campaign-local-output",
+                                "--scenario",
+                                scenario.scenario_id,
+                            ]
+                        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            captured_roots,
+            [repo_root / "reports" / "local" / "disposable-user-simulation" / "campaign-local-output" / scenario.scenario_id],
+        )
+
+    def test_prepare_campaign_output_root_uses_managed_sandbox(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_root = Path(tmpdir)
+            manager_path = temp_root / "sandbox_manager.py"
+            manager_path.write_text("# stub\n", encoding="utf-8")
+            requested_root = temp_root / "requested-output"
+            registry_root = temp_root / "sandbox-registry"
+            created_root = temp_root / "managed-output"
+            captured: dict[str, object] = {}
+
+            def fake_run(manager_path_arg, command, *, registry_root=None):
+                captured["manager_path"] = manager_path_arg
+                captured["command"] = command
+                captured["registry_root"] = registry_root
+                created_root.mkdir(parents=True, exist_ok=True)
+                return {
+                    "id": "sandbox-123",
+                    "path": str(created_root),
+                    "state": "active",
+                    "purpose": "disposable user simulation",
+                    "type": "validation",
+                    "expires_at": "2026-05-16T00:00:00Z",
+                    "cleanup_policy": {"mode": "manual"},
+                    "integrity": {
+                        "manifest_path": str(registry_root / "manifests" / "sandbox-123.json"),
+                        "registry_root": str(registry_root),
+                    },
+                }
+
+            args = argparse.Namespace(
+                output_root=str(requested_root),
+                managed_sandbox=True,
+                sandbox_manager=str(manager_path),
+                sandbox_registry_root=str(registry_root),
+                sandbox_cleanup_policy="manual",
+                sandbox_ttl_hours=12.0,
+            )
+
+            with patch.object(run_disposable_user_simulation_matrix, "_run_sandbox_manager_json", side_effect=fake_run):
+                output_root, managed = run_disposable_user_simulation_matrix._prepare_campaign_output_root(
+                    args=args,
+                    campaign_id="campaign-managed",
+                )
+
+            self.assertEqual(output_root, created_root)
+            self.assertTrue(output_root.is_dir())
+            self.assertIsNotNone(managed)
+            assert managed is not None
+            self.assertEqual(managed.manager_path, manager_path)
+            self.assertEqual(managed.registry_root, registry_root)
+
+        self.assertEqual(
+            captured["command"],
+            [
+                "create",
+                "--repo",
+                "deeploop",
+                "--purpose",
+                "disposable user simulation",
+                "--type",
+                "validation",
+                "--cleanup-policy",
+                "manual",
+                "--ttl-hours",
+                "12.0",
+                "--path",
+                str(requested_root),
+            ],
+        )
+
+    def test_main_records_managed_sandbox_metadata(self) -> None:
+        matrix = load_disposable_user_simulation_matrix(DEFAULT_MATRIX_PATH)
+        scenario = matrix.scenarios[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = Path(tmpdir) / "managed-output"
+            managed = run_disposable_user_simulation_matrix.ManagedSandboxContext(
+                manager_path=Path(tmpdir) / "sandbox_manager.py",
+                registry_root=Path(tmpdir) / "sandbox-registry",
+                manifest={
+                    "id": "sandbox-123",
+                    "path": str(output_root),
+                    "state": "active",
+                    "purpose": "disposable user simulation",
+                    "type": "validation",
+                    "expires_at": "2026-05-16T00:00:00Z",
+                    "cleanup_policy": {"mode": "delete"},
+                    "integrity": {
+                        "manifest_path": str(Path(tmpdir) / "sandbox-registry" / "manifests" / "sandbox-123.json"),
+                        "registry_root": str(Path(tmpdir) / "sandbox-registry"),
+                    },
+                },
+            )
+
+            def fake_run_scenario(**kwargs):
+                return {
+                    "scenario_id": kwargs["scenario"].scenario_id,
+                    "status": "prepared",
+                    "container_name": "demo-container",
+                    "elapsed_seconds": 0.0,
+                    "contract_path": str(output_root / kwargs["scenario"].scenario_id / "scenario_contract.json"),
+                    "container_mounts": [],
+                }
+
+            with patch.object(
+                run_disposable_user_simulation_matrix,
+                "_prepare_campaign_output_root",
+                return_value=(output_root, managed),
+            ):
+                with patch.object(run_disposable_user_simulation_matrix, "_run_scenario", side_effect=fake_run_scenario):
+                    exit_code = run_disposable_user_simulation_matrix.main(
+                        [
+                            "--prepare-only",
+                            "--managed-sandbox",
+                            "--campaign-id",
+                            "campaign-managed",
+                            "--scenario",
+                            scenario.scenario_id,
+                        ]
+                    )
+
+            summary_payload = json.loads((output_root / "campaign_summary.json").read_text(encoding="utf-8"))
+            metadata_payload = json.loads((output_root / "metadata" / "managed-sandbox.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(summary_payload["managed_sandbox"]["id"], "sandbox-123")
+        self.assertEqual(summary_payload["managed_sandbox"]["path"], str(output_root))
+        self.assertEqual(metadata_payload["id"], "sandbox-123")
 
     def test_run_simulator_command_enforces_minimum_duration(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
