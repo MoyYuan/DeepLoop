@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` now declares `0.1.7`, so the
-publishable tag and GitHub Release tag must be `v0.1.7`.
+For the next public release, `pyproject.toml` now declares `0.1.8`, so the
+publishable tag and GitHub Release tag must be `v0.1.8`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -42,10 +42,10 @@ Current preflight posture:
 - the merged release candidate should be rechecked with `make
   public-bootstrap-check`, `make docker-release-validate`, `make docs-build`,
   and `make test`
-- the next release should emphasize the new managed sandbox lifecycle for
-  disposable user-simulation artifacts, the safer default local report path, and
-  the cleanup hygiene improvements rather than a broader portability or autonomy
-  claim
+- the next release should emphasize the repaired acceptance/runtime path:
+  readiness-gated plain-folder kickoff, corrected recursive-agent phase timeout
+  semantics, and the stronger acceptance per-case proof budget rather than a
+  broader portability or autonomy claim
 
 ## Release gates at a glance
 
@@ -235,32 +235,30 @@ Do not widen the public claim beyond what the harness and lane contract prove:
         evidence
       - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.1.7`)
+## GitHub release notes draft (`v0.1.8`)
 
 ```text
-## DeepLoop v0.1.7
+## DeepLoop v0.1.8
 
-This patch release keeps the published Linux + Python 3.11 public-alpha path
-honest by making disposable user-simulation campaign roots traceable and
-cleanable through the shared sandbox registry, without widening the public
-claim.
+This patch release keeps DeepLoop's strongest public-alpha proof honest by
+repairing the acceptance/runtime path that previously timed out on three
+release-facing proof cases.
 
-- **Install / bootstrap:** disposable user-simulation campaign roots now default
-  under `reports/local/...`, keeping long-form local evidence out of normal repo
-  status unless a maintainer chooses an explicit output root.
-- **Runtime / operator:** the disposable user-simulation runner can now opt into
-  the shared `system-scripts/sandbox_manager.py` lifecycle with TTL and cleanup
-  policy controls, matching the sandbox-management pattern already used in XRTM.
-- **Package / release review:** managed runs record the sandbox manifest in
-  `metadata/managed-sandbox.json` and summarize the tracked root in the durable
-  campaign summary, making later inspection and cleanup explicit instead of
-  relying on operator memory.
-- **Proof / CI:** validation now covers unit tests for managed-sandbox command
-  construction and metadata emission, docs build, and a real `create -> status
-  -> cleanup` smoke path against the shared sandbox manager.
+- **Install / bootstrap:** plain-folder missions that are still blocked now stop
+  before runtime kickoff with an explicit `mission-readiness-required` outcome
+  and concrete next-step guidance instead of silently entering runtime.
+- **Runtime / operator:** recursive-agent phase timeout overrides now actually
+  bound non-execution phases, which keeps long planner/literature loops from
+  consuming the full outer proof budget unintentionally.
+- **Package / release review:** the repaired acceptance fixtures now carry the
+  required dataset/access contract, so DeepLoop's release-facing plain-folder
+  examples bootstrap as real launchable missions again.
+- **Proof / CI:** the stronger `translation-paper-scale` acceptance campaign now
+  runs with a justified 1800-second per-case budget, all four cases pass again,
+  and the Docker release smoke matches the repaired literature-fixture contract.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
-  public alpha for the documented Linux path; this release improves cleanup and
-  proof discipline rather than widening autonomy scope.
+  public alpha for the documented Linux path; this release restores honesty in
+  the claimed acceptance proof rather than widening autonomy scope.
 ```
 
 ## Non-goals
@@ -303,8 +301,8 @@ The current smoke contract is intentionally narrow and deterministic:
 6. confirm the generated mission state stays outside the project folder and the
    example itself remains unchanged
 7. initialize the non-translation `literature-gap-map` proof fixture and verify
-   its readiness contract stops for operator input instead of pretending it is
-   runnable end to end
+   its repaired readiness contract surfaces launch guardrails and clarifications
+   instead of regressing to a silently blocked or falsely completed path
 8. package that initialized literature mission and confirm the lightweight
    package surface still materializes with explicit missing-artifact reporting
 9. initialize the messy-start `forecast-rough-notes` fixture and verify the
