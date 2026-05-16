@@ -11,6 +11,31 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.7
+
+Patch release focused on making DeepLoop's disposable user-simulation artifact
+roots traceable and cleanable without changing the bounded public-alpha runtime
+promise.
+
+### Changed
+
+- the disposable user-simulation matrix can now opt into the shared
+  `system-scripts/sandbox_manager.py` lifecycle so campaign roots carry TTL and
+  cleanup-policy metadata instead of relying on ad hoc local folders
+- managed user-simulation runs now record their sandbox manifest under
+  `metadata/managed-sandbox.json` and summarize that managed root in the durable
+  campaign summary
+
+### Fixed
+
+- local disposable user-simulation evidence now defaults under
+  `reports/local/disposable-user-simulation/...`, which keeps long-form sandbox
+  output out of normal repo status by default
+- `make clean` now removes generated disposable user-simulation artifacts from
+  both the current local-output path and the older legacy report path
+- the managed-sandbox path now fails fast if the shared manager does not
+  materialize the requested host campaign root
+
 ## 0.1.6
 
 Patch release focused on making DeepLoop's long-form fresh-user validation more
