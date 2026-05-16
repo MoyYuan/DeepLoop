@@ -11,6 +11,35 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.8
+
+Patch release focused on repairing the strongest acceptance/runtime validation
+surface so DeepLoop's published proof stays honest.
+
+### Changed
+
+- plain-folder missions that bootstrap with blocking readiness now stop before
+  runtime kickoff with an explicit `mission-readiness-required` outcome instead
+  of silently entering runtime anyway
+- the strongest `translation-paper-scale` acceptance wrapper now uses a
+  dedicated `1800` second per-case timeout budget, keeping that expensive
+  release-facing surface distinct from the cheaper bounded proof-matrix default
+- the default recursive-agent runtime policy now sets bounded non-execution
+  phase timeouts so long planner or literature iterations cannot silently
+  inherit the broader execution budget
+
+### Fixed
+
+- the repaired plain-folder acceptance fixtures now include the required
+  dataset/access contract, which restores launchable real-mission bootstrap for
+  `literature-gap-map`, `replication-heavy-redteam`, and
+  `translation-budget-ladder`
+- recursive-agent phase timeout overrides now actually shorten the base timeout
+  when a phase-specific budget is configured
+- the Docker release smoke now matches the repaired literature fixture contract
+  by expecting clarifications and launch guardrails instead of the older blocked
+  bootstrap path
+
 ## 0.1.7
 
 Patch release focused on making DeepLoop's disposable user-simulation artifact
