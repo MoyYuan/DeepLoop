@@ -16,6 +16,9 @@ project:
   human_inputs:
     ideas:
       - English <-> Chinese machine translation
+    dataset_access: >
+      Use a small public English <-> Chinese benchmark slice such as FLORES-200
+      or WMT news translation with a documented holdout split.
     budgets:
       max_gpu_hours: 12
       max_parallel_jobs: 2

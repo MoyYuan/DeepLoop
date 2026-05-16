@@ -29,6 +29,11 @@ or directly:
 python scripts/testing/run_acceptance_campaign.py --campaign translation-paper-scale
 ```
 
+The acceptance wrapper forwards a larger per-case timeout budget than the
+bounded plain-folder proof matrix default because this campaign is intended to
+exercise the strongest real-project surface, not just the cheaper bounded-real
+tier.
+
 ## What it does today
 
 The current implementation is an **acceptance bootstrap** built on the real

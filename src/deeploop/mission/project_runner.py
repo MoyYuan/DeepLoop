@@ -65,6 +65,44 @@ def _resume_summary_from_state(mission_state_path: Path) -> dict[str, Any]:
     }
 
 
+def _mission_readiness_result(
+    init_result: dict[str, Any],
+    *,
+    resolved_project_root: Path,
+) -> dict[str, Any] | None:
+    mission_state_path = Path(init_result["state_path"]).expanduser().resolve()
+    if not mission_state_path.exists():
+        return None
+    try:
+        mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    mission_contract = (
+        mission_state.get("mission_contract")
+        if isinstance(mission_state.get("mission_contract"), dict)
+        else {}
+    )
+    readiness = mission_contract.get("readiness") if isinstance(mission_contract.get("readiness"), dict) else {}
+    if str(readiness.get("launch_recommendation") or "").strip() != "stop-for-operator-input":
+        return None
+    follow_up_questions = [
+        str(item).strip()
+        for item in mission_contract.get("follow_up_questions", [])
+        if str(item).strip()
+    ][:4]
+    summary_path = init_result.get("summary_path")
+    mission_summary_path = Path(summary_path).expanduser().resolve() if summary_path else mission_state_path.parent / "mission_summary.md"
+    return {
+        "status": "mission-readiness-required",
+        "project_root": resolved_project_root,
+        "mission_root": Path(init_result["mission_root"]),
+        "mission_state_path": mission_state_path,
+        "mission_summary_path": mission_summary_path,
+        "readiness": dict(readiness),
+        "follow_up_questions": follow_up_questions,
+    }
+
+
 def _continue_initialized_mission_until_complete(
     init_result: dict[str, Any],
     *,
@@ -185,6 +223,12 @@ def run_project_until_complete(
             "project_root": resolved_project_root,
             "bootstrap_repair": init_result.get("bootstrap_repair"),
         }
+    readiness_result = _mission_readiness_result(
+        init_result,
+        resolved_project_root=resolved_project_root,
+    )
+    if readiness_result is not None:
+        return readiness_result
     return _continue_initialized_mission_until_complete(
         init_result,
         resolved_project_root=resolved_project_root,
@@ -214,6 +258,12 @@ def run_config_until_complete(
         mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
         target_repo = mission_state.get("target_repo")
     resolved_project_root = Path(str(target_repo)).expanduser().resolve()
+    readiness_result = _mission_readiness_result(
+        init_result,
+        resolved_project_root=resolved_project_root,
+    )
+    if readiness_result is not None:
+        return readiness_result
     return _continue_initialized_mission_until_complete(
         init_result,
         resolved_project_root=resolved_project_root,

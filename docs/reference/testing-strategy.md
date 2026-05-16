@@ -141,6 +141,9 @@ make test-acceptance
 This runs the DeepLoop-owned translation pilot acceptance bootstrap and writes an
 acceptance review artifact on top of the existing real proof outputs.
 
+Unlike the cheaper bounded proof-matrix entrypoint, the acceptance wrapper uses
+a larger per-case timeout budget so longer real mission phases can finish.
+
 Use it:
 
 - before major releases or milestone promotions

@@ -19,7 +19,12 @@ if str(SRC_ROOT) not in sys.path:
 
 from deeploop.core.paths import MISSIONS_DIR
 from deeploop.cli.run_project import _add_run_args, _noncompleted_summary_lines, _run_project
-from deeploop.mission.project_runner import _find_explicit_mission_configs, initialize_mission_from_project_root, run_project_until_complete
+from deeploop.mission.project_runner import (
+    _find_explicit_mission_configs,
+    initialize_mission_from_project_root,
+    run_config_until_complete,
+    run_project_until_complete,
+)
 
 
 class ProjectRunnerTests(unittest.TestCase):
@@ -103,6 +108,43 @@ class ProjectRunnerTests(unittest.TestCase):
         self.assertEqual(payload["status"], "bootstrap-repair-required")
         self.assertIn("could not bootstrap this project root yet", stderr.getvalue())
         self.assertIn("missing-bootstrap-contract", stderr.getvalue())
+
+    def test_run_project_with_plain_folder_surfaces_mission_readiness_guidance(self) -> None:
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        args = argparse.Namespace(
+            project_root="/repo/demo",
+            mission_id="demo-mission",
+            force=False,
+            until_complete=True,
+            chunk_iterations=4,
+            max_total_iterations=12,
+        )
+        result = {
+            "status": "mission-readiness-required",
+            "mission_state_path": Path("/repo/runtime/demo-mission/mission_state.json"),
+            "mission_summary_path": Path("/repo/runtime/demo-mission/mission_summary.md"),
+            "readiness": {
+                "status": "blocked",
+                "launch_recommendation": "stop-for-operator-input",
+            },
+            "follow_up_questions": [
+                "Where is the dataset located, or how should DeepLoop obtain access to it?",
+                "What leakage boundary should DeepLoop enforce for train, validation, and test data?",
+            ],
+        }
+
+        with patch("deeploop.cli.run_project.run_project_until_complete", return_value=result):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                exit_code = _run_project(args)
+
+        self.assertEqual(exit_code, 1)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["status"], "mission-readiness-required")
+        self.assertIn("mission contract still needs operator input", stderr.getvalue())
+        self.assertIn("stop-for-operator-input", stderr.getvalue())
+        self.assertIn("Where is the dataset located", stderr.getvalue())
+        self.assertIn("mission_summary.md", stderr.getvalue())
 
     def test_run_project_without_project_root_uses_interactive_discovery_flow(self) -> None:
         stdout = io.StringIO()
@@ -340,6 +382,103 @@ class ProjectRunnerTests(unittest.TestCase):
         self.assertEqual(result["status"], "operator-review-required")
         self.assertEqual(result["runtime_passes"], 1)
 
+    def test_run_project_until_complete_stops_for_blocked_mission_readiness(self) -> None:
+        project_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "blocked-readiness"
+        shutil.rmtree(project_root, ignore_errors=True)
+        project_root.mkdir(parents=True, exist_ok=True)
+        mission_root = project_root / "mission-root"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "mission_contract": {
+                        "readiness": {
+                            "status": "blocked",
+                            "launch_recommendation": "stop-for-operator-input",
+                        },
+                        "follow_up_questions": [
+                            "Where is the dataset located, or how should DeepLoop obtain access to it?",
+                        ],
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        summary_path = mission_root / "mission_summary.md"
+        summary_path.write_text("# Mission summary\n", encoding="utf-8")
+
+        with (
+            patch("deeploop.mission.project_runner.initialize_mission_from_project_root") as mock_init,
+            patch("deeploop.mission.project_runner.run_mission") as mock_run_mission,
+        ):
+            mock_init.return_value = {
+                "mission_root": mission_root,
+                "state_path": mission_state_path,
+                "summary_path": summary_path,
+            }
+
+            result = run_project_until_complete(project_root, chunk_iterations=3, max_total_iterations=12)
+
+        self.assertEqual(result["status"], "mission-readiness-required")
+        self.assertEqual(result["mission_state_path"], mission_state_path)
+        self.assertEqual(result["mission_summary_path"], summary_path)
+        self.assertEqual(
+            result["follow_up_questions"],
+            ["Where is the dataset located, or how should DeepLoop obtain access to it?"],
+        )
+        mock_run_mission.assert_not_called()
+
+    def test_run_config_until_complete_stops_for_blocked_mission_readiness(self) -> None:
+        test_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "blocked-config-readiness"
+        shutil.rmtree(test_root, ignore_errors=True)
+        test_root.mkdir(parents=True, exist_ok=True)
+        config_path = test_root / "mission.yaml"
+        config_path.write_text("mission:\n  target_repo: /repo/demo\n", encoding="utf-8")
+        mission_root = test_root / "mission-root"
+        mission_root.mkdir(parents=True, exist_ok=True)
+        mission_state_path = mission_root / "mission_state.json"
+        mission_state_path.write_text(
+            json.dumps(
+                {
+                    "target_repo": "/repo/demo",
+                    "mission_contract": {
+                        "readiness": {
+                            "status": "blocked",
+                            "launch_recommendation": "stop-for-operator-input",
+                        },
+                        "follow_up_questions": [
+                            "Where is the dataset located, or how should DeepLoop obtain access to it?",
+                        ],
+                    },
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        summary_path = mission_root / "mission_summary.md"
+        summary_path.write_text("# Mission summary\n", encoding="utf-8")
+
+        with (
+            patch("deeploop.mission.project_runner.initialize_mission") as mock_init,
+            patch("deeploop.mission.project_runner.run_mission") as mock_run_mission,
+        ):
+            mock_init.return_value = {
+                "mission_root": mission_root,
+                "state_path": mission_state_path,
+                "summary_path": summary_path,
+            }
+
+            result = run_config_until_complete(config_path, chunk_iterations=3, max_total_iterations=12)
+
+        self.assertEqual(result["status"], "mission-readiness-required")
+        self.assertEqual(result["mission_state_path"], mission_state_path)
+        self.assertEqual(result["mission_summary_path"], summary_path)
+        mock_run_mission.assert_not_called()
+
     def test_run_project_until_complete_auto_resumes_soft_gate_recovery(self) -> None:
         project_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "soft-gate"
         shutil.rmtree(project_root, ignore_errors=True)
@@ -490,6 +629,28 @@ class ProjectRunnerTests(unittest.TestCase):
         self.assertIn("missing-bootstrap-contract", rendered)
         self.assertIn("/repo/demo/project-facts.yaml", rendered)
 
+    def test_noncompleted_summary_lines_include_mission_readiness_guidance(self) -> None:
+        lines = _noncompleted_summary_lines(
+            {
+                "status": "mission-readiness-required",
+                "mission_state_path": Path("/repo/demo/.deeploop/mission_state.json"),
+                "mission_summary_path": Path("/repo/demo/.deeploop/mission_summary.md"),
+                "readiness": {
+                    "status": "blocked",
+                    "launch_recommendation": "stop-for-operator-input",
+                },
+                "follow_up_questions": [
+                    "Where is the dataset located, or how should DeepLoop obtain access to it?",
+                ],
+            }
+        )
+
+        rendered = "\n".join(lines)
+        self.assertIn("mission contract still needs operator input", rendered)
+        self.assertIn("stop-for-operator-input", rendered)
+        self.assertIn("Where is the dataset located", rendered)
+        self.assertIn("mission_summary.md", rendered)
+
     def test_run_project_until_complete_stops_at_total_iteration_budget(self) -> None:
         project_root = REPO_ROOT / "tests" / "_runtime_artifacts" / "project_runner" / "budget"
         shutil.rmtree(project_root, ignore_errors=True)
@@ -545,6 +706,10 @@ class ProjectRunnerTests(unittest.TestCase):
                         "summary": "Start from a minimal researcher folder only.",
                         "objective": "Reach a completed mission without putting DeepLoop runtime state in the substrate repo.",
                         "constraints": ["Keep the substrate folder researcher-owned and no-code."],
+                        "human_inputs": {
+                            "dataset_access": "Use a documented benchmark slice with a holdout split.",
+                            "prediction_target": "quality_delta_vs_baseline",
+                        },
                     },
                     "artifacts": {"docs": ["docs/project-brief.md", "docs/benchmark-and-metrics.md"]},
                 },
@@ -663,6 +828,10 @@ class ProjectRunnerTests(unittest.TestCase):
                         "summary": "Generate runnable evidence outside the researcher folder.",
                         "objective": "Reach final report with manifest-backed evidence.",
                         "constraints": ["Leave the researcher folder unchanged."],
+                        "human_inputs": {
+                            "dataset_access": "Use a documented benchmark slice with a holdout split.",
+                            "prediction_target": "quality_delta_vs_baseline",
+                        },
                     },
                     "artifacts": {"docs": ["docs/project-brief.md", "docs/benchmark-and-metrics.md"]},
                 },

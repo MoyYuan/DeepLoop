@@ -1390,7 +1390,20 @@ class RecursiveAgentRuntimeTests(unittest.TestCase):
         self.assertEqual(normalized["status"], "continue")
         self.assertEqual(normalized["action_result"]["status"], "completed")
 
-    def test_timeout_seconds_expand_for_execution_phase(self) -> None:
+    def test_timeout_seconds_honor_phase_overrides(self) -> None:
+        question_design_timeout = _timeout_seconds_for_action(
+            config={},
+            policy={
+                "timeout_seconds": 1800,
+                "phase_timeout_seconds": {
+                    "question-design": 900,
+                    "execution": 21600,
+                },
+            },
+            action={"phase": "question-design"},
+        )
+        self.assertEqual(question_design_timeout, 900)
+
         timeout = _timeout_seconds_for_action(
             config={},
             policy={

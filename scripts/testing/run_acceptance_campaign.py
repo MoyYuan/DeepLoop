@@ -18,6 +18,8 @@ from deeploop.testing.acceptance_campaigns import (
     materialize_acceptance_review,
 )
 
+DEFAULT_ACCEPTANCE_CASE_TIMEOUT_SECONDS = 1800.0
+
 
 def _parse_json_payload(raw_output: str) -> dict[str, object]:
     lines = raw_output.splitlines()
@@ -35,6 +37,8 @@ def _run_plain_folder_campaign(args: argparse.Namespace) -> dict[str, object]:
         args.campaign,
         "--python-bin",
         args.python_bin,
+        "--case-timeout-seconds",
+        str(args.case_timeout_seconds),
     ]
     if args.fixtures_root:
         command.extend(["--fixtures-root", str(args.fixtures_root)])
@@ -72,6 +76,12 @@ def main() -> int:
     parser.add_argument("--fixtures-root", type=Path, help="Override the proof fixture root.")
     parser.add_argument("--campaign-root", type=Path, help="Override where campaign outputs are written.")
     parser.add_argument("--python-bin", default=sys.executable, help="Python executable to use for project runs.")
+    parser.add_argument(
+        "--case-timeout-seconds",
+        type=float,
+        default=DEFAULT_ACCEPTANCE_CASE_TIMEOUT_SECONDS,
+        help="Fail an individual acceptance proof case if run_project.py exceeds this timeout.",
+    )
     parser.add_argument("--stop-on-failure", action="store_true", help="Stop after the first failing proof case.")
     args = parser.parse_args()
 

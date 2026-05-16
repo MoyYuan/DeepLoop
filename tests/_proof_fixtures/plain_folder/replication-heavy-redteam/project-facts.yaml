@@ -16,6 +16,9 @@ project:
   human_inputs:
     ideas:
       - Prompt-defense robustness on a bounded adversarial prompt set
+    dataset_access: >
+      Use a small public adversarial-prompt evaluation set or materialize a
+      bounded prompt-defense benchmark slice with a documented holdout split.
     budgets:
       max_gpu_hours: 10
       max_parallel_jobs: 2
