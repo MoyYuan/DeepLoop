@@ -337,21 +337,24 @@ def _run_literature_operator_package_smoke(repo_root: Path, smoke_root: Path, *,
         raise SystemExit(
             f"docker-smoke: expected literature mission current phase `idea-intake`, got {mission_state.get('current_phase')!r}"
         )
-    if readiness.get("status") != "blocked":
+    if readiness.get("status") != "ready-with-clarifications":
         raise SystemExit(
-            f"docker-smoke: expected literature mission readiness `blocked`, got {readiness.get('status')!r}"
+            "docker-smoke: expected literature mission readiness `ready-with-clarifications`"
         )
-    if readiness.get("launch_recommendation") != "stop-for-operator-input":
+    if readiness.get("launch_recommendation") != "launch-with-disclosed-guardrails":
         raise SystemExit(
-            "docker-smoke: expected literature mission launch recommendation `stop-for-operator-input`"
+            "docker-smoke: expected literature mission launch recommendation `launch-with-disclosed-guardrails`"
         )
 
     mission_summary_path = state_path.parent / "mission_summary.md"
     if not mission_summary_path.exists():
         raise SystemExit(f"docker-smoke: missing mission summary: {mission_summary_path}")
     mission_summary_text = mission_summary_path.read_text(encoding="utf-8")
-    if "### Blocking prerequisites" not in mission_summary_text or "Where is the dataset located" not in mission_summary_text:
-        raise SystemExit("docker-smoke: literature mission summary did not surface the expected operator blockers")
+    if (
+        "### Clarifications" not in mission_summary_text
+        or "What leakage boundary should DeepLoop enforce" not in mission_summary_text
+    ):
+        raise SystemExit("docker-smoke: literature mission summary did not surface the expected operator clarifications")
 
     package_result, package_root, _, summary_path = _package_mission(state_path)
     package_payload = package_result.get("package") if isinstance(package_result.get("package"), dict) else {}
