@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` now declares `0.1.6`, so the
-publishable tag and GitHub Release tag must be `v0.1.6`.
+For the next public release, `pyproject.toml` now declares `0.1.7`, so the
+publishable tag and GitHub Release tag must be `v0.1.7`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -42,10 +42,10 @@ Current preflight posture:
 - the merged release candidate should be rechecked with `make
   public-bootstrap-check`, `make docker-release-validate`, `make docs-build`,
   and `make test`
-- the next release should emphasize the disposable user-simulation harness,
-  clearer no-mission-state recovery guidance, synced mission-summary output,
-  and the hardened Gate 2 OpenAI-compatible analyze path rather than a broader
-  portability or autonomy claim
+- the next release should emphasize the new managed sandbox lifecycle for
+  disposable user-simulation artifacts, the safer default local report path, and
+  the cleanup hygiene improvements rather than a broader portability or autonomy
+  claim
 
 ## Release gates at a glance
 
@@ -235,39 +235,32 @@ Do not widen the public claim beyond what the harness and lane contract prove:
         evidence
       - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.1.6`)
+## GitHub release notes draft (`v0.1.7`)
 
 ```text
-## DeepLoop v0.1.6
+## DeepLoop v0.1.7
 
 This patch release keeps the published Linux + Python 3.11 public-alpha path
-honest by adding durable long-form fresh-user validation and fixing runtime UX
-issues surfaced by those disposable user simulations, without widening the
-public claim.
+honest by making disposable user-simulation campaign roots traceable and
+cleanable through the shared sandbox registry, without widening the public
+claim.
 
-- **Install / bootstrap:** release validation now includes a dedicated
-  disposable user-simulation harness that starts each scenario from a fresh
-  Docker environment and records durable artifacts for review.
-- **Runtime / operator:** `deeploop run` now gives clearer `--mission-state`
-  recovery guidance when a launch did not produce a resumable mission, and
-  mission summaries now stay in sync with the live mission state through
-  completion. The OpenAI-compatible analyze path also now asks providers to
-  return raw JSON while DeepLoop writes the result file, avoiding false
-  file-writing dead ends on local 9B Gate 2 runs. Local loopback Qwen JSON
-  flows now also disable model thinking explicitly so the Gate 2 lane spends
-  its completion budget on the required result payload instead of reasoning
-  text.
-- **Package / release review:** the user-simulation harness documents the
-  explicit host-Copilot mount boundary instead of relying on implicit local
-  operator knowledge.
-- **Proof / CI:** the release proof now includes the sequential one-hour
-  user-simulation matrix alongside the normal Gate 1 bootstrap, docs, and
-  Docker validation surfaces, and the release unittest targets now isolate
-  their DeepLoop runs root so shared workspace research-memory artifacts do not
-  destabilize the candidate suite.
+- **Install / bootstrap:** disposable user-simulation campaign roots now default
+  under `reports/local/...`, keeping long-form local evidence out of normal repo
+  status unless a maintainer chooses an explicit output root.
+- **Runtime / operator:** the disposable user-simulation runner can now opt into
+  the shared `system-scripts/sandbox_manager.py` lifecycle with TTL and cleanup
+  policy controls, matching the sandbox-management pattern already used in XRTM.
+- **Package / release review:** managed runs record the sandbox manifest in
+  `metadata/managed-sandbox.json` and summarize the tracked root in the durable
+  campaign summary, making later inspection and cleanup explicit instead of
+  relying on operator memory.
+- **Proof / CI:** validation now covers unit tests for managed-sandbox command
+  construction and metadata emission, docs build, and a real `create -> status
+  -> cleanup` smoke path against the shared sandbox manager.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
-  public alpha for the documented Linux path; this release improves UX and proof
-  discipline rather than widening autonomy scope.
+  public alpha for the documented Linux path; this release improves cleanup and
+  proof discipline rather than widening autonomy scope.
 ```
 
 ## Non-goals
