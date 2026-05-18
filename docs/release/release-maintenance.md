@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` now declares `0.1.8`, so the
-publishable tag and GitHub Release tag must be `v0.1.8`.
+For the next public release, `pyproject.toml` now declares `0.1.9`, so the
+publishable tag and GitHub Release tag must be `v0.1.9`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -42,10 +42,9 @@ Current preflight posture:
 - the merged release candidate should be rechecked with `make
   public-bootstrap-check`, `make docker-release-validate`, `make docs-build`,
   and `make test`
-- the next release should emphasize the repaired acceptance/runtime path:
-  readiness-gated plain-folder kickoff, corrected recursive-agent phase timeout
-  semantics, and the stronger acceptance per-case proof budget rather than a
-  broader portability or autonomy claim
+- the next release should emphasize workspace-hygiene tightening for release
+  smoke and maintainer cleanup rather than a broader portability or autonomy
+  claim
 
 ## Release gates at a glance
 
@@ -235,30 +234,29 @@ Do not widen the public claim beyond what the harness and lane contract prove:
         evidence
       - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.1.8`)
+## GitHub release notes draft (`v0.1.9`)
 
 ```text
-## DeepLoop v0.1.8
+## DeepLoop v0.1.9
 
-This patch release keeps DeepLoop's strongest public-alpha proof honest by
-repairing the acceptance/runtime path that previously timed out on three
-release-facing proof cases.
+This patch release keeps DeepLoop's workspace hygiene and release-smoke
+behavior aligned with the documented workspace contract without widening the
+public-alpha runtime claim.
 
-- **Install / bootstrap:** plain-folder missions that are still blocked now stop
-  before runtime kickoff with an explicit `mission-readiness-required` outcome
-  and concrete next-step guidance instead of silently entering runtime.
-- **Runtime / operator:** recursive-agent phase timeout overrides now actually
-  bound non-execution phases, which keeps long planner/literature loops from
-  consuming the full outer proof budget unintentionally.
-- **Package / release review:** the repaired acceptance fixtures now carry the
-  required dataset/access contract, so DeepLoop's release-facing plain-folder
-  examples bootstrap as real launchable missions again.
-- **Proof / CI:** the stronger `translation-paper-scale` acceptance campaign now
-  runs with a justified 1800-second per-case budget, all four cases pass again,
-  and the Docker release smoke matches the repaired literature-fixture contract.
+- **Install / bootstrap:** the published Docker clean-room smoke keeps its
+  temporary project copies under DeepLoop's scratch area instead of reusing the
+  older top-level `docker-validation` workspace root.
+- **Runtime / operator:** no wider autonomy claim is added; this patch is about
+  workspace hygiene and cleanup behavior, not a new runtime capability.
+- **Package / release review:** maintainers now have a documented
+  `make clean-workspace-temp` helper for known DeepLoop-created temporary
+  workspace leftovers.
+- **Proof / CI:** regression coverage now locks the release-smoke scratch root
+  under `scratch/deeploop/release-validation/docker-smoke`, and the normal
+  release Gate 1 checks still keep Docker/bootstrap/docs integrity honest.
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
-  public alpha for the documented Linux path; this release restores honesty in
-  the claimed acceptance proof rather than widening autonomy scope.
+  public alpha for the documented Linux path; this release tightens local
+  hygiene rather than widening autonomy scope.
 ```
 
 ## Non-goals

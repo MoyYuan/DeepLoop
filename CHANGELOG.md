@@ -11,6 +11,27 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.9
+
+Patch release focused on tightening DeepLoop's workspace hygiene for release
+smoke and local maintainer cleanup.
+
+### Changed
+
+- Docker release smoke now stages its temporary project copies under
+  `scratch/deeploop/release-validation/docker-smoke` instead of using the older
+  top-level `docker-validation` workspace root
+- the testing docs now expose a dedicated `make clean-workspace-temp` helper so
+  maintainers can remove known DeepLoop-created temporary workspace leftovers
+  without touching durable `runs/` evidence
+
+### Fixed
+
+- release-smoke scratch and cleanup behavior now align with DeepLoop's intended
+  workspace layout instead of leaving legacy top-level workspace folders behind
+- the release Docker-validation test surface now locks the release-smoke root to
+  the DeepLoop scratch area so the old top-level path does not regress silently
+
 ## 0.1.8
 
 Patch release focused on repairing the strongest acceptance/runtime validation
