@@ -43,8 +43,8 @@ Current preflight posture:
   public-bootstrap-check`, `make docker-release-validate`, `make docs-build`,
   and `make test`
 - the next release should emphasize workspace-hygiene tightening for release
-  smoke and maintainer cleanup rather than a broader portability or autonomy
-  claim
+  smoke, Copilot Gate 2 result recovery, and maintainer cleanup rather than a
+  broader portability or autonomy claim
 
 ## Release gates at a glance
 

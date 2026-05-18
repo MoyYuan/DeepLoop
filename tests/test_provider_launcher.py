@@ -588,6 +588,71 @@ class ProviderLauncherTests(unittest.TestCase):
         self.assertTrue(any("returncode 17" in warning for warning in synthesized["warnings"]))
         self.assertEqual(synthesized["produced_artifacts"], [])
 
+    @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
+    @patch("deeploop.runtime.provider_launcher._read_result_payload_state")
+    @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
+    def test_run_provider_prompt_accepts_ready_payload_that_arrives_just_after_zero_exit(
+        self, mock_popen, mock_read_result, _mock_sleep
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            prompt_file = root / "prompt.md"
+            result_json_path = root / "iteration-07" / "agent_result.json"
+            prompt_file.write_text("hello world", encoding="utf-8")
+
+            process = MagicMock()
+            process.poll.side_effect = [0]
+            process.communicate.return_value = ("provider stdout", "provider stderr")
+            mock_popen.return_value = process
+
+            mock_read_result.side_effect = [
+                (None, ["provider did not write agent_result.json"]),
+                (None, ["provider did not write agent_result.json"]),
+                ({"status": "continue", "summary": "done"}, []),
+            ]
+
+            completed = run_provider_prompt(prompt_file, result_json_path=result_json_path, cwd=root)
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stdout, "provider stdout")
+        self.assertEqual(completed.stderr, "provider stderr")
+        self.assertGreaterEqual(mock_read_result.call_count, 3)
+
+    @patch("deeploop.runtime.provider_launcher._wait_for_ready_result_payload")
+    @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
+    def test_run_provider_prompt_recovers_valid_result_payload_from_stdout_when_file_is_missing(
+        self, mock_popen, mock_wait_for_ready
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            prompt_file = root / "prompt.md"
+            result_json_path = root / "iteration-08" / "agent_result.json"
+            prompt_file.write_text("hello world", encoding="utf-8")
+
+            process = MagicMock()
+            process.poll.side_effect = [0]
+            process.communicate.return_value = (
+                "Returned recursive-agent JSON result:\n"
+                "{\n"
+                '  "status": "continue",\n'
+                '  "summary": "advance",\n'
+                '  "continuation": {"role": "researcher", "task": "review"},\n'
+                '  "action_result": {"status": "done"},\n'
+                '  "phase_control": {"current_phase": "idea-intake"}\n'
+                "}\n",
+                "provider stderr",
+            )
+            mock_popen.return_value = process
+            mock_wait_for_ready.return_value = (None, ["provider did not write agent_result.json"])
+
+            completed = run_provider_prompt(prompt_file, result_json_path=result_json_path, cwd=root)
+            recovered = json.loads(result_json_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stderr, "provider stderr")
+        self.assertEqual(recovered["status"], "continue")
+        self.assertEqual(recovered["summary"], "advance")
+
 
 if __name__ == "__main__":
     unittest.main()

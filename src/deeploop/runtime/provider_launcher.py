@@ -23,6 +23,8 @@ _PROVIDER_IDLE_TIMEOUT_SECONDS = {
     "copilot-cli": 900.0,
     "openai-compatible-api": 300.0,
 }
+_POST_EXIT_RESULT_GRACE_SECONDS = 5.0
+_POST_EXIT_RESULT_POLL_SECONDS = 0.2
 
 
 def _provider_subprocess_env() -> dict[str, str]:
@@ -888,6 +890,47 @@ def _read_result_payload_state(result_json_path: Path) -> tuple[dict[str, object
     return loaded, []
 
 
+def _extract_result_payload_from_stdout(stdout: str) -> dict[str, object] | None:
+    marker = "Returned recursive-agent JSON result:"
+    marker_index = stdout.rfind(marker)
+    if marker_index < 0:
+        return None
+    start_index = stdout.find("{", marker_index)
+    if start_index < 0:
+        return None
+    try:
+        loaded, _ = json.JSONDecoder().raw_decode(stdout[start_index:])
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    if _provider_result_validation_errors(loaded):
+        return None
+    return loaded
+
+
+def _persist_result_payload(result_json_path: Path, payload: dict[str, object]) -> None:
+    result_json_path.parent.mkdir(parents=True, exist_ok=True)
+    result_json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _wait_for_ready_result_payload(
+    result_json_path: Path,
+    *,
+    timeout_seconds: float,
+) -> tuple[dict[str, object] | None, list[str]]:
+    deadline = time.time() + max(timeout_seconds, 0.0)
+    latest_payload: dict[str, object] | None = None
+    latest_warnings: list[str] = []
+    while True:
+        latest_payload, latest_warnings = _read_result_payload_state(result_json_path)
+        if latest_payload is not None and not latest_warnings:
+            return latest_payload, []
+        if time.time() >= deadline:
+            return latest_payload, latest_warnings
+        time.sleep(_POST_EXIT_RESULT_POLL_SECONDS)
+
+
 def run_provider_prompt(
     prompt_file: Path,
     *,
@@ -982,11 +1025,24 @@ def run_provider_prompt(
             stdout, stderr = process.communicate()
             if result_json_path is not None:
                 degraded_payload, payload_warnings = _read_result_payload_state(result_json_path)
+                if returncode == 0 and (degraded_payload is None or payload_warnings):
+                    degraded_payload, payload_warnings = _wait_for_ready_result_payload(
+                        result_json_path,
+                        timeout_seconds=_POST_EXIT_RESULT_GRACE_SECONDS,
+                    )
+                if returncode == 0 and (degraded_payload is None or payload_warnings):
+                    stdout_payload = _extract_result_payload_from_stdout(stdout)
+                    if stdout_payload is not None:
+                        _persist_result_payload(result_json_path, stdout_payload)
+                        degraded_payload = stdout_payload
+                        payload_warnings = []
                 degraded_warnings = _dedupe_messages(
                     degraded_warnings
                     + payload_warnings
                     + [f"Provider subprocess exited with returncode {returncode} before emitting a ready result payload."]
                 )
+                if degraded_payload is not None and not payload_warnings:
+                    return subprocess.CompletedProcess(command, 0, stdout, stderr)
                 if degraded_payload is None or payload_warnings:
                     recovered = _maybe_materialize_execution_phase_result(
                         result_json_path=result_json_path,
