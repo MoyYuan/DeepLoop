@@ -200,6 +200,14 @@ DeepLoop's release story sits on top of the engineering tiers:
 Provider-free smoke and `deeploop provider-ready` are still useful baseline
 signals, but they do **not** satisfy Gate 2 on their own.
 
+If you want to remove known DeepLoop-created temporary workspace leftovers from
+older smoke, release, or test runs without touching durable `runs/` evidence,
+use:
+
+```text
+make clean-workspace-temp
+```
+
 ## Disposable user-simulation matrix
 
 When you need a longer fresh-user exam beyond release smoke, DeepLoop now ships

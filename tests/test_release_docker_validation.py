@@ -10,6 +10,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
+
+from deeploop.core.paths import SCRATCH_DIR
+
 MODULE_PATH = REPO_ROOT / "scripts" / "release" / "docker_validation.py"
 SPEC = importlib.util.spec_from_file_location("docker_validation", MODULE_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -83,6 +86,12 @@ class ReleaseDockerValidationTests(unittest.TestCase):
         self.assertEqual(
             docker_validation.default_image_tag("pypi", install_spec=f"deeploop=={version}"),
             f"deeploop-release-validation:pypi-{version}",
+        )
+
+    def test_release_validation_smoke_root_stays_under_scratch(self) -> None:
+        self.assertEqual(
+            in_container_smoke._release_validation_smoke_root(),
+            SCRATCH_DIR / "release-validation" / "docker-smoke",
         )
 
     def test_zero_start_smoke_materializes_selected_starter_and_stops_for_provider_setup(self) -> None:
