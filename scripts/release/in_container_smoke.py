@@ -152,6 +152,10 @@ def _cleanup_mission_artifacts(mission_id: str, *, remove_discovery_config: bool
         shutil.rmtree(_starter_project_root(mission_id), ignore_errors=True)
 
 
+def _release_validation_smoke_root() -> Path:
+    return SCRATCH_DIR / "release-validation" / "docker-smoke"
+
+
 def _package_mission(state_path: Path) -> tuple[dict, Path, Path, Path]:
     package_completed = _run(["deeploop-package-mission", "--mission-state", str(state_path)])
     package_result = json.loads(package_completed.stdout)
@@ -674,7 +678,7 @@ def main(argv: list[str] | None = None) -> int:
     for path in EXPECTED_EXTERNAL_DIRS:
         path.mkdir(parents=True, exist_ok=True)
 
-    smoke_root = WORKSPACE_ROOT / "docker-validation"
+    smoke_root = _release_validation_smoke_root()
     shutil.rmtree(smoke_root, ignore_errors=True)
     smoke_root.mkdir(parents=True, exist_ok=True)
 

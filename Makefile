@@ -7,7 +7,7 @@ TEST_RUNTIME_ROOT := $(TEST_WORKSPACE_ROOT)/.deeploop-test-runtime/make-test
 TEST_RUNS_ROOT := $(TEST_RUNTIME_ROOT)/runs/deeploop
 
 .PHONY: \
-	setup clean repo-check \
+	setup clean clean-workspace-temp repo-check \
 	test test-unit test-integration test-mission-runtime test-smoke test-real test-proof-matrix test-acceptance \
 	public-bootstrap-preflight public-bootstrap-check smoke-manifest lint docs-build docs-serve \
 	mission-smoke sanity-gate-smoke record-finding autoexec-smoke \
@@ -29,6 +29,22 @@ setup:
 clean:
 	@find . -type d -name '__pycache__' -prune -exec rm -rf {} +
 	@rm -rf .pytest_cache build dist docs/_build docs/generated site src/*.egg-info tests/_runtime_artifacts reports/local/disposable-user-simulation reports/disposable-user-simulation
+
+clean-workspace-temp:
+	@rm -rf \
+		"$(TEST_WORKSPACE_ROOT)/.deeploop-test-runtime" \
+		"$(TEST_WORKSPACE_ROOT)/deeploop-smoke" \
+		"$(TEST_WORKSPACE_ROOT)/docker-validation" \
+		"$(TEST_WORKSPACE_ROOT)/runs-validation" \
+		"$(TEST_WORKSPACE_ROOT)/repos/make-test" \
+		"$(TEST_WORKSPACE_ROOT)/projects/interactive-discovery-blank-followup-test" \
+		"$(TEST_WORKSPACE_ROOT)/projects/interactive-discovery-starter-id-test" \
+		"$(TEST_WORKSPACE_ROOT)/projects/interactive-discovery-unit-test" \
+		"$(TEST_WORKSPACE_ROOT)/projects/local-release-smoke-zero-start" \
+		"$(TEST_WORKSPACE_ROOT)/projects/manual-probe-zero" \
+		"$(TEST_WORKSPACE_ROOT)/projects/manual-probe-zero3" \
+		"$(TEST_WORKSPACE_ROOT)/projects/manual-probe-zero4" \
+		"$(TEST_WORKSPACE_ROOT)/scratch/deeploop-main-release-20260510"
 
 repo-check:
 	@$(PYTHON) scripts/repo_check.py
