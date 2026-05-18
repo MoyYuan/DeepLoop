@@ -31,6 +31,10 @@ smoke and local maintainer cleanup.
   workspace layout instead of leaving legacy top-level workspace folders behind
 - the release Docker-validation test surface now locks the release-smoke root to
   the DeepLoop scratch area so the old top-level path does not regress silently
+- Gate 2 provider-launch recovery now tolerates zero-exit provider races by
+  accepting a ready `agent_result.json` that appears just after exit and by
+  salvaging a valid recursive-agent result payload from Copilot stdout when the
+  file write is omitted
 
 ## 0.1.8
 
