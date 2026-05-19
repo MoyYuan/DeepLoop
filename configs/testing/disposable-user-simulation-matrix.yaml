@@ -50,3 +50,45 @@ scenarios:
     project_shape: plain-folder-fixture
     fixture_path: tests/_proof_fixtures/plain_folder/forecast-rough-notes
     user_goal: Repair and continue a messy forecasting project without drifting off the pinned runtime lanes.
+  - scenario_id: plain-folder-translation-budget-ladder
+    title: Plain-folder translation budget ladder
+    summary: Simulate a fresh user who starts from the plain-folder translation benchmark proof fixture instead of the packaged starter copy.
+    project_shape: plain-folder-fixture
+    fixture_path: tests/_proof_fixtures/plain_folder/translation-budget-ladder
+    user_goal: Advance a translation benchmark folder from researcher-owned inputs only while keeping the pinned simulation lane intact.
+  - scenario_id: plain-folder-literature-gap-map
+    title: Plain-folder literature gap map
+    summary: Simulate a fresh user working from a literature-heavy proof fixture that should narrow prior art into one bounded research question.
+    project_shape: plain-folder-fixture
+    fixture_path: tests/_proof_fixtures/plain_folder/literature-gap-map
+    user_goal: Turn a literature-heavy project root into a bounded, evidence-led DeepLoop run without switching away from the pinned runtime lanes.
+  - scenario_id: plain-folder-replication-heavy-redteam
+    title: Plain-folder replication-heavy redteam
+    summary: Simulate a fresh user who starts from a replication-heavy prompt-defense project root and expects repeatable manifests.
+    project_shape: plain-folder-fixture
+    fixture_path: tests/_proof_fixtures/plain_folder/replication-heavy-redteam
+    user_goal: Keep a replication-heavy redteam project repeatable and bounded while using only the accepted project root and pinned runtime lanes.
+  - scenario_id: plain-folder-benchmark-regression-triage
+    title: Plain-folder benchmark regression triage
+    summary: Simulate a fresh user who brings a benchmark-heavy regression triage folder with prior score drift and needs bounded recovery.
+    project_shape: plain-folder-fixture
+    fixture_path: tests/_proof_fixtures/plain_folder/benchmark-regression-triage
+    user_goal: Reconcile score drift and rerun a bounded benchmark project without mutating the accepted substrate tree beyond researcher-owned inputs.
+  - scenario_id: plain-folder-dataset-shift-audit
+    title: Plain-folder dataset shift audit
+    summary: Simulate a fresh user who starts from a dataset-shift audit folder and needs DeepLoop to narrow a conservative evaluation path.
+    project_shape: plain-folder-fixture
+    fixture_path: tests/_proof_fixtures/plain_folder/dataset-shift-audit
+    user_goal: Audit dataset-shift risk with bounded evaluation steps while staying on the accepted simulation-only local model lane.
+  - scenario_id: plain-folder-policy-brief-gap-map
+    title: Plain-folder policy brief gap map
+    summary: Simulate a fresh user starting from a policy-and-literature synthesis root that should end in a bounded evidence gap brief.
+    project_shape: plain-folder-fixture
+    fixture_path: tests/_proof_fixtures/plain_folder/policy-brief-gap-map
+    user_goal: Turn a policy-heavy project folder into one defensible bounded brief without drifting into unsupported runtime lanes.
+  - scenario_id: plain-folder-intervention-notebook-repair
+    title: Plain-folder intervention notebook repair
+    summary: Simulate a fresh user repairing a partially documented intervention notebook so DeepLoop can continue with repeatable bounded steps.
+    project_shape: plain-folder-fixture
+    fixture_path: tests/_proof_fixtures/plain_folder/intervention-notebook-repair
+    user_goal: Repair and continue an execution-heavy intervention notebook while keeping the accepted root researcher-owned and the runtime lanes pinned.

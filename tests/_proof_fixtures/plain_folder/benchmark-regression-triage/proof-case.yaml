@@ -1,0 +1,10 @@
+case_id: benchmark-regression-triage
+title: Benchmark regression triage
+summary: Plain-folder case emphasizing score drift investigation and bounded reruns on an existing benchmark slice.
+workflow_shape: benchmark-heavy
+expected_focus: regression isolation, metric sanity checks, and bounded rerun planning
+autonomy_claims:
+  - DeepLoop can inspect an accepted benchmark-heavy project root and narrow score drift without writing runtime state into the substrate tree.
+  - DeepLoop can keep benchmark reruns bounded instead of broadening the workload when the initial signal is a regression.
+acceptance_thresholds:
+  require_final_report_outputs: true

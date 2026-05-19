@@ -1,0 +1,10 @@
+case_id: dataset-shift-audit
+title: Dataset shift audit
+summary: Plain-folder case emphasizing bounded evaluation planning around suspected dataset shift.
+workflow_shape: benchmark-heavy
+expected_focus: dataset-shift detection, slice definition, and conservative evaluation planning
+autonomy_claims:
+  - DeepLoop can bootstrap a dataset-shift audit from a researcher-owned substrate without writing runtime state into the project tree.
+  - DeepLoop can keep the audit bounded to one accepted slice definition instead of broadening into uncontrolled exploration.
+acceptance_thresholds:
+  require_final_report_outputs: true

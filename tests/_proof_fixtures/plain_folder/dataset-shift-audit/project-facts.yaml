@@ -1,0 +1,28 @@
+project:
+  name: dataset-shift-audit
+  title: Dataset shift audit
+  summary: >
+    Plain minimal researcher folder for a bounded dataset-shift audit that
+    should define one conservative evaluation path before execution.
+  objective: >
+    Identify a defensible dataset-shift question, choose one bounded slice for
+    evaluation, and keep the substrate tree researcher-owned input only.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the substrate folder free of DeepLoop runtime state, generated configs, and code.
+    - Stay within 5 GPU-hours total and at most 1 parallel job.
+    - Prefer slice definition and audit notes before broader execution work.
+  human_inputs:
+    ideas:
+      - Dataset shift audit for a bounded public benchmark slice
+    dataset_access: >
+      Use one documented public dataset family with an explicit bounded shift
+      slice and holdout split.
+    budgets:
+      max_gpu_hours: 5
+      max_parallel_jobs: 1
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/data-and-risks.md
+    - docs/audit-goals.md

@@ -1,0 +1,10 @@
+case_id: policy-brief-gap-map
+title: Policy brief gap map
+summary: Plain-folder case emphasizing literature and policy synthesis into one bounded evidence-gap brief.
+workflow_shape: literature-heavy
+expected_focus: literature synthesis, policy-scope narrowing, and evidence-gap mapping
+autonomy_claims:
+  - DeepLoop can drive a policy-heavy substrate through the canonical mission surface while keeping runtime state outside the substrate tree.
+  - DeepLoop can end with a bounded evidence-gap brief instead of an unscoped literature dump.
+acceptance_thresholds:
+  require_final_report_outputs: true

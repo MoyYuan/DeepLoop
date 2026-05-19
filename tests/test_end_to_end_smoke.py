@@ -103,9 +103,13 @@ class EndToEndSmokeTests(unittest.TestCase):
         self.assertEqual(
             case_ids,
             {
+                "benchmark-regression-triage",
+                "dataset-shift-audit",
                 "forecast-rough-notes",
+                "intervention-notebook-repair",
                 "translation-budget-ladder",
                 "literature-gap-map",
+                "policy-brief-gap-map",
                 "replication-heavy-redteam",
             },
         )

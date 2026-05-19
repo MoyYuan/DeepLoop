@@ -1,0 +1,28 @@
+project:
+  name: intervention-notebook-repair
+  title: Intervention notebook repair
+  summary: >
+    Plain minimal researcher folder for an execution-heavy intervention notebook
+    that should be repaired into a repeatable bounded plan.
+  objective: >
+    Repair the intervention record, recover one repeatable bounded next step, and
+    keep the substrate tree researcher-owned input only.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the substrate folder free of DeepLoop runtime state, generated configs, and code.
+    - Stay within 8 GPU-hours total and at most 2 parallel jobs.
+    - Prefer repeatable intervention notes over broad speculative execution.
+  human_inputs:
+    ideas:
+      - Repair a partially documented intervention notebook
+    dataset_access: >
+      Use one bounded public evaluation slice or existing intervention summary
+      instead of broadening the execution scope.
+    budgets:
+      max_gpu_hours: 8
+      max_parallel_jobs: 2
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/intervention-log.md
+    - docs/replication-notes.md
