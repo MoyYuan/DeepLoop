@@ -79,6 +79,27 @@ provider_families:
         fallback_guidance:
           - lower max context, max new tokens, or request concurrency before changing the lane definition
           - if the dedicated 9B Gate 2 profile is unstable on the host, record an explicit downgrade to qwen3_5-mid-fp16 or single-gpu-8b-9b-fp16 instead of silently switching provider families
+      local-qwen3_5-0p8b-openai:
+        lane_id: disposable-user-simulation
+        model_identifier: Qwen/Qwen3.5-0.8B
+        endpoint_contract:
+          path: /v1/chat/completions
+          required_env_vars:
+            - OPENAI_API_KEY
+            - OPENAI_BASE_URL
+          optional_env_vars:
+            - OPENAI_ORG_ID
+        environment_expectations:
+          control_plane_env: deeploop
+          serving_env: llm-or-host-equivalent
+          suggested_serving_env_file: environment.llm.yml
+        manual_requirements:
+          - start a host-local OpenAI-compatible server that serves Qwen/Qwen3.5-0.8B from the downloaded GGUF artifact Qwen3.5-0.8B-UD-Q4_K_XL.gguf
+          - keep the downloaded GGUF path external/manual and point the local server at /home/moy/workspaces/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf or an operator-approved equivalent
+          - set OPENAI_API_KEY outside the repo to whatever the local server expects; if it accepts a placeholder token, keep that placeholder external and manual too
+        fallback_guidance:
+          - lower max context, max new tokens, or request concurrency before changing the lane definition
+          - do not silently switch this simulation-only lane to the release Gate 2 Qwen3.5-9B profile
     required_tools:
       - command: python
         purpose: control-plane entrypoint

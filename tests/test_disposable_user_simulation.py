@@ -73,17 +73,40 @@ class DisposableUserSimulationTests(unittest.TestCase):
                 with self.assertRaisesRegex(FileNotFoundError, "~/.config/gh"):
                     run_disposable_user_simulation_matrix._resolve_host_copilot_mounts(enabled=True, home=home)
 
+    def test_resolve_container_openai_env_rewrites_localhost_for_container(self) -> None:
+        env = run_disposable_user_simulation_matrix._resolve_container_openai_env(
+            env={
+                "OPENAI_API_KEY": "local-gate2",
+                "OPENAI_BASE_URL": "http://127.0.0.1:8000/v1",
+            },
+            required=True,
+        )
+        self.assertEqual(env["OPENAI_API_KEY"], "local-gate2")
+        self.assertEqual(env["OPENAI_BASE_URL"], "http://host.docker.internal:8000/v1")
+
+    def test_resolve_container_openai_env_requires_host_values_for_real_local_lane(self) -> None:
+        with self.assertRaisesRegex(ValueError, "OPENAI_API_KEY, OPENAI_BASE_URL|OPENAI_BASE_URL|OPENAI_API_KEY"):
+            run_disposable_user_simulation_matrix._resolve_container_openai_env(env={}, required=True)
+
     def test_load_matrix_exposes_required_runtime_pins(self) -> None:
         matrix = load_disposable_user_simulation_matrix(DEFAULT_MATRIX_PATH)
 
         self.assertTrue(matrix.sequential_execution)
         self.assertEqual(matrix.minimum_session_seconds, 3600)
-        self.assertEqual(matrix.simulator.required_model_alias, "gpt-5.4-mini")
+        self.assertEqual(matrix.simulator.required_model_alias, "gpt-5-mini")
         self.assertEqual(matrix.control_plane.selection_profile, "gate2-coding-agent-copilot-gpt5-mini")
         self.assertEqual(matrix.control_plane.model_alias, "gpt-5-mini")
-        self.assertEqual(matrix.experiment_execution.selection_profile, "gate2-local-qwen3_5-9b-openai")
-        self.assertEqual(matrix.experiment_execution.model_identifier, "Qwen/Qwen3.5-9B")
-        self.assertEqual(len(matrix.scenarios), 3)
+        self.assertEqual(matrix.experiment_execution.selection_profile, "disposable-user-sim-local-qwen3_5-0p8b-openai")
+        self.assertEqual(matrix.experiment_execution.model_identifier, "Qwen/Qwen3.5-0.8B")
+        self.assertEqual(
+            matrix.experiment_execution.model_artifact_path,
+            "/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(
+            matrix.experiment_execution.model_artifact_host_path,
+            "/home/moy/workspaces/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(len(matrix.scenarios), 10)
 
     def test_apply_runtime_constraints_updates_project_facts(self) -> None:
         matrix = load_disposable_user_simulation_matrix(DEFAULT_MATRIX_PATH)
@@ -103,11 +126,20 @@ class DisposableUserSimulationTests(unittest.TestCase):
 
         project = updated["project"]
         self.assertIn("existing", project["constraints"])
-        self.assertTrue(any("Qwen/Qwen3.5-9B" in item for item in project["constraints"]))
-        self.assertEqual(project["human_inputs"]["outer_user_simulator_model"], "gpt-5.4-mini")
+        self.assertTrue(any("Qwen/Qwen3.5-0.8B" in item for item in project["constraints"]))
+        self.assertTrue(any("/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf" in item for item in project["constraints"]))
+        self.assertEqual(project["human_inputs"]["outer_user_simulator_model"], "gpt-5-mini")
+        self.assertEqual(
+            project["human_inputs"]["deeploop_experiment_execution_model_artifact_path"],
+            "/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(
+            project["human_inputs"]["deeploop_experiment_execution_model_artifact_host_path"],
+            "/home/moy/workspaces/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
         self.assertEqual(
             project["human_inputs"]["deeploop_experiment_execution_selection_profile"],
-            "gate2-local-qwen3_5-9b-openai",
+            "disposable-user-sim-local-qwen3_5-0p8b-openai",
         )
 
     def test_materialize_workspace_copies_fixture_and_injects_constraints(self) -> None:
@@ -164,14 +196,35 @@ class DisposableUserSimulationTests(unittest.TestCase):
 
             contract = json.loads((scenario_root / "scenario_contract.json").read_text(encoding="utf-8"))
             runtime_pins = yaml.safe_load((scenario_root / "deeploop_runtime_pins.yaml").read_text(encoding="utf-8"))
+            container_mounts = json.loads((scenario_root / "container_mounts.json").read_text(encoding="utf-8"))
 
         self.assertEqual(summary["status"], "prepared")
         self.assertEqual(contract["runtime_constraints"]["deeploop_control_plane"]["model"]["alias"], "gpt-5-mini")
         self.assertEqual(
             runtime_pins["runtime_constraints"]["deeploop_experiment_execution"]["model"]["identifier"],
-            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3.5-0.8B",
         )
-        self.assertEqual(summary["container_mounts"], [])
+        self.assertEqual(
+            contract["runtime_constraints"]["deeploop_experiment_execution"]["model"]["artifact_path"],
+            "/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(
+            contract["runtime_constraints"]["deeploop_experiment_execution"]["model"]["host_artifact_path"],
+            "/home/moy/workspaces/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(
+            runtime_pins["runtime_constraints"]["deeploop_experiment_execution"]["model"]["artifact_path"],
+            "/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(summary["container_mounts"][0]["kind"], "model-directory")
+        self.assertEqual(summary["container_mounts"][0]["source"], "/home/moy/workspaces/models")
+        self.assertEqual(summary["container_mounts"][0]["target"], "/models")
+        self.assertEqual(summary["container_mounts"][0]["artifact_path"], "/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf")
+        self.assertEqual(
+            summary["container_mounts"][0]["host_artifact_path"],
+            "/home/moy/workspaces/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(container_mounts["container_mounts"], summary["container_mounts"])
 
     def test_main_defaults_output_root_under_reports_local(self) -> None:
         matrix = load_disposable_user_simulation_matrix(DEFAULT_MATRIX_PATH)
@@ -354,16 +407,75 @@ class DisposableUserSimulationTests(unittest.TestCase):
                             minimum_session_seconds=3600,
                         )
 
+    def test_run_simulator_command_reports_progress_while_blocked(self) -> None:
+        class FakeEvent:
+            def __init__(self) -> None:
+                self.wait_results = [False, True]
+
+            def wait(self, _timeout: float) -> bool:
+                return self.wait_results.pop(0)
+
+            def set(self) -> None:
+                return None
+
+        class FakeThread:
+            def __init__(self, *, target, daemon: bool) -> None:
+                self.target = target
+                self.daemon = daemon
+
+            def start(self) -> None:
+                self.target()
+
+            def join(self, timeout: float | None = None) -> None:
+                return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            scenario_root = Path(tmpdir)
+            progress_calls: list[str] = []
+            with patch.object(run_disposable_user_simulation_matrix.time, "monotonic", side_effect=[10.0, 3611.0]):
+                with patch.object(
+                    run_disposable_user_simulation_matrix.subprocess,
+                    "run",
+                    return_value=run_disposable_user_simulation_matrix.subprocess.CompletedProcess(
+                        ["echo", "ok"],
+                        0,
+                        "stdout",
+                        "stderr",
+                    ),
+                ):
+                    with patch.object(run_disposable_user_simulation_matrix.threading, "Event", return_value=FakeEvent()):
+                        with patch.object(run_disposable_user_simulation_matrix.threading, "Thread", FakeThread):
+                            completed, elapsed = run_disposable_user_simulation_matrix._run_simulator_command(
+                                ["echo", "ok"],
+                                scenario_root=scenario_root,
+                                env={},
+                                minimum_session_seconds=3600,
+                                progress_hook=lambda: progress_calls.append("tick"),
+                                progress_interval_seconds=0.01,
+                            )
+
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(elapsed, 3601.0)
+        self.assertEqual(progress_calls, ["tick", "tick", "tick"])
+
     def test_build_scenario_contract_keeps_runtime_pins(self) -> None:
         matrix = load_disposable_user_simulation_matrix(DEFAULT_MATRIX_PATH)
         scenario = matrix.scenarios[1]
 
         contract = build_scenario_contract(matrix, scenario, campaign_id="campaign-2", container_name="demo-container")
 
-        self.assertEqual(contract["runtime_constraints"]["outer_user_simulator"]["model_alias"], "gpt-5.4-mini")
+        self.assertEqual(contract["runtime_constraints"]["outer_user_simulator"]["model_alias"], "gpt-5-mini")
         self.assertEqual(
             contract["runtime_constraints"]["deeploop_experiment_execution"]["host_execution_profile"],
-            "qwen3_5-9b-openai-local",
+            "qwen3_5-0p8b-openai-local",
+        )
+        self.assertEqual(
+            contract["runtime_constraints"]["deeploop_experiment_execution"]["model"]["artifact_path"],
+            "/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+        )
+        self.assertEqual(
+            contract["runtime_constraints"]["deeploop_experiment_execution"]["model"]["host_artifact_path"],
+            "/home/moy/workspaces/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
         )
         self.assertEqual(contract["container"]["project_root"], None)
 
@@ -395,11 +507,39 @@ class DisposableUserSimulationTests(unittest.TestCase):
             runtime_pins_text="runtime_constraints: {}",
         )
 
-        self.assertIn("gpt-5.4-mini", prompt)
+        self.assertIn("gpt-5-mini", prompt)
         self.assertIn("Outer prompt body", prompt)
         self.assertIn("contract_id", prompt)
         self.assertIn("runtime_constraints", prompt)
         self.assertIn("use that exact command before trying `deeploop run --until-complete`", prompt)
+
+    def test_write_campaign_status_records_current_scenario_and_latest_phase(self) -> None:
+        root = REPO_ROOT / "build" / "test-disposable-user-simulation" / "campaign-status"
+        shutil.rmtree(root, ignore_errors=True)
+        self.addCleanup(shutil.rmtree, root, True)
+        phase_root = root / "scenario-a" / "artifacts" / "outer-user-simulation" / "phases" / "02-midpoint"
+        phase_root.mkdir(parents=True, exist_ok=True)
+        (phase_root / "phase.json").write_text(
+            json.dumps({"phase_index": 2, "phase_name": "midpoint", "elapsed_seconds": 120.0}),
+            encoding="utf-8",
+        )
+
+        run_disposable_user_simulation_matrix._write_campaign_status(
+            root,
+            campaign_id="campaign-a",
+            scenario_ids=["scenario-a", "scenario-b"],
+            scenario_summaries=[{"scenario_id": "scenario-a", "status": "passed"}],
+            current_scenario_id="scenario-b",
+            current_scenario_root=root / "scenario-a",
+            started_at="2026-05-18T20:00:00Z",
+            status="running",
+        )
+
+        status = json.loads((root / "campaign_status.json").read_text(encoding="utf-8"))
+        self.assertEqual(status["campaign_id"], "campaign-a")
+        self.assertEqual(status["current_scenario_id"], "scenario-b")
+        self.assertEqual(status["completed_scenarios"], 1)
+        self.assertEqual(status["last_completed_phase"]["phase_name"], "midpoint")
 
     def test_render_outer_user_prompt_prefers_project_root_command(self) -> None:
         matrix = load_disposable_user_simulation_matrix(DEFAULT_MATRIX_PATH)

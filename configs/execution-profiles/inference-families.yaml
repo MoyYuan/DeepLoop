@@ -104,6 +104,36 @@ profiles:
       - lower max new tokens
       - adjust served precision or quantization outside repo config
       - downgrade to qwen3_5-mid-fp16 or single-gpu-8b-9b-fp16 and record the downgrade
+  - id: qwen3_5-0p8b-openai-local
+    applies_to:
+      - qwen3.5-0.8b
+      - Qwen/Qwen3.5-0.8B
+    model_identifier: Qwen/Qwen3.5-0.8B
+    preferred_backend: local-transformers
+    deployment_surface: openai-compatible-api
+    suggested_serving_env_file: environment.llm.yml
+    host_expectations:
+      - This is the simulation-only host profile behind the disposable-user-simulation OpenAI-compatible Qwen3.5-0.8B lane.
+      - DeepLoop expects the serving stack to be started manually outside repo automation; exact llama-server or equivalent launch flags remain host-specific.
+      - Use the required GGUF artifact Qwen3.5-0.8B-UD-Q4_K_XL.gguf for this profile instead of the release Gate 2 Qwen3.5-9B lane.
+    context_buckets:
+      short:
+        prompt_tokens: 512
+        max_new_tokens: 256
+        batch_probe_order: [16, 8, 4, 2, 1]
+      medium:
+        prompt_tokens: 2048
+        max_new_tokens: 512
+        batch_probe_order: [8, 4, 2, 1]
+      long:
+        prompt_tokens: 4096
+        max_new_tokens: 512
+        batch_probe_order: [4, 2, 1]
+    fallback_guidance:
+      - lower batch size
+      - lower max model length
+      - lower max new tokens
+      - keep the simulation lane on the required Qwen3.5-0.8B GGUF artifact instead of silently switching to the release Gate 2 Qwen3.5-9B profile
 deferred_profiles:
   - id: gguf-runtime-required
     applies_to:
