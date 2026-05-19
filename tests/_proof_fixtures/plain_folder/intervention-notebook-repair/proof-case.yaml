@@ -1,0 +1,10 @@
+case_id: intervention-notebook-repair
+title: Intervention notebook repair
+summary: Plain-folder case emphasizing repair of a partially documented intervention notebook into a repeatable bounded plan.
+workflow_shape: execution-heavy
+expected_focus: intervention repair, replication notes, and bounded follow-up planning
+autonomy_claims:
+  - DeepLoop can repair an execution-heavy intervention notebook while keeping substrate-owned material intact and runtime state external.
+  - DeepLoop can prefer repeatable intervention notes over uncontrolled exploratory execution.
+acceptance_thresholds:
+  require_final_report_outputs: true

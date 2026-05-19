@@ -1,0 +1,29 @@
+project:
+  name: benchmark-regression-triage
+  title: Benchmark regression triage
+  summary: >
+    Plain minimal researcher folder for a benchmark-heavy regression triage
+    project with prior metric drift and bounded rerun expectations.
+  objective: >
+    Explain a documented regression on a bounded benchmark slice, recover one
+    trustworthy comparison, and keep the substrate tree researcher-owned input
+    only.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the substrate folder free of DeepLoop runtime state, generated configs, and code.
+    - Stay within 6 GPU-hours total and at most 1 parallel job.
+    - Prefer regression isolation and rerun discipline over broad exploratory work.
+  human_inputs:
+    ideas:
+      - Benchmark regression triage for a small evaluation slice
+    dataset_access: >
+      Use the documented benchmark slice or a bounded public equivalent with a
+      clearly recorded holdout split.
+    budgets:
+      max_gpu_hours: 6
+      max_parallel_jobs: 1
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/benchmark-and-metrics.md
+    - docs/regression-log.md

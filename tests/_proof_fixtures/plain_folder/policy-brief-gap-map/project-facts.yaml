@@ -1,0 +1,25 @@
+project:
+  name: policy-brief-gap-map
+  title: Policy brief gap map
+  summary: >
+    Plain minimal researcher folder for a policy-and-literature synthesis
+    project that should end in one bounded evidence-gap brief.
+  objective: >
+    Turn the source material in this folder into one defensible policy brief
+    with explicit evidence gaps and bounded next-step recommendations.
+  constraints:
+    - Start only from the artifacts in this folder.
+    - Keep the substrate folder free of DeepLoop runtime state, generated configs, and code.
+    - Stay within 4 GPU-hours total and at most 1 parallel job.
+    - Prefer evidence-gap mapping before new execution work.
+  human_inputs:
+    ideas:
+      - Policy brief on robustness and evaluation transparency
+    budgets:
+      max_gpu_hours: 4
+      max_parallel_jobs: 1
+artifacts:
+  docs:
+    - docs/project-brief.md
+    - docs/policy-scope.md
+    - docs/literature-and-claims.md
