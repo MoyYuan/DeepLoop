@@ -14,7 +14,7 @@ import yaml
 from deeploop.core.structured_io import write_json_object, write_markdown, write_text
 from deeploop.runtime.copilot_adapter import build_copilot_prompt_command
 
-DEFAULT_OUTER_USER_MODEL = "gpt-5.4-mini"
+DEFAULT_OUTER_USER_MODEL = "gpt-5-mini"
 _PHASE_NAMES = ("opening", "midpoint", "closing")
 
 
@@ -289,6 +289,7 @@ def run_disposable_user_simulation(
     ]
 
     previous_transcript = ""
+    failure: dict[str, Any] | None = None
     for phase_index, phase_name in enumerate(phase_names):
         _wait_until(started_at, phase_targets[phase_index], clock=clock, sleeper=sleeper)
         prompt = build_phase_prompt(
@@ -345,16 +346,24 @@ def run_disposable_user_simulation(
                 completed.stdout.strip() or "(no stdout)",
                 "```",
                 "",
+                f"### Return code: `{completed.returncode}`",
+                "",
             ]
         )
         previous_transcript = completed.stdout.strip() or previous_transcript
         if completed.returncode != 0:
-            raise RuntimeError(f"Copilot exited {completed.returncode} during phase `{phase_name}`.")
+            failure = {
+                "phase_index": phase_index + 1,
+                "phase_name": phase_name,
+                "returncode": completed.returncode,
+                "message": f"Copilot exited {completed.returncode} during phase `{phase_name}`.",
+            }
+            break
 
     _wait_until(started_at, inputs.minimum_session_seconds, clock=clock, sleeper=sleeper)
     elapsed_seconds = clock() - started_at
     summary = {
-        "status": "passed",
+        "status": "failed" if failure is not None else "passed",
         "campaign_id": inputs.campaign_id,
         "scenario_id": inputs.scenario_id,
         "container_name": inputs.container_name,
@@ -365,8 +374,12 @@ def run_disposable_user_simulation(
         "phase_targets": phase_targets,
         "phases": phase_summaries,
     }
+    if failure is not None:
+        summary["failure"] = failure
     write_json_object(run_root / "summary.json", summary)
     write_markdown(run_root / "transcript.md", transcript_sections)
+    if failure is not None:
+        raise RuntimeError(str(failure["message"]))
     return summary
 
 
