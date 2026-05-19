@@ -8,9 +8,10 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -43,6 +44,12 @@ class ManagedSandboxContext:
         self.manager_path = manager_path
         self.registry_root = registry_root
         self.manifest = manifest
+
+
+class SimulatorCommandError(RuntimeError):
+    def __init__(self, message: str, *, elapsed_seconds: float) -> None:
+        super().__init__(message)
+        self.elapsed_seconds = elapsed_seconds
 
 
 def _volume_arg(source: Path, target: str, *, read_only: bool = False) -> str:
@@ -91,6 +98,41 @@ def _resolve_host_copilot_mounts(
             }
         )
     return mounts
+
+
+def _resolve_model_artifact_mounts(
+    *,
+    matrix: object,
+    require_existing: bool,
+) -> list[dict[str, object]]:
+    from deeploop.testing.disposable_user_simulation import DisposableUserSimulationMatrix
+
+    if not isinstance(matrix, DisposableUserSimulationMatrix):
+        raise TypeError("matrix must be a DisposableUserSimulationMatrix")
+    host_artifact_path = str(matrix.experiment_execution.model_artifact_host_path or "").strip()
+    container_artifact_path = str(matrix.experiment_execution.model_artifact_path or "").strip()
+    if not host_artifact_path or not container_artifact_path:
+        return []
+    host_path = Path(host_artifact_path).expanduser().resolve()
+    container_path = PurePosixPath(container_artifact_path)
+    if not container_path.is_absolute():
+        raise ValueError("Disposable user simulation model_artifact_path must be container-absolute.")
+    if host_path.name != container_path.name:
+        raise ValueError(
+            "Disposable user simulation model artifact host/container paths must keep the same artifact filename."
+        )
+    if require_existing and not host_path.is_file():
+        raise FileNotFoundError(f"Required disposable-user-simulation model artifact not found: {host_path}")
+    return [
+        {
+            "source": str(host_path.parent),
+            "target": str(container_path.parent),
+            "read_only": True,
+            "kind": "model-directory",
+            "artifact_path": str(container_path),
+            "host_artifact_path": str(host_path),
+        }
+    ]
 
 
 def _utc_stamp() -> str:
@@ -224,6 +266,28 @@ def _build_image_tag(image_prefix: str, campaign_id: str) -> str:
     return f"{image_prefix}:{_sanitize_tag_suffix(campaign_id)}"
 
 
+def _resolve_container_openai_env(*, env: dict[str, str] | None = None, required: bool = False) -> dict[str, str]:
+    resolved_env = os.environ if env is None else env
+    captured: dict[str, str] = {}
+    for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORG_ID"):
+        value = str(resolved_env.get(key, "")).strip()
+        if value:
+            captured[key] = value
+    if required:
+        missing = [key for key in ("OPENAI_API_KEY", "OPENAI_BASE_URL") if key not in captured]
+        if missing:
+            raise ValueError(
+                "Disposable user simulation requires host OpenAI-compatible env for the local lane: "
+                + ", ".join(missing)
+            )
+    base_url = captured.get("OPENAI_BASE_URL", "")
+    if base_url:
+        captured["OPENAI_BASE_URL"] = (
+            base_url.replace("://127.0.0.1", "://host.docker.internal").replace("://localhost", "://host.docker.internal")
+        )
+    return captured
+
+
 def _build_docker_image(
     *,
     docker_bin: str,
@@ -259,6 +323,7 @@ def _start_container(
     container_workspace_root: str,
     container_artifacts_root: str,
     extra_mounts: list[dict[str, object]] | None = None,
+    passthrough_env: dict[str, str] | None = None,
 ) -> None:
     command = [
         docker_bin,
@@ -267,6 +332,8 @@ def _start_container(
         "--rm",
         "--name",
         container_name,
+        "--add-host",
+        "host.docker.internal:host-gateway",
         "--volume",
         f"{workspace_root}:{container_workspace_root}",
         "--volume",
@@ -277,6 +344,8 @@ def _start_container(
         target = str(mount["target"])
         read_only = bool(mount.get("read_only", False))
         command.extend(["--volume", _volume_arg(source, target, read_only=read_only)])
+    for key, value in sorted((passthrough_env or {}).items()):
+        command.extend(["--env", f"{key}={value}"])
     command.extend([image_tag, "sleep", "infinity"])
     print(f"+ {shlex.join(command)}", flush=True)
     subprocess.run(command, cwd=REPO_ROOT, check=True)
@@ -316,14 +385,126 @@ def _write_campaign_summary(campaign_root: Path, summary: dict[str, object]) -> 
     write_markdown(campaign_root / "campaign_summary.md", lines)
 
 
+def _latest_completed_phase(scenario_root: Path) -> dict[str, object] | None:
+    phase_root = scenario_root / "artifacts" / "outer-user-simulation" / "phases"
+    if not phase_root.is_dir():
+        return None
+    latest_payload: dict[str, object] | None = None
+    for phase_json in sorted(phase_root.glob("*/phase.json")):
+        try:
+            payload = json.loads(phase_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            latest_payload = payload
+    return latest_payload
+
+
+def _latest_campaign_completed_phase(
+    campaign_root: Path,
+    *,
+    scenario_summaries: list[dict[str, object]],
+    current_scenario_root: Path | None,
+) -> dict[str, object] | None:
+    candidate_roots: list[Path] = []
+    if current_scenario_root is not None:
+        candidate_roots.append(current_scenario_root)
+    for summary in reversed(scenario_summaries):
+        scenario_id = summary.get("scenario_id")
+        if not isinstance(scenario_id, str):
+            continue
+        scenario_root = campaign_root / scenario_id
+        if current_scenario_root is not None and scenario_root == current_scenario_root:
+            continue
+        candidate_roots.append(scenario_root)
+    for scenario_root in candidate_roots:
+        latest_phase = _latest_completed_phase(scenario_root)
+        if latest_phase is not None:
+            return latest_phase
+    return None
+
+
+def _write_campaign_status(
+    campaign_root: Path,
+    *,
+    campaign_id: str,
+    scenario_ids: list[str],
+    scenario_summaries: list[dict[str, object]],
+    current_scenario_id: str | None,
+    current_scenario_root: Path | None,
+    started_at: str,
+    status: str,
+) -> None:
+    latest_phase = _latest_campaign_completed_phase(
+        campaign_root,
+        scenario_summaries=scenario_summaries,
+        current_scenario_root=current_scenario_root,
+    )
+    completed = len([item for item in scenario_summaries if item.get("status") in {"passed", "failed", "prepared"}])
+    payload = {
+        "campaign_id": campaign_id,
+        "status": status,
+        "started_at": started_at,
+        "scenario_count": len(scenario_ids),
+        "completed_scenarios": completed,
+        "remaining_scenarios": max(len(scenario_ids) - completed, 0),
+        "current_scenario_id": current_scenario_id,
+        "current_scenario_root": str(current_scenario_root) if current_scenario_root is not None else None,
+        "last_completed_phase": latest_phase,
+        "scenario_results": scenario_summaries,
+    }
+    write_json_object(campaign_root / "campaign_status.json", payload)
+    lines = [
+        "# Disposable user simulation campaign status",
+        "",
+        f"- campaign_id: `{campaign_id}`",
+        f"- status: `{status}`",
+        f"- started_at: `{started_at}`",
+        f"- scenario_count: `{len(scenario_ids)}`",
+        f"- completed_scenarios: `{completed}`",
+        f"- remaining_scenarios: `{max(len(scenario_ids) - completed, 0)}`",
+        f"- current_scenario_id: `{current_scenario_id}`",
+        f"- current_scenario_root: `{current_scenario_root}`",
+    ]
+    if latest_phase is not None:
+        lines.extend(
+            [
+                "",
+                "## Last completed phase",
+                "",
+                f"- phase_index: `{latest_phase.get('phase_index')}`",
+                f"- phase_name: `{latest_phase.get('phase_name')}`",
+                f"- elapsed_seconds: `{latest_phase.get('elapsed_seconds')}`",
+            ]
+        )
+    lines.extend(["", "## Scenario results", ""])
+    for summary in scenario_summaries:
+        lines.append(f"- `{summary.get('scenario_id')}` — `{summary.get('status')}`")
+    write_markdown(campaign_root / "campaign_status.md", lines)
+
+
 def _run_simulator_command(
     command: list[str],
     *,
     scenario_root: Path,
     env: dict[str, str],
     minimum_session_seconds: int,
+    progress_hook: callable | None = None,
+    progress_interval_seconds: float = 15.0,
 ) -> tuple[subprocess.CompletedProcess[str], float]:
     started = time.monotonic()
+    stop_event = threading.Event()
+
+    def _progress_worker() -> None:
+        while not stop_event.wait(progress_interval_seconds):
+            if progress_hook is not None:
+                progress_hook()
+
+    worker: threading.Thread | None = None
+    if progress_hook is not None:
+        progress_hook()
+        worker = threading.Thread(target=_progress_worker, daemon=True)
+        worker.start()
     completed = subprocess.run(
         command,
         cwd=REPO_ROOT,
@@ -332,15 +513,24 @@ def _run_simulator_command(
         capture_output=True,
         check=False,
     )
+    stop_event.set()
+    if worker is not None:
+        worker.join(timeout=1)
     elapsed = time.monotonic() - started
     (scenario_root / "simulator.stdout.txt").write_text(completed.stdout, encoding="utf-8")
     (scenario_root / "simulator.stderr.txt").write_text(completed.stderr, encoding="utf-8")
+    if progress_hook is not None:
+        progress_hook()
     if elapsed < minimum_session_seconds:
-        raise RuntimeError(
-            f"Simulator command ended after {elapsed:.1f}s; minimum required duration is {minimum_session_seconds}s."
+        raise SimulatorCommandError(
+            f"Simulator command ended after {elapsed:.1f}s; minimum required duration is {minimum_session_seconds}s.",
+            elapsed_seconds=elapsed,
         )
     if completed.returncode != 0:
-        raise RuntimeError(f"Simulator command exited {completed.returncode}.")
+        raise SimulatorCommandError(
+            f"Simulator command exited {completed.returncode}.",
+            elapsed_seconds=elapsed,
+        )
     return completed, elapsed
 
 
@@ -365,6 +555,7 @@ def _run_scenario(
     simulator_command: list[str] | None,
     prepare_only: bool,
     host_copilot_mount: bool,
+    progress_callback: callable | None = None,
 ) -> dict[str, object]:
     from deeploop.testing.disposable_user_simulation import DisposableUserSimulationScenario, DisposableUserSimulationMatrix
 
@@ -381,7 +572,8 @@ def _run_scenario(
     prompts_root.mkdir(parents=True, exist_ok=True)
 
     materialize_scenario_workspace(matrix, scenario, workspace_root=workspace_root)
-    container_mounts = _resolve_host_copilot_mounts(enabled=host_copilot_mount)
+    container_mounts = _resolve_model_artifact_mounts(matrix=matrix, require_existing=not prepare_only)
+    container_mounts.extend(_resolve_host_copilot_mounts(enabled=host_copilot_mount))
 
     container_name = _sanitize_container_name(f"{campaign_id}-{scenario.scenario_id}")
     contract = build_scenario_contract(
@@ -423,9 +615,13 @@ def _run_scenario(
 
     started_at = datetime.now(timezone.utc).isoformat()
     elapsed_seconds = 0.0
+    simulator_started_at: float | None = None
     container_started = False
     failures: list[str] = []
     try:
+        passthrough_env = _resolve_container_openai_env(
+            required=matrix.experiment_execution.provider_family == "openai-compatible-api"
+        )
         _start_container(
             docker_bin=docker_bin,
             image_tag=image_tag,
@@ -435,6 +631,7 @@ def _run_scenario(
             container_workspace_root=str(matrix.docker.workspace_root),
             container_artifacts_root=str(matrix.docker.artifacts_root),
             extra_mounts=container_mounts,
+            passthrough_env=passthrough_env,
         )
         container_started = True
 
@@ -452,14 +649,20 @@ def _run_scenario(
                 "DEEPLOOP_SIM_MIN_SESSION_SECONDS": str(matrix.minimum_session_seconds),
             }
         )
+        simulator_started_at = time.monotonic()
         _, elapsed_seconds = _run_simulator_command(
             simulator_command,
             scenario_root=scenario_root,
             env=env,
             minimum_session_seconds=matrix.minimum_session_seconds,
+            progress_hook=progress_callback,
         )
         status = "passed"
     except Exception as exc:
+        if isinstance(exc, SimulatorCommandError):
+            elapsed_seconds = exc.elapsed_seconds
+        elif simulator_started_at is not None and elapsed_seconds == 0.0:
+            elapsed_seconds = max(time.monotonic() - simulator_started_at, 0.0)
         failures.append(str(exc))
         status = "failed"
     finally:
@@ -564,6 +767,18 @@ def main(argv: list[str] | None = None) -> int:
         write_json_object(output_root / "metadata" / "managed-sandbox.json", managed_sandbox.manifest)
 
     image_tag = args.image_tag or _build_image_tag(matrix.docker.image_prefix, campaign_id)
+    scenario_ids = [scenario.scenario_id for scenario in scenarios]
+    campaign_started_at = datetime.now(timezone.utc).isoformat()
+    _write_campaign_status(
+        output_root,
+        campaign_id=campaign_id,
+        scenario_ids=scenario_ids,
+        scenario_summaries=[],
+        current_scenario_id=None,
+        current_scenario_root=None,
+        started_at=campaign_started_at,
+        status="preparing",
+    )
     if not args.prepare_only and not args.skip_build:
         _build_docker_image(
             docker_bin=args.docker_bin,
@@ -577,6 +792,16 @@ def main(argv: list[str] | None = None) -> int:
     for scenario in scenarios:
         scenario_root = output_root / scenario.scenario_id
         scenario_root.mkdir(parents=True, exist_ok=True)
+        _write_campaign_status(
+            output_root,
+            campaign_id=campaign_id,
+            scenario_ids=scenario_ids,
+            scenario_summaries=scenario_summaries,
+            current_scenario_id=scenario.scenario_id,
+            current_scenario_root=scenario_root,
+            started_at=campaign_started_at,
+            status="running",
+        )
         scenario_summaries.append(
             _run_scenario(
                 docker_bin=args.docker_bin,
@@ -588,7 +813,29 @@ def main(argv: list[str] | None = None) -> int:
                 simulator_command=list(args.simulator_command or []),
                 prepare_only=bool(args.prepare_only),
                 host_copilot_mount=bool(args.mount_host_copilot),
+                progress_callback=(
+                    lambda scenario_root=scenario_root, scenario_id=scenario.scenario_id: _write_campaign_status(
+                        output_root,
+                        campaign_id=campaign_id,
+                        scenario_ids=scenario_ids,
+                        scenario_summaries=scenario_summaries,
+                        current_scenario_id=scenario_id,
+                        current_scenario_root=scenario_root,
+                        started_at=campaign_started_at,
+                        status="running",
+                    )
+                ),
             )
+        )
+        _write_campaign_status(
+            output_root,
+            campaign_id=campaign_id,
+            scenario_ids=scenario_ids,
+            scenario_summaries=scenario_summaries,
+            current_scenario_id=None,
+            current_scenario_root=None,
+            started_at=campaign_started_at,
+            status="running",
         )
 
     status = "passed"
@@ -609,6 +856,16 @@ def main(argv: list[str] | None = None) -> int:
     }
     _add_managed_sandbox_metadata(campaign_summary, managed_sandbox)
     _write_campaign_summary(output_root, campaign_summary)
+    _write_campaign_status(
+        output_root,
+        campaign_id=campaign_id,
+        scenario_ids=scenario_ids,
+        scenario_summaries=scenario_summaries,
+        current_scenario_id=None,
+        current_scenario_root=None,
+        started_at=campaign_started_at,
+        status=status,
+    )
     return 1 if status == "failed" else 0
 
 

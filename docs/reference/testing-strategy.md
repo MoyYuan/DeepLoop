@@ -228,14 +228,23 @@ deliberately opinionated:
 - use a **fresh disposable container** for each scenario
 - require at least **3600 seconds** of wall time per simulated user
 - treat the outer simulated user as an **explicit external boundary** pinned to
-  `gpt-5.4-mini`
+  `gpt-5-mini`
 - pin DeepLoop's control plane to Copilot CLI `gpt-5-mini`
-- pin all DeepLoop-carried experiment execution to the local
-  `Qwen/Qwen3.5-9B` lane through repo-owned runtime and mission inputs
+- pin all DeepLoop-carried experiment execution to the simulation-only local
+  `Qwen/Qwen3.5-0.8B` GGUF lane through repo-owned runtime and mission inputs
+- require the downloaded artifact
+  `Qwen3.5-0.8B-UD-Q4_K_XL.gguf` at the documented local model path before a
+  real campaign starts
+- expand the accepted campaign inventory to **10** distinct project roots across
+  bundled starters and plain-folder fixtures
 
 The repo-owned outer-user wrapper reads the generated prompt, contract, and
 runtime-pin artifacts from the matrix runner, then writes durable transcripts
 under each scenario's `artifacts/outer-user-simulation/` directory.
+
+The matrix runner also writes `campaign_status.json` / `.md` alongside the final
+campaign summary so long sequential runs have a single monitoring surface for
+the current scenario, remaining count, and latest completed outer-user phase.
 
 The harness prepares durable scenario contracts, prompt bundles, workspace
 materialization, and DeepLoop runtime-pin files. It does **not** hide simulator

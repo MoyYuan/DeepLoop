@@ -46,6 +46,9 @@ class DeepLoopExperimentExecutionSpec:
     backend: str
     model_identifier: str
     endpoint_alias: str
+    model_artifact_path: str
+    model_artifact_host_path: str
+    model_artifact_url: str
     policy_note: str
 
 
@@ -178,6 +181,13 @@ def load_disposable_user_simulation_matrix(
             backend=str(experiment_execution.get("backend") or "").strip(),
             model_identifier=str(experiment_execution.get("model_identifier") or "").strip(),
             endpoint_alias=str(experiment_execution.get("endpoint_alias") or "").strip(),
+            model_artifact_path=str(experiment_execution.get("model_artifact_path") or "").strip(),
+            model_artifact_host_path=str(
+                experiment_execution.get("model_artifact_host_path")
+                or experiment_execution.get("model_artifact_path")
+                or ""
+            ).strip(),
+            model_artifact_url=str(experiment_execution.get("model_artifact_url") or "").strip(),
             policy_note=str(experiment_execution.get("policy_note") or "").strip(),
         ),
         scenarios=tuple(scenarios),
@@ -229,6 +239,14 @@ def recommended_deeploop_commands(
 
 
 def runtime_constraints_payload(matrix: DisposableUserSimulationMatrix) -> dict[str, Any]:
+    experiment_model = {
+        "identifier": matrix.experiment_execution.model_identifier,
+        "endpoint_alias": matrix.experiment_execution.endpoint_alias,
+        "artifact_path": matrix.experiment_execution.model_artifact_path,
+        "artifact_url": matrix.experiment_execution.model_artifact_url,
+    }
+    if matrix.experiment_execution.model_artifact_host_path:
+        experiment_model["host_artifact_path"] = matrix.experiment_execution.model_artifact_host_path
     return {
         "outer_user_simulator": {
             "boundary": matrix.simulator.boundary,
@@ -247,10 +265,7 @@ def runtime_constraints_payload(matrix: DisposableUserSimulationMatrix) -> dict[
             "host_execution_profile": matrix.experiment_execution.host_execution_profile,
             "provider_family": matrix.experiment_execution.provider_family,
             "backend": matrix.experiment_execution.backend,
-            "model": {
-                "identifier": matrix.experiment_execution.model_identifier,
-                "endpoint_alias": matrix.experiment_execution.endpoint_alias,
-            },
+            "model": experiment_model,
             "policy_note": matrix.experiment_execution.policy_note,
         },
         "recursive_agent_provider_selection": {
@@ -267,7 +282,7 @@ def runtime_constraints_payload(matrix: DisposableUserSimulationMatrix) -> dict[
 
 
 def _runtime_constraint_lines(matrix: DisposableUserSimulationMatrix) -> list[str]:
-    return [
+    lines = [
         f"Use Copilot CLI `{matrix.control_plane.model_alias}` as the DeepLoop control-plane provider.",
         (
             "All DeepLoop-carried experiments must stay on "
@@ -278,7 +293,21 @@ def _runtime_constraint_lines(matrix: DisposableUserSimulationMatrix) -> list[st
             "Treat host execution profile "
             f"`{matrix.experiment_execution.host_execution_profile}` as the default local execution envelope."
         ),
+        (
+            "Use only the downloaded GGUF artifact "
+            f"`{matrix.experiment_execution.model_artifact_path}` for local simulation-backed execution."
+        ),
     ]
+    if (
+        matrix.experiment_execution.model_artifact_host_path
+        and matrix.experiment_execution.model_artifact_host_path != matrix.experiment_execution.model_artifact_path
+    ):
+        lines.append(
+            "Preserve host provenance from "
+            f"`{matrix.experiment_execution.model_artifact_host_path}` while treating "
+            f"`{matrix.experiment_execution.model_artifact_path}` as the container-visible runtime path."
+        )
+    return lines
 
 
 def apply_runtime_constraints_to_project_facts(
@@ -303,10 +332,15 @@ def apply_runtime_constraints_to_project_facts(
             "deeploop_control_plane_model_alias": matrix.control_plane.model_alias,
             "deeploop_experiment_execution_selection_profile": matrix.experiment_execution.selection_profile,
             "deeploop_experiment_execution_model_identifier": matrix.experiment_execution.model_identifier,
+            "deeploop_experiment_execution_model_artifact_path": matrix.experiment_execution.model_artifact_path,
             "deeploop_host_execution_profile": matrix.experiment_execution.host_execution_profile,
             "user_simulation_scenario": scenario.scenario_id,
         }
     )
+    if matrix.experiment_execution.model_artifact_host_path:
+        human_inputs["deeploop_experiment_execution_model_artifact_host_path"] = (
+            matrix.experiment_execution.model_artifact_host_path
+        )
     project["constraints"] = existing_constraints
     project["human_inputs"] = human_inputs
     payload["project"] = project
@@ -391,6 +425,7 @@ def render_scenario_contract_markdown(contract: dict[str, Any]) -> list[str]:
         if isinstance(runtime_constraints.get("deeploop_experiment_execution"), dict)
         else {}
     )
+    experiment_model = experiment_execution.get("model") if isinstance(experiment_execution.get("model"), dict) else {}
     recommended_commands = contract.get("recommended_commands") if isinstance(contract.get("recommended_commands"), list) else []
     lines = [
         f"# Disposable user simulation scenario: {contract.get('scenario_id')}",
@@ -411,8 +446,21 @@ def render_scenario_contract_markdown(contract: dict[str, Any]) -> list[str]:
         ),
         (
             f"- experiment execution: `{experiment_execution.get('selection_profile')}` / "
-            f"`{experiment_execution.get('model', {}).get('identifier')}`"
+            f"`{experiment_model.get('identifier')}`"
         ),
+        (
+            f"- experiment endpoint alias: "
+            f"`{experiment_model.get('endpoint_alias')}`"
+        ),
+        (
+            f"- required GGUF artifact: "
+            f"`{experiment_model.get('artifact_path')}`"
+        ),
+    ]
+    if experiment_model.get("host_artifact_path"):
+        lines.append(f"- host GGUF provenance: `{experiment_model.get('host_artifact_path')}`")
+    lines.extend(
+        [
         (
             f"- host execution profile: "
             f"`{experiment_execution.get('host_execution_profile')}`"
@@ -420,7 +468,8 @@ def render_scenario_contract_markdown(contract: dict[str, Any]) -> list[str]:
         "",
         "## Recommended DeepLoop commands",
         "",
-    ]
+        ]
+    )
     lines.extend(f"- `{command}`" for command in recommended_commands)
     return lines
 
@@ -451,6 +500,10 @@ def render_outer_user_prompt(
             f"- all DeepLoop-carried experiments must stay on "
             f"`{matrix.experiment_execution.model_identifier}` via "
             f"`{matrix.experiment_execution.selection_profile}`"
+        ),
+        (
+            f"- use only the downloaded GGUF artifact "
+            f"`{matrix.experiment_execution.model_artifact_path}` when serving the local execution lane"
         ),
         (
             "- if the contract provides a concrete `project_root` and a matching "

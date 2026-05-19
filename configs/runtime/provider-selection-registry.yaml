@@ -181,6 +181,32 @@ selection_profiles:
       provider_family_switch: disallowed-by-default
       backend_switch: provider-native
       model_fallback: explicit-model-ladder-only
+  disposable-user-sim-local-qwen3_5-0p8b-openai:
+    status: implemented
+    provider_family: openai-compatible-api
+    backend: openai-compatible-api
+    deployment_profile: local-qwen3_5-0p8b-openai
+    host_execution_profile: qwen3_5-0p8b-openai-local
+    intended_surfaces:
+      - disposable-user-simulation
+      - deeploop analyze
+    model_selection:
+      mode: explicit-required
+      default_behavior: pin disposable-user-simulation execution to a host-local OpenAI-compatible endpoint serving Qwen/Qwen3.5-0.8B from the required GGUF artifact
+      allowed_fields:
+        - model.identifier
+        - model.endpoint_alias
+      required_model:
+        identifier: Qwen/Qwen3.5-0.8B
+        endpoint_alias: local-qwen-0p8b-openai
+      notes:
+        - keep this simulation-only lane separate from the release Gate 2 Qwen3.5-9B profile
+        - keep OPENAI_BASE_URL and OPENAI_API_KEY external/manual even when the endpoint is host-local
+        - the required GGUF artifact for this lane is Qwen3.5-0.8B-UD-Q4_K_XL.gguf from unsloth/Qwen3.5-0.8B-GGUF
+    fallbacks:
+      provider_family_switch: disallowed-by-default
+      backend_switch: provider-native
+      model_fallback: explicit-model-ladder-only
   anthropic-api-control-plane:
     status: reserved-runtime-adapter
     provider_family: anthropic-api

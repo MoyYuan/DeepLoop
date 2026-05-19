@@ -12,7 +12,7 @@ campaign_defaults:
     artifacts_root: /artifacts
   simulator:
     boundary: external-user-simulator
-    required_model_alias: gpt-5.4-mini
+    required_model_alias: gpt-5-mini
     notes:
       - The outer simulated user is intentionally treated as an external boundary; the repo harness prepares the container, prompt bundle, and policy artifacts.
       - Use one simulator command at a time so fresh-user sessions remain sequential and durable.
@@ -23,14 +23,17 @@ campaign_defaults:
       backend: copilot-cli
       model_alias: gpt-5-mini
     experiment_execution:
-      selection_profile: gate2-local-qwen3_5-9b-openai
-      deployment_profile: local-qwen3_5-9b-openai
-      host_execution_profile: qwen3_5-9b-openai-local
+      selection_profile: disposable-user-sim-local-qwen3_5-0p8b-openai
+      deployment_profile: local-qwen3_5-0p8b-openai
+      host_execution_profile: qwen3_5-0p8b-openai-local
       provider_family: openai-compatible-api
       backend: openai-compatible-api
-      model_identifier: Qwen/Qwen3.5-9B
-      endpoint_alias: local-qwen-openai
-      policy_note: All DeepLoop-carried experiments must stay on the local Qwen/Qwen3.5-9B lane for this campaign.
+      model_identifier: Qwen/Qwen3.5-0.8B
+      endpoint_alias: local-qwen-0p8b-openai
+      model_artifact_path: /models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf
+      model_artifact_host_path: /home/moy/workspaces/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf
+      model_artifact_url: https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF?show_file_info=Qwen3.5-0.8B-UD-Q4_K_XL.gguf
+      policy_note: All DeepLoop-carried experiments must stay on the simulation-only local Qwen/Qwen3.5-0.8B GGUF lane for this campaign.
 scenarios:
   - scenario_id: bundled-starter-translation-budget-ladder
     title: Bundled starter translation budget ladder
