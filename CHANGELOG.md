@@ -11,6 +11,33 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.1.10
+
+Patch release focused on making DeepLoop's disposable user-simulation campaign
+contract trustworthy for long-running validation and release review.
+
+### Changed
+
+- the disposable user-simulation matrix now carries a container-visible local
+  Qwen 0.8B GGUF artifact path while preserving host-side provenance metadata,
+  and the disposable container mount contract now exposes that model path
+  read-only at `/models/...`
+- the accepted disposable user-simulation project-root surface now includes the
+  expanded 10-scenario campaign foundation used for long-running validation
+
+### Fixed
+
+- outer-user simulation sessions now honor the full one-hour minimum wall-clock
+  contract even when an intermediate phase exits non-zero, while still
+  persisting durable phase and summary artifacts before surfacing failure
+- failed disposable user-simulation scenarios now preserve their true elapsed
+  runtime instead of collapsing to `0.0` in scenario summaries
+- final campaign status now retains the latest completed phase instead of
+  dropping phase context at campaign completion
+- the repaired 10-project sequential rerun now passes cleanly with `10/10`
+  scenarios completing at `>=3600s`, restoring honest long-run proof for the
+  disposable simulation surface
+
 ## 0.1.9
 
 Patch release focused on tightening DeepLoop's workspace hygiene for release
