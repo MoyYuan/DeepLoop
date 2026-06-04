@@ -18,7 +18,6 @@ dependencies = [
   "pandas",
   "pyyaml",
   "rich",
-  "typer",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -58,7 +57,11 @@ llm = [
 ]
 dev = [
   "deeploop[docs]",
+  "ruff",
 ]
+
+[tool.ruff]
+select = ["E", "F", "I"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

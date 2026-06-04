@@ -2,7 +2,6 @@ version: 1
 contract_id: public-provider-selection
 canonical_public_doc: docs/reference/provider-selection.md
 first_class_provider_families:
-  - copilot-cli
   - openai-compatible-api
   - anthropic-api
   - local-transformers
@@ -40,7 +39,7 @@ resolution_precedence:
     - role override inside the selected profile
     - repo default profile from this registry
 selection_profiles:
-  control-plane-copilot-cli:
+  deepseek-chat-control-plane:
     status: implemented
     intended_roles:
       - planner
@@ -51,45 +50,22 @@ selection_profiles:
       - report-synthesizer
     intended_loops:
       - recursive-agent
-    provider_family: copilot-cli
-    backend: copilot-cli
-    model_selection:
-      mode: optional-explicit
-      default_behavior: use the operator-local Copilot default unless a mission or loop explicitly sets a model alias or identifier
-      allowed_fields:
-        - model.alias
-        - model.identifier
-      notes:
-        - current recursive-agent examples route through the provider launcher and its Copilot CLI adapter
-        - keep machine auth in provider setup; selection here only chooses usage
-    fallbacks:
-      provider_family_switch: disallowed-by-default
-      backend_switch: disallowed
-      model_fallback: operator-local alias fallback only
-  gate2-coding-agent-copilot-gpt5-mini:
-    status: implemented
-    intended_roles:
-      - planner
-      - execution-operator
-    intended_loops:
-      - recursive-agent
-    provider_family: copilot-cli
-    backend: copilot-cli
-    release_gate: gate-2
+    provider_family: openai-compatible-api
+    backend: openai-compatible-api
     model_selection:
       mode: explicit-required
-      default_behavior: pin the Gate 2 coding-agent runtime lane to the Copilot CLI gpt-5-mini alias
+      default_behavior: use deepseek-chat via OPENAI_BASE_URL and OPENAI_API_KEY from the operator environment
       allowed_fields:
-        - model.alias
+        - model.identifier
       required_model:
-        alias: gpt-5-mini
+        identifier: deepseek-chat
       notes:
-        - keep machine auth in provider setup; this profile only pins the Gate 2 coding-agent lane
-        - record durable mission/runtime artifacts with the resolved provider family, backend, and model alias
+        - DeepSeek API is OpenAI-compatible at https://api.deepseek.com/v1
+        - keep OPENAI_API_KEY outside the repo; never commit credentials
     fallbacks:
       provider_family_switch: disallowed-by-default
-      backend_switch: disallowed
-      model_fallback: disallowed
+      backend_switch: provider-native
+      model_fallback: explicit-model-ladder-only
   local-transformers-execution:
     status: implemented
     intended_roles:
@@ -152,7 +128,7 @@ selection_profiles:
       model_fallback: explicit-model-ladder-only
     notes:
       - runtime support currently covers prompt/result control-plane flows that return structured JSON
-      - recursive-agent tool execution remains on the copilot-cli path
+      - recursive-agent control-plane execution uses the openai-compatible-api path
       - local versus commercial deployment remains a profile choice inside this provider family, not a new first-class family
   gate2-local-qwen3_5-9b-openai:
     status: implemented

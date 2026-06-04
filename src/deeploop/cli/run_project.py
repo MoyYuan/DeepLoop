@@ -21,7 +21,7 @@ from deeploop.mission.project_runner import (
 
 _DEFAULT_RUN_CHUNK_ITERATIONS = 8
 _DEFAULT_RUN_MAX_TOTAL_ITERATIONS = 256
-_DEFAULT_FIRST_RUN_SELECTION_PROFILE = "control-plane-copilot-cli"
+_DEFAULT_FIRST_RUN_SELECTION_PROFILE = "deepseek-chat-control-plane"
 
 
 def _add_run_args(parser: argparse.ArgumentParser) -> None:

@@ -8,23 +8,20 @@ import time
 from pathlib import Path
 from typing import Sequence
 
+import yaml
 
 from deeploop.core.paths import REPO_ROOT
 from deeploop.core.phase_defaults import (
     default_kind_for_phase as _default_kind_for_phase,
     default_role_for_phase as _default_role_for_phase,
 )
-from deeploop.runtime.copilot_adapter import build_copilot_prompt_command
 from deeploop.runtime.openai_compatible_adapter import build_openai_compatible_prompt_command
 
-_SUPPORTED_PROVIDER_FAMILIES = frozenset({"copilot-cli", "openai-compatible-api"})
-_DEFAULT_IDLE_TIMEOUT_SECONDS = 120.0
-_PROVIDER_IDLE_TIMEOUT_SECONDS = {
-    "copilot-cli": 900.0,
-    "openai-compatible-api": 300.0,
-}
+_SUPPORTED_PROVIDER_FAMILIES = frozenset({"openai-compatible-api"})
+_DEFAULT_IDLE_TIMEOUT_SECONDS = 300.0
 _POST_EXIT_RESULT_GRACE_SECONDS = 5.0
 _POST_EXIT_RESULT_POLL_SECONDS = 0.2
+_POLL_INTERVAL_SECONDS = 5.0
 
 
 def _provider_subprocess_env() -> dict[str, str]:
@@ -43,34 +40,11 @@ def _provider_subprocess_env() -> dict[str, str]:
 
 
 def build_provider_prompt_command(
-    prompt_text: str,
     *,
-    provider_family: str = "copilot-cli",
-    prompt_file: Path | None = None,
+    prompt_file: Path,
     result_json_path: Path | None = None,
-    add_dirs: Sequence[Path] = (),
     model: str | None = None,
-    allow_all: bool = True,
-    no_ask_user: bool = True,
-    output_format: str = "text",
 ) -> list[str]:
-    resolved_provider_family = str(provider_family or "copilot-cli").strip() or "copilot-cli"
-    if resolved_provider_family not in _SUPPORTED_PROVIDER_FAMILIES:
-        supported = ", ".join(sorted(_SUPPORTED_PROVIDER_FAMILIES))
-        raise ValueError(
-            f"Unsupported provider family '{resolved_provider_family}'. Supported families: {supported}"
-        )
-    if resolved_provider_family == "copilot-cli":
-        return build_copilot_prompt_command(
-            prompt_text,
-            add_dirs=add_dirs,
-            model=model,
-            allow_all=allow_all,
-            no_ask_user=no_ask_user,
-            output_format=output_format,
-        )
-    if prompt_file is None:
-        raise ValueError(f"provider family '{resolved_provider_family}' requires a prompt file")
     return build_openai_compatible_prompt_command(
         prompt_file,
         result_json_path=result_json_path,
@@ -78,11 +52,94 @@ def build_provider_prompt_command(
     )
 
 
-def resolve_provider_idle_timeout_seconds(provider_family: str, idle_timeout_seconds: float | None) -> float:
+def resolve_provider_idle_timeout_seconds(idle_timeout_seconds: float | None) -> float:
     if idle_timeout_seconds is not None:
         return idle_timeout_seconds
-    resolved_provider_family = str(provider_family or "copilot-cli").strip() or "copilot-cli"
-    return _PROVIDER_IDLE_TIMEOUT_SECONDS.get(resolved_provider_family, _DEFAULT_IDLE_TIMEOUT_SECONDS)
+    return _DEFAULT_IDLE_TIMEOUT_SECONDS
+
+
+def resolve_model_for_role(
+    *,
+    role: str,
+    phase: str | None = None,
+    explicit_model: str | None = None,
+    tiers_config: Path | None = None,
+) -> str:
+    """Resolve which model identifier to use based on role and phase tier configuration.
+
+    Resolution order:
+    1. If ``explicit_model`` is provided, use it directly.
+    2. Look up ``role`` in the model tiers config — first by direct role match,
+       then by phase-to-role mapping.
+    3. Fall back to the configured ``default_tier`` model.
+    4. Fall back to the ``OPENAI_MODEL`` environment variable.
+    5. Fall back to ``"deepseek-chat"`` as a last resort.
+
+    Args:
+        role: The intended role (e.g. ``"planner"``, ``"execution-operator"``).
+        phase: Optional phase name (e.g. ``"experiment-design"``, ``"execution"``).
+            When provided and the role is not directly listed in any tier, the
+            function attempts to match the phase to a tier instead.
+        explicit_model: If set, bypasses tier resolution and returns this value.
+        tiers_config: Path to the model-tiers YAML configuration file. Defaults to
+            ``<REPO_ROOT>/configs/runtime/model-tiers.yaml``.
+
+    Returns:
+        A model identifier string (e.g. ``"deepseek-chat"``, ``"deepseek-reasoner"``).
+    """
+    if explicit_model:
+        return explicit_model
+
+    resolved_tiers_path = (
+        tiers_config
+        if tiers_config is not None
+        else REPO_ROOT / "configs" / "runtime" / "model-tiers.yaml"
+    )
+
+    try:
+        raw = yaml.safe_load(resolved_tiers_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        raw = None
+
+    tiers_data: dict = raw if isinstance(raw, dict) else {}
+    tiers: list[dict] = tiers_data.get("tiers", {})
+    default_tier_name: str = str(tiers_data.get("default_tier", "execution"))
+
+    # --- Look up role in tiers ---
+    for tier_name, tier_cfg in tiers.items():
+        if not isinstance(tier_cfg, dict):
+            continue
+        intended_roles = tier_cfg.get("intended_roles", [])
+        if isinstance(intended_roles, list) and role in intended_roles:
+            identifier = tier_cfg.get("model_identifier")
+            if isinstance(identifier, str) and identifier:
+                return identifier
+
+    # --- Fallback: look up phase in tiers ---
+    if phase:
+        for tier_name, tier_cfg in tiers.items():
+            if not isinstance(tier_cfg, dict):
+                continue
+            intended_phases = tier_cfg.get("intended_phases", [])
+            if isinstance(intended_phases, list) and phase in intended_phases:
+                identifier = tier_cfg.get("model_identifier")
+                if isinstance(identifier, str) and identifier:
+                    return identifier
+
+    # --- Fallback to default tier ---
+    if default_tier_name in tiers:
+        default_cfg = tiers[default_tier_name]
+        if isinstance(default_cfg, dict):
+            identifier = default_cfg.get("model_identifier")
+            if isinstance(identifier, str) and identifier:
+                return identifier
+
+    # --- Fallback to env var ---
+    env_model = os.environ.get("OPENAI_MODEL", "").strip()
+    if env_model:
+        return env_model
+
+    return "deepseek-chat"
 
 
 def _load_json_file(path: Path) -> dict[str, object] | None:
@@ -934,15 +991,12 @@ def _wait_for_ready_result_payload(
 def run_provider_prompt(
     prompt_file: Path,
     *,
-    provider_family: str = "copilot-cli",
     result_json_path: Path | None = None,
     sandbox_root: Path | None = None,
     mission_state_path: Path | None = None,
     target_repo: Path | None = None,
     model: str | None = None,
     cwd: Path | None = None,
-    allow_all: bool = True,
-    no_ask_user: bool = True,
     idle_timeout_seconds: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
     prompt_text = prompt_file.read_text(encoding="utf-8")
@@ -953,27 +1007,13 @@ def run_provider_prompt(
     except OSError:
         prompt_started_at_ns = time.time_ns()
         prompt_started_at_inode = None
-    add_dirs: list[Path] = [prompt_file.parent]
-    if result_json_path is not None:
-        add_dirs.append(result_json_path.parent)
-    if sandbox_root is not None:
-        add_dirs.append(sandbox_root)
-    if mission_state_path is not None:
-        add_dirs.append(mission_state_path.parent)
-    if target_repo is not None:
-        add_dirs.append(target_repo)
     command = build_provider_prompt_command(
-        prompt_text,
-        provider_family=provider_family,
         prompt_file=prompt_file,
         result_json_path=result_json_path,
-        add_dirs=add_dirs,
         model=model,
-        allow_all=allow_all,
-        no_ask_user=no_ask_user,
     )
     resolved_cwd = (cwd or target_repo or prompt_file.parent).expanduser().resolve()
-    effective_idle_timeout_seconds = resolve_provider_idle_timeout_seconds(provider_family, idle_timeout_seconds)
+    effective_idle_timeout_seconds = resolve_provider_idle_timeout_seconds(idle_timeout_seconds)
     if result_json_path is None:
         return subprocess.run(
             command,
@@ -1136,4 +1176,4 @@ def run_provider_prompt(
                         warnings=degraded_warnings,
                         existing_payload=degraded_payload,
                     )
-        time.sleep(1)
+        time.sleep(_POLL_INTERVAL_SECONDS)

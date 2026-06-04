@@ -114,7 +114,7 @@ def _add_analyze_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--sandbox-root", help="Optional sandbox root passed to the provider launcher.")
     parser.add_argument("--target-repo", help="Optional target-repo path passed to the provider launcher.")
-    parser.add_argument("--provider-family", default="copilot-cli", help="Provider family (default: copilot-cli).")
+    parser.add_argument("--provider-family", default="openai-compatible-api", help="Provider family (default: openai-compatible-api).")
     parser.add_argument("--model", help="Optional model override for the provider.")
     parser.add_argument("--json", action="store_true", help="Emit the structured result payload as JSON.")
 

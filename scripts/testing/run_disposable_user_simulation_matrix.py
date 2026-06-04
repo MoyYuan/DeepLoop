@@ -57,49 +57,6 @@ def _volume_arg(source: Path, target: str, *, read_only: bool = False) -> str:
     return f"{source.resolve()}:{target}{suffix}"
 
 
-def _resolve_host_copilot_mounts(
-    *,
-    enabled: bool,
-    home: Path | None = None,
-) -> list[dict[str, object]]:
-    if not enabled:
-        return []
-    host_home = (home or Path.home()).expanduser().resolve()
-    copilot_binary = shutil.which("copilot")
-    if not copilot_binary:
-        raise FileNotFoundError("`--mount-host-copilot` requires a host `copilot` binary on PATH.")
-    gh_config = host_home / ".config" / "gh"
-    if not gh_config.is_dir():
-        raise FileNotFoundError(
-            "`--mount-host-copilot` requires host GitHub CLI auth/config at ~/.config/gh."
-        )
-    mounts: list[dict[str, object]] = [
-        {
-            "source": str(Path(copilot_binary).expanduser().resolve()),
-            "target": "/usr/local/bin/copilot",
-            "read_only": True,
-            "kind": "binary",
-        },
-        {
-            "source": str(gh_config),
-            "target": "/home/deeploop/.config/gh",
-            "read_only": True,
-            "kind": "config",
-        },
-    ]
-    copilot_home = host_home / ".copilot"
-    if copilot_home.exists():
-        mounts.append(
-            {
-                "source": str(copilot_home),
-                "target": "/home/deeploop/.copilot",
-                "read_only": False,
-                "kind": "copilot-home",
-            }
-        )
-    return mounts
-
-
 def _resolve_model_artifact_mounts(
     *,
     matrix: object,
@@ -554,7 +511,6 @@ def _run_scenario(
     matrix: object,
     simulator_command: list[str] | None,
     prepare_only: bool,
-    host_copilot_mount: bool,
     progress_callback: callable | None = None,
 ) -> dict[str, object]:
     from deeploop.testing.disposable_user_simulation import DisposableUserSimulationScenario, DisposableUserSimulationMatrix
@@ -573,7 +529,6 @@ def _run_scenario(
 
     materialize_scenario_workspace(matrix, scenario, workspace_root=workspace_root)
     container_mounts = _resolve_model_artifact_mounts(matrix=matrix, require_existing=not prepare_only)
-    container_mounts.extend(_resolve_host_copilot_mounts(enabled=host_copilot_mount))
 
     container_name = _sanitize_container_name(f"{campaign_id}-{scenario.scenario_id}")
     contract = build_scenario_contract(
@@ -710,15 +665,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skip-build", action="store_true", help="Reuse an existing image tag instead of building a new image.")
     parser.add_argument("--image-tag", help="Optional image tag override.")
     parser.add_argument("--scenario", action="append", default=[], help="Scenario id to run. Repeat to select multiple scenarios.")
-    parser.add_argument(
-        "--mount-host-copilot",
-        action="store_true",
-        help=(
-            "Explicitly mount the host Copilot binary plus ~/.config/gh and optional ~/.copilot "
-            "into the disposable container so in-container Copilot-backed DeepLoop flows can run. "
-            "~/.copilot is mounted read-write so Copilot can persist session-state."
-        ),
-    )
     parser.add_argument("--prepare-only", action="store_true", help="Only materialize scenario bundles; do not build images, start containers, or run a simulator command.")
     parser.add_argument(
         "--managed-sandbox",
@@ -812,7 +758,6 @@ def main(argv: list[str] | None = None) -> int:
                 matrix=matrix,
                 simulator_command=list(args.simulator_command or []),
                 prepare_only=bool(args.prepare_only),
-                host_copilot_mount=bool(args.mount_host_copilot),
                 progress_callback=(
                     lambda scenario_root=scenario_root, scenario_id=scenario.scenario_id: _write_campaign_status(
                         output_root,

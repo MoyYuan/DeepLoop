@@ -23,7 +23,7 @@ from deeploop.core.paths import (
 
 _PROVIDER_SETUP_REGISTRY_PATH = REPO_ROOT / "configs" / "runtime" / "provider-setup-registry.yaml"
 _PROVIDER_SELECTION_REGISTRY_PATH = REPO_ROOT / "configs" / "runtime" / "provider-selection-registry.yaml"
-_DEFAULT_FIRST_RUN_SELECTION_PROFILE = "control-plane-copilot-cli"
+_DEFAULT_FIRST_RUN_SELECTION_PROFILE = "deepseek-chat-control-plane"
 _COMMAND_CHECK_TIMEOUT_SECONDS = 20
 
 
@@ -366,8 +366,6 @@ def _next_provider_setup_step(provider_family: str, failed_checks: list[dict[str
         for check in failed_checks
         if check.get("kind") in {"required-tool", "command"}
     ]
-    if provider_family == "copilot-cli" and "copilot" in failed_tool_names:
-        return "Install the Copilot CLI and complete its machine authentication on this machine."
     if failed_tool_names:
         tools = ", ".join(dict.fromkeys(name for name in failed_tool_names if name))
         return f"Install the required tool(s) for this provider family: {tools}."
