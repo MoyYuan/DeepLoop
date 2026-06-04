@@ -14,6 +14,7 @@ import yaml
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import resolve_workspace_path
 from deeploop.core.paths import REPO_ROOT as DEEPLOOP_REPO_ROOT
+from deeploop.core.shared import build_command as _build_command, is_relative_to as _is_relative_to
 from deeploop.research.sanity_gates import evaluate_research_sanity, extract_proposal_config_path
 from deeploop.research.self_correction import assess_manifest_for_self_correction
 
@@ -44,14 +45,6 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def _write_markdown(path: Path, lines: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def _is_relative_to(path: Path, other: Path) -> bool:
-    try:
-        path.relative_to(other)
-    except ValueError:
-        return False
-    return True
 
 
 def _resolved_path(path: Path) -> Path:
@@ -134,12 +127,6 @@ def _history_path(entry_root: Path) -> Path:
 
 def _append_history(entry_root: Path, payload: dict[str, Any]) -> None:
     append_jsonl(_history_path(entry_root), payload)
-
-
-def _build_command(command: list[str], env_name: str | None) -> list[str]:
-    if env_name is None:
-        return list(command)
-    return ["conda", "run", "-n", env_name, *command]
 
 
 def _attempt_environment(

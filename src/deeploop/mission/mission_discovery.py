@@ -6,6 +6,7 @@ from typing import Any, Callable
 import yaml
 
 from deeploop.core.paths import SCRATCH_DIR
+from deeploop.core.shared import dedupe_strings as _dedupe_strings, slugify as _slugify
 from deeploop.core.structured_io import write_markdown, write_yaml_mapping
 from deeploop.mission.project_bootstrap import (
     build_mission_config_from_project_root,
@@ -68,21 +69,6 @@ def _normalize_text(value: Any) -> str:
     return " ".join(str(value or "").split()).strip()
 
 
-def _slugify(value: str) -> str:
-    slug_chars: list[str] = []
-    pending_dash = False
-    for char in value.lower():
-        if char.isalnum():
-            if pending_dash and slug_chars:
-                slug_chars.append("-")
-            slug_chars.append(char)
-            pending_dash = False
-        elif slug_chars:
-            pending_dash = True
-    slug = "".join(slug_chars).strip("-")
-    return slug or "interactive-mission"
-
-
 def build_discovery_checklist(answers: dict[str, str]) -> list[dict[str, str]]:
     checklist = [
         {
@@ -118,17 +104,6 @@ def _discovery_constraints(answers: dict[str, str]) -> list[str]:
         if value:
             constraints.append(value)
     return constraints
-
-
-def _dedupe_strings(values: list[str]) -> list[str]:
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        deduped.append(value)
-    return deduped
 
 
 def _render_compact_value(value: Any) -> str:

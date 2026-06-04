@@ -8,17 +8,10 @@ from typing import Any
 
 from deeploop.artifacts.artifact_packager import PACKAGE_CONTRACT_PATH, package_mission_artifacts
 from deeploop.core.paths import REPO_ROOT
+from deeploop.core.shared import is_relative_to as _is_relative_to
 from deeploop.core.structured_io import write_json_object, write_markdown, write_text
 
 SUPPORTED_EXPORT_FORMATS = ("github-repo",)
-
-
-def _is_relative_to(path: Path, parent: Path) -> bool:
-    try:
-        path.resolve().relative_to(parent.resolve())
-        return True
-    except ValueError:
-        return False
 
 
 def _remove_path(path: Path) -> None:

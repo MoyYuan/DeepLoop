@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from deeploop.autonomy.mission_contract_snapshot import resolve_phase_contract_for_state
+from deeploop.core.bounded_memory import BoundedMemory
 from deeploop.project_contract import CONTRACT_OPERATIONAL_FIELDS
 
 
@@ -119,6 +120,7 @@ def render_prompt(
     result_json_path: Path,
     iteration_number: int,
     max_iterations: int | None = None,
+    bounded_memory: BoundedMemory | None = None,
 ) -> str:
     current_phase = str(mission_state.get("current_phase") or "")
     phase_policy = resolve_phase_contract_for_state(current_phase, mission_state=mission_state)
@@ -282,19 +284,23 @@ def render_prompt(
     )
     lines.extend(f"- `{source}`" for source in sandbox["rule_sources"])
     lines.append("")
-    if recent_ledger:
-        lines.extend(["## Recent mission ledger", ""])
-        for entry in recent_ledger:
-            lines.append(
-                f"- `{entry.get('created_at', 'unknown')}` `{entry.get('kind', 'unknown')}` `{entry.get('status', 'unknown')}`: {entry.get('summary', '')}"
-            )
+    if bounded_memory is not None:
+        lines.append(bounded_memory.context_block())
         lines.append("")
-    if recent_memory:
-        lines.extend(["## Recent recursive-loop memory", ""])
-        for entry in recent_memory:
-            lines.append(
-                f"- iteration `{entry.get('iteration')}` role `{entry.get('role')}` status `{entry.get('status')}`: {entry.get('summary', '')}"
-            )
+    else:
+        if recent_ledger:
+            lines.extend(["## Recent mission ledger", ""])
+            for entry in recent_ledger:
+                lines.append(
+                    f"- `{entry.get('created_at', 'unknown')}` `{entry.get('kind', 'unknown')}` `{entry.get('status', 'unknown')}`: {entry.get('summary', '')}"
+                )
+            lines.append("")
+        if recent_memory:
+            lines.extend(["## Recent recursive-loop memory", ""])
+            for entry in recent_memory:
+                lines.append(
+                    f"- iteration `{entry.get('iteration')}` role `{entry.get('role')}` status `{entry.get('status')}`: {entry.get('summary', '')}"
+                )
         lines.append("")
     lines.extend(["## Output contract", "", *result_contract_markdown(result_json_path)])
     lines.extend(

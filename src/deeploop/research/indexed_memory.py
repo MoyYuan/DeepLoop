@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import warnings
 from hashlib import sha1
 from json import JSONDecodeError, JSONDecoder
 from pathlib import Path
@@ -259,6 +260,7 @@ def _schema_errors(payload: Mapping[str, Any], schema_path: Path) -> list[str]:
     try:
         import jsonschema
     except ImportError:
+        warnings.warn("jsonschema not installed; schema validation is incomplete")
         errors: list[str] = []
         for key in schema.get("required", []):
             if key not in payload:

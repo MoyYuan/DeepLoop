@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 import importlib
+import json
+import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Any, Mapping
+import time
+from typing import Any, Callable, Mapping
 
 from deeploop.autonomy.mission_contract_snapshot import load_mission_contract_snapshot_for_state, resolve_phase_contract_for_state
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
@@ -17,6 +21,7 @@ from deeploop.mission._constants import (
     RUNTIME_SUMMARY_JSON_FILE as _RUNTIME_SUMMARY_JSON_FILE,
     RUNTIME_SUMMARY_MD_FILE as _RUNTIME_SUMMARY_MD_FILE,
 )
+from deeploop.mission.agent_dialogue import AgentDialogue
 from deeploop.autonomy.mission_autonomy import build_outer_loop_contract, enrich_outer_loop_contract, resolve_phase_contract
 from deeploop.autonomy.operator_inbox import (
     append_operator_request,
@@ -28,7 +33,9 @@ from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
 from deeploop.mission._operator_surface import management_commands as _public_management_commands
 from deeploop.mission.mission_decision_engine import (
     MissionDecisionDirective,
+    MissionDecisionOutcome,
     MissionEvidence,
+    MissionExecutorDispatch,
     MissionPlannedAction,
     decide_next_mission_action,
 )
@@ -74,6 +81,232 @@ from deeploop.runtime import mission_executor_registry as _mission_executor_regi
 DEFAULT_RUNTIME_DIR_NAME = "mission_outer_runtime"
 _TERMINAL_RUNTIME_STATUSES = {"completed", "blocked", "failed", "max-iterations"}
 _INVOKE_PROVIDER_PROMPT_SCRIPT = REPO_ROOT / "scripts" / "runtime" / "invoke_provider_prompt.py"
+
+
+# ---------------------------------------------------------------------------
+# Composable stop conditions
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class StopCondition:
+    """A composable stop condition for the mission runtime loop.
+
+    Each condition is an independent check that evaluates whether the
+    mission runtime loop should halt.
+    """
+
+    name: str
+    """Short identifier for this condition (e.g. ``"max_iterations"``)."""
+
+    check: Callable[[dict[str, Any], dict[str, Any]], bool]
+    """Function ``(mission_state, runtime_state) -> should_stop``.
+
+    Receives the current mission state and runtime state dicts and returns
+    *True* when the loop should halt.
+    """
+
+    reason: str
+    """Human-readable reason template for why this condition would stop.
+
+    May be a static string or a template that can be formatted with
+    condition-specific values at runtime.
+    """
+
+
+def check_stop_conditions(
+    mission_state: dict[str, Any],
+    runtime_state: dict[str, Any],
+    conditions: list[StopCondition],
+) -> tuple[bool, str | None]:
+    """Check all stop conditions against the current state.
+
+    Parameters
+    ----------
+    mission_state:
+        Current mission state dict.
+    runtime_state:
+        Current runtime state dict.
+    conditions:
+        Ordered list of :class:`StopCondition` instances to evaluate.
+
+    Returns
+    -------
+    A ``(should_stop, reason)`` pair.  If any condition triggers,
+    *should_stop* is *True* and *reason* contains the first matching
+    condition's reason string.  Otherwise ``(False, None)``.
+    """
+    for condition in conditions:
+        try:
+            if condition.check(mission_state, runtime_state):
+                return True, condition.reason
+        except Exception:
+            # A misbehaving condition should not crash the loop
+            continue
+    return False, None
+
+
+def default_stop_conditions(
+    max_iterations: int,
+    max_cost: float | None = None,
+    time_limit: float | None = None,
+    no_progress_threshold: int = 20,
+    max_tokens: int = 1_000_000,
+    max_cost_usd: float = 5.0,
+) -> list[StopCondition]:
+    """Build the default set of composable stop conditions.
+
+    Parameters
+    ----------
+    max_iterations:
+        Stop after this many iterations have been completed.
+    max_cost:
+        Optional cost limit in dollars.  Stops when estimated cost exceeds
+        this value.  Falls back to *max_cost_usd* when not set.
+    max_tokens:
+        Stop when total token usage across all calls reaches this value.
+        Defaults to 1,000,000.
+    max_cost_usd:
+        Default cost limit in dollars when *max_cost* is not specified.
+        Defaults to $5.00.
+    no_progress_threshold:
+        Stop when no metric improvement has been observed for this many
+        consecutive iterations.
+
+    Returns
+    -------
+    A list of :class:`StopCondition` instances ready to pass to
+    :func:`check_stop_conditions`.
+    """
+    conditions: list[StopCondition] = []
+
+    # -- max_iterations ---------------------------------------------------
+    def _max_iterations_check(state: dict[str, Any], runtime: dict[str, Any]) -> bool:
+        completed = int(runtime.get("iterations_completed", 0))
+        return completed >= max_iterations
+
+    conditions.append(
+        StopCondition(
+            name="max_iterations",
+            check=_max_iterations_check,
+            reason=f"Reached the configured iteration limit of {max_iterations}.",
+        )
+    )
+
+    # -- token_count ------------------------------------------------------
+    conditions.append(tokenCountIs(max_tokens))
+
+    # -- cost_limit -------------------------------------------------------
+    effective_max_cost = max_cost_usd if max_cost is None else max_cost
+    if effective_max_cost > 0:
+        conditions.append(costIs(effective_max_cost))
+
+    # -- time_limit (wall clock) ------------------------------------------
+    # The time limit is set relative to the loop start time.  We store the
+    # deadline in the closure.
+    def _make_time_limit_check(deadline: float) -> Callable[[dict[str, Any], dict[str, Any]], bool]:
+        def _check(state: dict[str, Any], runtime: dict[str, Any]) -> bool:
+            return time.monotonic() >= deadline
+
+        return _check
+
+    if time_limit is not None and time_limit > 0:
+        deadline = time.monotonic() + time_limit
+        conditions.append(
+            StopCondition(
+                name="time_limit",
+                check=_make_time_limit_check(deadline),
+                reason=f"Wall-clock time exceeded the configured limit of {time_limit:.0f}s.",
+            )
+        )
+
+    # -- no_progress_threshold --------------------------------------------
+    def _no_progress_check(state: dict[str, Any], runtime: dict[str, Any]) -> bool:
+        stalled = int(runtime.get("no_progress_count", 0))
+        return stalled >= no_progress_threshold
+
+    conditions.append(
+        StopCondition(
+            name="no_progress",
+            check=_no_progress_check,
+            reason=(
+                f"No measurable progress for {no_progress_threshold} consecutive iterations."
+            ),
+        )
+    )
+
+    return conditions
+
+
+# ---------------------------------------------------------------------------
+# Token & cost stop condition factories
+# ---------------------------------------------------------------------------
+
+_MODEL_PRICING: dict[str, dict[str, float]] = {
+    "deepseek-chat": {"input": 0.27, "output": 1.10},
+    "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+}
+
+
+def tokenCountIs(max_tokens: int) -> StopCondition:
+    """Stop when total_tokens across all calls reaches *max_tokens*."""
+    return StopCondition(
+        name="token_count",
+        check=lambda _ms, rs: int(rs.get("total_tokens", 0)) >= max_tokens,
+        reason=f"Total token usage reached the configured limit of {max_tokens}.",
+    )
+
+
+def inputTokenCountIs(max_tokens: int) -> StopCondition:
+    """Stop when total_input_tokens reaches *max_tokens*."""
+    return StopCondition(
+        name="input_token_count",
+        check=lambda _ms, rs: int(rs.get("total_input_tokens", 0)) >= max_tokens,
+        reason=f"Input token usage reached the configured limit of {max_tokens}.",
+    )
+
+
+def outputTokenCountIs(max_tokens: int) -> StopCondition:
+    """Stop when total_output_tokens reaches *max_tokens*."""
+    return StopCondition(
+        name="output_token_count",
+        check=lambda _ms, rs: int(rs.get("total_output_tokens", 0)) >= max_tokens,
+        reason=f"Output token usage reached the configured limit of {max_tokens}.",
+    )
+
+
+def costIs(max_cost_usd: float) -> StopCondition:
+    """Stop when accumulated_cost reaches *max_cost_usd*."""
+    return StopCondition(
+        name="cost_limit",
+        check=lambda _ms, rs: float(rs.get("accumulated_cost", 0.0)) >= max_cost_usd,
+        reason=f"Accumulated cost exceeded the configured limit of ${max_cost_usd:.2f}.",
+    )
+
+
+def accumulate_cost(runtime_state: dict, model: str, input_tokens: int, output_tokens: int) -> float:
+    """Accumulate estimated cost into runtime_state and return the new total.
+
+    Uses ``_MODEL_PRICING`` to compute cost per 1M tokens.  If the model is
+    not found in the pricing table, the cost is silently skipped (returns 0).
+
+    Args:
+        runtime_state: Mutable runtime state dict (updated in place).
+        model: Model identifier (e.g. ``"deepseek-chat"``).
+        input_tokens: Number of input (prompt) tokens.
+        output_tokens: Number of output (completion) tokens.
+
+    Returns:
+        The new accumulated cost total.
+    """
+    pricing = _MODEL_PRICING.get(model)
+    if pricing is None:
+        return float(runtime_state.get("accumulated_cost", 0.0))
+    cost = (input_tokens / 1_000_000) * pricing["input"] + (output_tokens / 1_000_000) * pricing["output"]
+    current = float(runtime_state.get("accumulated_cost", 0.0))
+    new_total = current + cost
+    runtime_state["accumulated_cost"] = new_total
+    return new_total
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -163,6 +396,74 @@ def gather_mission_evidence(
             "branch_records": _branch_records_from_log(branch_log_path) or state.get("branch_records") or (),
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Agent dialogue helpers (critique / experiment-design phases)
+# ---------------------------------------------------------------------------
+
+_DIALOGUE_PHASES = frozenset({"experiment-design", "critique"})
+
+
+def _dialogue_roles_for_phase(phase: str) -> list[str]:
+    """Return the agent roles for a dialogue-enabled phase."""
+    if phase == "experiment-design":
+        return ["experiment-designer", "execution-operator", "critic-verifier"]
+    if phase == "critique":
+        return ["execution-operator", "critic-verifier"]
+    return []
+
+
+def _maybe_init_agent_dialogue(mission_state: dict[str, Any], to_phase: str) -> None:
+    """Create an ``AgentDialogue`` when entering a dialogue-enabled phase.
+
+    If the mission is already in a dialogue phase (dialogue exists in state),
+    no new dialogue is created — the existing one is reused.
+    """
+    if to_phase not in _DIALOGUE_PHASES:
+        return
+    existing = mission_state.get("agent_dialogue")
+    if isinstance(existing, dict) and existing.get("turns"):
+        return
+    roles = _dialogue_roles_for_phase(to_phase)
+    if not roles:
+        return
+    dialogue = AgentDialogue(roles=roles)
+    dialogue.add_turn(
+        role="system",
+        content=f"Entering `{to_phase}` phase with roles: {', '.join(roles)}.",
+    )
+    mission_state["agent_dialogue"] = dialogue.to_dict()
+
+
+def _record_dialogue_turn(
+    mission_state: dict[str, Any],
+    *,
+    role: str,
+    content: str,
+    artifacts: list[str] | None = None,
+) -> None:
+    """Append a turn to the active agent dialogue, if one exists."""
+    dialogue_data = mission_state.get("agent_dialogue")
+    if not isinstance(dialogue_data, dict):
+        return
+    dialogue = AgentDialogue.from_dict(dialogue_data)
+    dialogue.add_turn(role=role, content=content, artifacts=artifacts)
+    mission_state["agent_dialogue"] = dialogue.to_dict()
+
+
+def _dialogue_summary_for_action(mission_state: dict[str, Any]) -> str:
+    """Return the dialogue protocol message + summary for injection into a task description.
+
+    Returns an empty string when there is no active dialogue.
+    """
+    dialogue_data = mission_state.get("agent_dialogue")
+    if not isinstance(dialogue_data, dict):
+        return ""
+    dialogue = AgentDialogue.from_dict(dialogue_data)
+    first_role = dialogue.roles[0] if dialogue.roles else "agent"
+    protocol = dialogue.protocol_message(role=first_role, message_type="DIALOGUE")
+    return f"\n\n## Agent Dialogue Context\n\n{dialogue.summary()}\n\n{protocol}"
 
 
 def _phase_transitions(phase: str, *, mission_state: Mapping[str, Any] | None = None) -> list[str]:
@@ -666,6 +967,8 @@ def _mission_state_updates_from_executor(
                 else str(updated_state.get("next_phase") or "")
             ),
         )
+        # -- Initialize agent dialogue when entering a dialogue-enabled phase via executor result --
+        _maybe_init_agent_dialogue(updated_state, to_phase)
     next_phase_on_success = str(action_payload.get("next_phase_on_success") or "").strip()
     if next_phase_on_success and not str(phase_control.get("next_phase") or "").strip():
         updated_state["next_phase"] = next_phase_on_success
@@ -1576,11 +1879,400 @@ def _refresh_completed_mission_package(
     )
 
 
+def _handle_complete_directive(
+    mission_state: dict[str, Any],
+    runtime_state: dict[str, Any],
+    terminal_reason: str,
+) -> None:
+    _stop_status(mission_state, runtime_state=runtime_state, status="completed", reason=terminal_reason)
+
+
+def _handle_fail_directive(
+    mission_state: dict[str, Any],
+    runtime_state: dict[str, Any],
+    terminal_reason: str,
+) -> None:
+    _stop_status(mission_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
+
+
+def _handle_block_directive(
+    mission_state: dict[str, Any],
+    runtime_state: dict[str, Any],
+    outcome: MissionDecisionOutcome,
+    terminal_reason: str,
+) -> str:
+    if outcome.action is not None:
+        _update_action_result(
+            mission_state,
+            action_id=outcome.action.action_id,
+            status="blocked",
+            notes=[terminal_reason],
+        )
+    _stop_status(mission_state, runtime_state=runtime_state, status="blocked", reason=terminal_reason)
+    return "blocked"
+
+
+def _handle_transition_directive(
+    mission_state: dict[str, Any],
+    runtime_state: dict[str, Any],
+    outcome: MissionDecisionOutcome,
+    terminal_reason: str,
+) -> str:
+    transition = outcome.decision.transition.to_payload() if outcome.decision.transition is not None else {}
+    from_phase = str(transition.get("from_phase") or mission_state.get("current_phase") or "")
+    to_phase = str(transition.get("to_phase") or (outcome.action.phase if outcome.action is not None else from_phase))
+
+    # -- Record dialogue turn when leaving a dialogue-enabled phase --
+    if from_phase in _DIALOGUE_PHASES and from_phase != to_phase:
+        _record_dialogue_turn(
+            mission_state,
+            role="system",
+            content=f"Phase transition: `{from_phase}` -> `{to_phase}`. {terminal_reason}",
+        )
+
+    _apply_phase_change(
+        mission_state,
+        from_phase=from_phase,
+        to_phase=to_phase,
+        next_phase=str(transition.get("to_phase") or mission_state.get("next_phase") or ""),
+    )
+
+    # -- Initialize agent dialogue when entering a dialogue-enabled phase --
+    _maybe_init_agent_dialogue(mission_state, to_phase)
+
+    mission_state["status"] = "running"
+    mission_state["autonomy_status"] = {
+        "state": "mission-runtime-transitioned",
+        "reason": terminal_reason,
+    }
+    if outcome.action is not None:
+        _update_action_result(
+            mission_state,
+            action_id=outcome.action.action_id,
+            status="completed",
+            notes=[terminal_reason],
+        )
+    runtime_state["status"] = "running"
+    runtime_state["terminal_reason"] = None
+    return outcome.directive.value
+
+
+def _handle_dispatch_failure(
+    resolved_state_path: Path,
+    mission_state: dict[str, Any],
+    runtime_state: dict[str, Any],
+    runtime_root_path: Path,
+    outcome: MissionDecisionOutcome,
+    action_payload: dict[str, Any] | None,
+    contract: dict[str, Any],
+    dispatch: MissionExecutorDispatch,
+    exc: Exception,
+) -> str:
+    """Handle dispatch execution failure. Returns terminal_reason; mutates mission_state/runtime_state in place."""
+    post_execution_state = load_mission_state(resolved_state_path)
+    if isinstance(post_execution_state, dict):
+        for key, value in post_execution_state.items():
+            if key not in mission_state or mission_state.get(key) in (None, "", [], {}):
+                mission_state[key] = value
+    action_phase = str(
+        (action_payload.get("phase") if isinstance(action_payload, dict) else None)
+        or mission_state.get("current_phase")
+        or ""
+    )
+    action_branch_id = str(
+        (action_payload.get("branch_id") if isinstance(action_payload, dict) else None) or ""
+    )
+    terminal_reason = (
+        f"Executor `{dispatch.executor_id.value}` raised `{type(exc).__name__}`: {exc}"
+    )
+    failures = _normalize_strings(mission_state.get("recent_failures"))
+    failures.append(terminal_reason)
+    mission_state["recent_failures"] = failures[-8:]
+    mission_state["failure_count"] = int(mission_state.get("failure_count", 0) or 0) + 1
+    _update_action_result(
+        mission_state,
+        action_id=outcome.action.action_id,
+        status="blocked",
+        notes=[terminal_reason],
+    )
+    _stop_status(mission_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
+    _record_ledger(
+        resolved_state_path,
+        mission_state=mission_state,
+        runtime_root=runtime_root_path,
+        contract=contract,
+        kind="mission-runtime-execution",
+        status="failed",
+        summary=terminal_reason,
+        metadata={
+            "action_id": outcome.action.action_id,
+            "executor_id": dispatch.executor_id.value,
+        },
+    )
+    append_mission_experiment_entry(
+        resolved_state_path,
+        str(mission_state.get("mission_id") or ""),
+        contract=contract,
+        entry_id=f"execution-{outcome.action.action_id}",
+        kind="experiment-run",
+        status="failed",
+        summary=terminal_reason,
+        phase=action_phase,
+        action_id=outcome.action.action_id,
+        branch_id=action_branch_id,
+        executor_id=dispatch.executor_id.value,
+        metadata={"reason": terminal_reason},
+    )
+    return terminal_reason
+
+
+def _handle_dispatch_success(
+    resolved_state_path: Path,
+    mission_state: dict[str, Any],
+    runtime_state: dict[str, Any],
+    runtime_root_path: Path,
+    outcome: MissionDecisionOutcome,
+    action_payload: dict[str, Any] | None,
+    contract: dict[str, Any],
+    dispatch: MissionExecutorDispatch,
+    result: MissionExecutionResult,
+) -> tuple[str, str, Mapping[str, Any] | None, dict[str, Any], bool]:
+    """Handle successful dispatch execution. Returns (raw_outcome_status, terminal_reason, executor_payload, mission_state, should_continue)."""
+    post_execution_state = load_mission_state(resolved_state_path)
+    updated_state, action_status, output_paths = _mission_state_updates_from_executor(
+        post_execution_state,
+        action_payload=action_payload,
+        result=result,
+    )
+    _update_action_result(
+        updated_state,
+        action_id=outcome.action.action_id,
+        status=action_status,
+        output_paths=output_paths,
+        notes=[result.summary, f"executor-status={result.status}"],
+    )
+    if result.executor_id == MissionExecutorId.SELF_HEALING_QUEUE:
+        updated_state["runtime_recovery"] = _jsonify(result.payload)
+    elif result.executor_id == MissionExecutorId.ADAPTATION_TRAINING:
+        updated_state["adaptation_training"] = _jsonify(result.payload)
+    elif result.executor_id == MissionExecutorId.EVALUATION_COMPARISON:
+        updated_state["evaluation_comparison"] = _jsonify(result.payload)
+    elif result.executor_id == MissionExecutorId.REPORT_SYNTHESIS:
+        updated_state["mission_package"] = _jsonify(result.payload)
+    elif result.executor_id == MissionExecutorId.STAGE_KERNEL:
+        stage_runs = updated_state.setdefault("stage_runs", {})
+        stage_id = str(result.payload.get("stage_id") or outcome.action.action_id)
+        stage_runs[stage_id] = _jsonify(result.payload)
+    gate_event = result.payload.get("gate_event") if isinstance(result.payload.get("gate_event"), Mapping) else None
+    if (
+        str(result.status) == "deferred"
+        and isinstance(gate_event, Mapping)
+        and str(gate_event.get("gate") or "") == "soft"
+    ):
+        managed_recovery = _stage_managed_recovery_action(
+            updated_state,
+            source_action_payload=action_payload,
+            recommended_action=(
+                _normalize_strings(gate_event.get("preferred_actions"))[:1] or [None]
+            )[0],
+            reason=str(gate_event.get("reason") or result.summary or "").strip(),
+            source="soft-gate",
+            recommended_resume_action=str(gate_event.get("default_response") or "").strip() or None,
+        )
+        if managed_recovery is not None:
+            runtime_state["automatic_recovery"] = _jsonify(managed_recovery)
+    bootstrap_note = None
+    try:
+        updated_state, bootstrap_note = _maybe_stage_bootstrap_followups(
+            resolved_state_path,
+            updated_state,
+            result=result,
+        )
+    except Exception as exc:
+        action_phase = str(
+            (action_payload.get("phase") if isinstance(action_payload, dict) else None)
+            or mission_state.get("current_phase")
+            or ""
+        )
+        action_branch_id = str(
+            (action_payload.get("branch_id") if isinstance(action_payload, dict) else None) or ""
+        )
+        terminal_reason = f"Bootstrap follow-up staging failed: {exc}"
+        failures = _normalize_strings(updated_state.get("recent_failures"))
+        failures.append(terminal_reason)
+        updated_state["recent_failures"] = failures[-8:]
+        updated_state["failure_count"] = int(updated_state.get("failure_count", 0) or 0) + 1
+        _update_action_result(
+            updated_state,
+            action_id=outcome.action.action_id,
+            status="blocked",
+            notes=[terminal_reason],
+        )
+        _stop_status(updated_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
+        append_mission_experiment_entry(
+            resolved_state_path,
+            str(updated_state.get("mission_id") or ""),
+            contract=contract,
+            entry_id=f"execution-{outcome.action.action_id}",
+            kind="experiment-run",
+            status="failed",
+            summary=terminal_reason,
+            phase=action_phase,
+            action_id=outcome.action.action_id,
+            branch_id=action_branch_id,
+            executor_id=result.executor_id.value,
+            metadata={"reason": terminal_reason, "payload": _jsonify(result.payload)},
+        )
+        _record_ledger(
+            resolved_state_path,
+            mission_state=updated_state,
+            runtime_root=runtime_root_path,
+            contract=contract,
+            kind="mission-runtime-execution",
+            status="failed",
+            summary=terminal_reason,
+            metadata={
+                "action_id": outcome.action.action_id,
+                "executor_id": result.executor_id.value,
+                "executor_status": result.status,
+                "artifacts": [str(path) for path in result.artifacts.values()],
+            },
+        )
+        return "", terminal_reason, None, updated_state, True
+
+    raw_outcome_status = str(result.status)
+    terminal_reason = result.summary
+    if bootstrap_note:
+        terminal_reason = bootstrap_note
+    executor_payload = result.payload
+    return_state = updated_state
+
+    if _should_continue_after_recursive_executor_failure(result=result, action_payload=action_payload):
+        failures = _normalize_strings(return_state.get("recent_failures"))
+        failures.append(terminal_reason)
+        return_state["recent_failures"] = failures[-8:]
+        return_state["failure_count"] = int(return_state.get("failure_count", 0) or 0) + 1
+        return_state["status"] = "running"
+        return_state["autonomy_status"] = {
+            "state": "mission-runtime-recovery",
+            "reason": terminal_reason,
+        }
+        runtime_state["status"] = "running"
+        runtime_state["terminal_reason"] = None
+    elif raw_outcome_status in {"blocked"}:
+        _stop_status(return_state, runtime_state=runtime_state, status="blocked", reason=terminal_reason)
+    elif raw_outcome_status in {"failed", "error"}:
+        failures = _normalize_strings(return_state.get("recent_failures"))
+        failures.append(terminal_reason)
+        return_state["recent_failures"] = failures[-8:]
+        return_state["failure_count"] = int(return_state.get("failure_count", 0) or 0) + 1
+        _stop_status(return_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
+    elif raw_outcome_status == "max-iterations":
+        _stop_status(return_state, runtime_state=runtime_state, status="max-iterations", reason=terminal_reason)
+    else:
+        return_state["status"] = "running"
+        autonomy_state = return_state.get("autonomy_status")
+        if (
+            not isinstance(autonomy_state, Mapping)
+            or str(autonomy_state.get("state") or "") != "mission-runtime-ready"
+        ):
+            return_state["autonomy_status"] = {
+                "state": "mission-runtime-running",
+                "reason": terminal_reason,
+            }
+        runtime_state["status"] = "running"
+        runtime_state["terminal_reason"] = None
+
+    append_mission_experiment_entry(
+        resolved_state_path,
+        str(return_state.get("mission_id") or ""),
+        contract=contract,
+        entry_id=f"execution-{outcome.action.action_id}",
+        kind="experiment-run",
+        status=str(result.status),
+        summary=result.summary,
+        phase=str(action_payload.get("phase") or return_state.get("current_phase") or ""),
+        action_id=outcome.action.action_id,
+        branch_id=str(action_payload.get("branch_id") or ""),
+        executor_id=result.executor_id.value,
+        output_paths=output_paths,
+        artifact_paths=[str(path) for path in result.artifacts.values()],
+        metadata={
+            "executor_status": result.status,
+            "payload": _jsonify(result.payload),
+            "bootstrap_note": bootstrap_note,
+        },
+    )
+    _record_ledger(
+        resolved_state_path,
+        mission_state=return_state,
+        runtime_root=runtime_root_path,
+        contract=contract,
+        kind="mission-runtime-execution",
+        status=str(result.status),
+        summary=terminal_reason,
+        metadata={
+            "action_id": outcome.action.action_id,
+            "executor_id": result.executor_id.value,
+            "executor_status": result.status,
+            "bootstrap_note": bootstrap_note,
+            "artifacts": [str(path) for path in result.artifacts.values()],
+        },
+    )
+    return raw_outcome_status, terminal_reason, executor_payload, return_state, False
+
+
+def _handle_dispatch_directive(
+    resolved_state_path: Path,
+    mission_state: dict[str, Any],
+    runtime_state: dict[str, Any],
+    runtime_root_path: Path,
+    outcome: MissionDecisionOutcome,
+    action_payload: dict[str, Any] | None,
+    contract: dict[str, Any],
+) -> tuple[str, str, Mapping[str, Any] | None, dict[str, Any], bool]:
+    """Handle DISPATCH directive. Returns (raw_outcome_status, terminal_reason, executor_payload, mission_state, should_continue)."""
+    dispatch = outcome.action.executor_dispatch
+    assert dispatch is not None
+    _update_action_result(
+        mission_state,
+        action_id=outcome.action.action_id,
+        status="in_progress",
+        notes=[f"dispatching via {dispatch.executor_id.value}"],
+    )
+    bootstrap = _bootstrap_mapping(mission_state)
+    if (
+        dispatch.executor_id == MissionExecutorId.SELF_HEALING_QUEUE
+        and _bootstrap_followup_planner(bootstrap)
+        and str(bootstrap.get("status") or "").strip() in {"pending", "pending-baseline-execution"}
+    ):
+        bootstrap["status"] = "baseline-running"
+        bootstrap["started_at"] = now_utc()
+        mission_state["bootstrap"] = bootstrap
+    runtime_state["status"] = "running"
+    runtime_state["last_executor_id"] = dispatch.executor_id.value
+    _write_state(resolved_state_path, mission_state, runtime_state, contract=contract)
+    try:
+        result = run_mission_action(dispatch.action)
+    except Exception as exc:
+        terminal_reason = _handle_dispatch_failure(
+            resolved_state_path, mission_state, runtime_state, runtime_root_path,
+            outcome, action_payload, contract, dispatch, exc,
+        )
+        return "failed", terminal_reason, None, mission_state, False
+    else:
+        return _handle_dispatch_success(
+            resolved_state_path, mission_state, runtime_state, runtime_root_path,
+            outcome, action_payload, contract, dispatch, result,
+        )
+
+
 def run_mission(
     mission_state_path: Path,
     *,
     max_iterations: int = 12,
     runtime_root: Path | None = None,
+    stop_conditions: list[StopCondition] | None = None,
 ) -> dict[str, Any]:
     resolved_state_path = mission_state_path.expanduser().resolve()
     mission_state = load_mission_state(resolved_state_path)
@@ -1609,6 +2301,10 @@ def run_mission(
             "terminal_reason": runtime_state.get("terminal_reason"),
             "mission_memory_path": Path(contract["mission_memory_path"]),
             "experiment_ledger_path": Path(contract["experiment_ledger_path"]),
+            "total_tokens": runtime_state.get("total_tokens", 0),
+            "total_input_tokens": runtime_state.get("total_input_tokens", 0),
+            "total_output_tokens": runtime_state.get("total_output_tokens", 0),
+            "accumulated_cost": runtime_state.get("accumulated_cost", 0.0),
         }
 
     while runtime_state["iterations_completed"] < int(max_iterations):
@@ -1657,19 +2353,13 @@ def run_mission(
         executor_payload: Mapping[str, Any] | None = None
 
         if outcome.directive == MissionDecisionDirective.COMPLETE:
-            _stop_status(mission_state, runtime_state=runtime_state, status="completed", reason=terminal_reason)
+            _handle_complete_directive(mission_state, runtime_state, terminal_reason)
         elif outcome.directive == MissionDecisionDirective.FAIL:
-            _stop_status(mission_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
+            _handle_fail_directive(mission_state, runtime_state, terminal_reason)
         elif outcome.directive == MissionDecisionDirective.BLOCK:
-            if outcome.action is not None:
-                _update_action_result(
-                    mission_state,
-                    action_id=outcome.action.action_id,
-                    status="blocked",
-                    notes=[terminal_reason],
-                )
-            _stop_status(mission_state, runtime_state=runtime_state, status="blocked", reason=terminal_reason)
-            raw_outcome_status = "blocked"
+            raw_outcome_status = _handle_block_directive(
+                mission_state, runtime_state, outcome, terminal_reason,
+            )
         elif outcome.directive in {
             MissionDecisionDirective.BRANCH,
             MissionDecisionDirective.REROUTE,
@@ -1677,285 +2367,47 @@ def run_mission(
             outcome.directive == MissionDecisionDirective.CONTINUE
             and outcome.decision.transition is not None
         ):
-            transition = outcome.decision.transition.to_payload() if outcome.decision.transition is not None else {}
-            from_phase = str(transition.get("from_phase") or mission_state.get("current_phase") or "")
-            to_phase = str(transition.get("to_phase") or (outcome.action.phase if outcome.action is not None else from_phase))
-            _apply_phase_change(
-                mission_state,
-                from_phase=from_phase,
-                to_phase=to_phase,
-                next_phase=str(transition.get("to_phase") or mission_state.get("next_phase") or ""),
+            raw_outcome_status = _handle_transition_directive(
+                mission_state, runtime_state, outcome, terminal_reason,
             )
-            mission_state["status"] = "running"
-            mission_state["autonomy_status"] = {
-                "state": "mission-runtime-transitioned",
-                "reason": terminal_reason,
-            }
-            if outcome.action is not None:
-                _update_action_result(
-                    mission_state,
-                    action_id=outcome.action.action_id,
-                    status="completed",
-                    notes=[terminal_reason],
-                )
-            raw_outcome_status = outcome.directive.value
-            runtime_state["status"] = "running"
-            runtime_state["terminal_reason"] = None
         elif outcome.directive == MissionDecisionDirective.DISPATCH and outcome.action is not None:
-            dispatch = outcome.action.executor_dispatch
-            assert dispatch is not None
-            _update_action_result(
-                mission_state,
-                action_id=outcome.action.action_id,
-                status="in_progress",
-                notes=[f"dispatching via {dispatch.executor_id.value}"],
+            # -- Inject agent dialogue context into the dispatch action task --
+            if action_payload is not None and _DIALOGUE_PHASES & {mission_state.get("current_phase", "")}:
+                dialogue_snippet = _dialogue_summary_for_action(mission_state)
+                if dialogue_snippet:
+                    current_task = str(action_payload.get("task") or outcome.action.task or "")
+                    action_payload["task"] = f"{current_task}{dialogue_snippet}"
+            (raw_outcome_status, terminal_reason, executor_payload, mission_state, _skip_iteration) = (
+                _handle_dispatch_directive(
+                    resolved_state_path, mission_state, runtime_state, runtime_root_path,
+                    outcome, action_payload, contract,
+                )
             )
-            bootstrap = _bootstrap_mapping(mission_state)
-            if (
-                dispatch.executor_id == MissionExecutorId.SELF_HEALING_QUEUE
-                and _bootstrap_followup_planner(bootstrap)
-                and str(bootstrap.get("status") or "").strip() in {"pending", "pending-baseline-execution"}
-            ):
-                bootstrap["status"] = "baseline-running"
-                bootstrap["started_at"] = now_utc()
-                mission_state["bootstrap"] = bootstrap
-            runtime_state["status"] = "running"
-            runtime_state["last_executor_id"] = dispatch.executor_id.value
-            _write_state(resolved_state_path, mission_state, runtime_state, contract=contract)
-            try:
-                result = run_mission_action(dispatch.action)
-            except Exception as exc:
-                action_phase = str(
-                    (action_payload.get("phase") if isinstance(action_payload, dict) else None)
-                    or mission_state.get("current_phase")
-                    or ""
-                )
-                action_branch_id = str(
-                    (action_payload.get("branch_id") if isinstance(action_payload, dict) else None) or ""
-                )
-                terminal_reason = (
-                    f"Executor `{dispatch.executor_id.value}` raised `{type(exc).__name__}`: {exc}"
-                )
-                failures = _normalize_strings(mission_state.get("recent_failures"))
-                failures.append(terminal_reason)
-                mission_state["recent_failures"] = failures[-8:]
-                mission_state["failure_count"] = int(mission_state.get("failure_count", 0) or 0) + 1
-                _update_action_result(
+            # -- Record dialogue turn after dispatch completes --
+            current_phase = mission_state.get("current_phase", "")
+            if current_phase in _DIALOGUE_PHASES and executor_payload is not None:
+                _record_dialogue_turn(
                     mission_state,
-                    action_id=outcome.action.action_id,
-                    status="blocked",
-                    notes=[terminal_reason],
+                    role="execution-operator",
+                    content=f"Dispatch completed: {terminal_reason or raw_outcome_status}",
+                    artifacts=_normalize_strings(executor_payload.get("output_paths") if isinstance(executor_payload, dict) else None) or None,
                 )
-                _stop_status(mission_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
-                raw_outcome_status = "failed"
-                _record_ledger(
-                    resolved_state_path,
-                    mission_state=mission_state,
-                    runtime_root=runtime_root_path,
-                    contract=contract,
-                    kind="mission-runtime-execution",
-                    status="failed",
-                    summary=terminal_reason,
-                    metadata={
-                        "action_id": outcome.action.action_id,
-                        "executor_id": dispatch.executor_id.value,
-                    },
-                )
-                append_mission_experiment_entry(
-                    resolved_state_path,
-                    str(mission_state.get("mission_id") or ""),
-                    contract=contract,
-                    entry_id=f"execution-{outcome.action.action_id}",
-                    kind="experiment-run",
-                    status="failed",
-                    summary=terminal_reason,
-                    phase=action_phase,
-                    action_id=outcome.action.action_id,
-                    branch_id=action_branch_id,
-                    executor_id=dispatch.executor_id.value,
-                    metadata={"reason": terminal_reason},
-                )
-            else:
-                post_execution_state = load_mission_state(resolved_state_path)
-                updated_state, action_status, output_paths = _mission_state_updates_from_executor(
-                    post_execution_state,
-                    action_payload=action_payload,
-                    result=result,
-                )
-                _update_action_result(
-                    updated_state,
-                    action_id=outcome.action.action_id,
-                    status=action_status,
-                    output_paths=output_paths,
-                    notes=[result.summary, f"executor-status={result.status}"],
-                )
-                if result.executor_id == MissionExecutorId.SELF_HEALING_QUEUE:
-                    updated_state["runtime_recovery"] = _jsonify(result.payload)
-                elif result.executor_id == MissionExecutorId.ADAPTATION_TRAINING:
-                    updated_state["adaptation_training"] = _jsonify(result.payload)
-                elif result.executor_id == MissionExecutorId.EVALUATION_COMPARISON:
-                    updated_state["evaluation_comparison"] = _jsonify(result.payload)
-                elif result.executor_id == MissionExecutorId.REPORT_SYNTHESIS:
-                    updated_state["mission_package"] = _jsonify(result.payload)
-                elif result.executor_id == MissionExecutorId.STAGE_KERNEL:
-                    stage_runs = updated_state.setdefault("stage_runs", {})
-                    stage_id = str(result.payload.get("stage_id") or outcome.action.action_id)
-                    stage_runs[stage_id] = _jsonify(result.payload)
-                gate_event = result.payload.get("gate_event") if isinstance(result.payload.get("gate_event"), Mapping) else None
-                if (
-                    str(result.status) == "deferred"
-                    and isinstance(gate_event, Mapping)
-                    and str(gate_event.get("gate") or "") == "soft"
-                ):
-                    managed_recovery = _stage_managed_recovery_action(
-                        updated_state,
-                        source_action_payload=action_payload,
-                        recommended_action=(
-                            _normalize_strings(gate_event.get("preferred_actions"))[:1] or [None]
-                        )[0],
-                        reason=str(gate_event.get("reason") or result.summary or "").strip(),
-                        source="soft-gate",
-                        recommended_resume_action=str(gate_event.get("default_response") or "").strip() or None,
-                    )
-                    if managed_recovery is not None:
-                        runtime_state["automatic_recovery"] = _jsonify(managed_recovery)
-                bootstrap_note = None
-                try:
-                    updated_state, bootstrap_note = _maybe_stage_bootstrap_followups(
-                        resolved_state_path,
-                        updated_state,
-                        result=result,
-                    )
-                except Exception as exc:
-                    action_phase = str(
-                        (action_payload.get("phase") if isinstance(action_payload, dict) else None)
-                        or mission_state.get("current_phase")
-                        or ""
-                    )
-                    action_branch_id = str(
-                        (action_payload.get("branch_id") if isinstance(action_payload, dict) else None) or ""
-                    )
-                    terminal_reason = f"Bootstrap follow-up staging failed: {exc}"
-                    failures = _normalize_strings(updated_state.get("recent_failures"))
-                    failures.append(terminal_reason)
-                    updated_state["recent_failures"] = failures[-8:]
-                    updated_state["failure_count"] = int(updated_state.get("failure_count", 0) or 0) + 1
-                    _update_action_result(
-                        updated_state,
-                        action_id=outcome.action.action_id,
-                        status="blocked",
-                        notes=[terminal_reason],
-                    )
-                    mission_state = updated_state
-                    _stop_status(mission_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
-                    raw_outcome_status = "failed"
-                    append_mission_experiment_entry(
-                        resolved_state_path,
-                        str(mission_state.get("mission_id") or ""),
-                        contract=contract,
-                        entry_id=f"execution-{outcome.action.action_id}",
-                        kind="experiment-run",
-                        status="failed",
-                        summary=terminal_reason,
-                        phase=action_phase,
-                        action_id=outcome.action.action_id,
-                        branch_id=action_branch_id,
-                        executor_id=result.executor_id.value,
-                        metadata={"reason": terminal_reason, "payload": _jsonify(result.payload)},
-                    )
-                    _record_ledger(
-                        resolved_state_path,
-                        mission_state=mission_state,
-                        runtime_root=runtime_root_path,
-                        contract=contract,
-                        kind="mission-runtime-execution",
-                        status="failed",
-                        summary=terminal_reason,
-                        metadata={
-                            "action_id": outcome.action.action_id,
-                            "executor_id": result.executor_id.value,
-                            "executor_status": result.status,
-                            "artifacts": [str(path) for path in result.artifacts.values()],
-                        },
-                    )
-                    continue
-                raw_outcome_status = str(result.status)
-                terminal_reason = result.summary
-                if bootstrap_note:
-                    terminal_reason = bootstrap_note
-                executor_payload = result.payload
-                mission_state = updated_state
-                if _should_continue_after_recursive_executor_failure(result=result, action_payload=action_payload):
-                    failures = _normalize_strings(mission_state.get("recent_failures"))
-                    failures.append(terminal_reason)
-                    mission_state["recent_failures"] = failures[-8:]
-                    mission_state["failure_count"] = int(mission_state.get("failure_count", 0) or 0) + 1
-                    mission_state["status"] = "running"
-                    mission_state["autonomy_status"] = {
-                        "state": "mission-runtime-recovery",
-                        "reason": terminal_reason,
-                    }
-                    runtime_state["status"] = "running"
-                    runtime_state["terminal_reason"] = None
-                elif raw_outcome_status in {"blocked"}:
-                    _stop_status(mission_state, runtime_state=runtime_state, status="blocked", reason=terminal_reason)
-                elif raw_outcome_status in {"failed", "error"}:
-                    failures = _normalize_strings(mission_state.get("recent_failures"))
-                    failures.append(terminal_reason)
-                    mission_state["recent_failures"] = failures[-8:]
-                    mission_state["failure_count"] = int(mission_state.get("failure_count", 0) or 0) + 1
-                    _stop_status(mission_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
-                elif raw_outcome_status == "max-iterations":
-                    _stop_status(mission_state, runtime_state=runtime_state, status="max-iterations", reason=terminal_reason)
-                else:
-                    mission_state["status"] = "running"
-                    autonomy_state = mission_state.get("autonomy_status")
-                    if (
-                        not isinstance(autonomy_state, Mapping)
-                        or str(autonomy_state.get("state") or "") != "mission-runtime-ready"
-                    ):
-                        mission_state["autonomy_status"] = {
-                            "state": "mission-runtime-running",
-                            "reason": terminal_reason,
-                        }
-                    runtime_state["status"] = "running"
-                    runtime_state["terminal_reason"] = None
-                append_mission_experiment_entry(
-                    resolved_state_path,
-                    str(mission_state.get("mission_id") or ""),
-                    contract=contract,
-                    entry_id=f"execution-{outcome.action.action_id}",
-                    kind="experiment-run",
-                    status=str(result.status),
-                    summary=result.summary,
-                    phase=str(action_payload.get("phase") or mission_state.get("current_phase") or ""),
-                    action_id=outcome.action.action_id,
-                    branch_id=str(action_payload.get("branch_id") or ""),
-                    executor_id=result.executor_id.value,
-                    output_paths=output_paths,
-                    artifact_paths=[str(path) for path in result.artifacts.values()],
-                    metadata={
-                        "executor_status": result.status,
-                        "payload": _jsonify(result.payload),
-                        "bootstrap_note": bootstrap_note,
-                    },
-                )
-                _record_ledger(
-                    resolved_state_path,
-                    mission_state=mission_state,
-                    runtime_root=runtime_root_path,
-                    contract=contract,
-                    kind="mission-runtime-execution",
-                    status=str(result.status),
-                    summary=terminal_reason,
-                    metadata={
-                        "action_id": outcome.action.action_id,
-                        "executor_id": result.executor_id.value,
-                        "executor_status": result.status,
-                        "bootstrap_note": bootstrap_note,
-                        "artifacts": [str(path) for path in result.artifacts.values()],
-                    },
-                )
+            # -- Estimate token usage and accumulate cost --
+            if executor_payload is not None:
+                executor_id = runtime_state.get("last_executor_id", "")
+                input_tokens = 0
+                output_tokens = 0
+                if executor_id == "recursive-agent":
+                    payload_text = json.dumps(_jsonify(executor_payload))
+                    total_chars = len(payload_text)
+                    output_tokens = total_chars // 4
+                    input_tokens = output_tokens // 3
+                runtime_state["total_tokens"] = int(runtime_state.get("total_tokens", 0) or 0) + input_tokens + output_tokens
+                runtime_state["total_input_tokens"] = int(runtime_state.get("total_input_tokens", 0) or 0) + input_tokens
+                runtime_state["total_output_tokens"] = int(runtime_state.get("total_output_tokens", 0) or 0) + output_tokens
+                accumulate_cost(runtime_state, os.environ.get("OPENAI_MODEL", "deepseek-chat"), input_tokens, output_tokens)
+            if _skip_iteration:
+                continue
         else:
             reason = (
                 f"Selected action `{outcome.action.action_id}` has no executor-backed runtime; stopping honestly."
@@ -2015,6 +2467,33 @@ def run_mission(
         if runtime_state["status"] in _TERMINAL_RUNTIME_STATUSES:
             break
 
+        # Check composable stop conditions (if configured)
+        if stop_conditions is not None:
+            should_stop, stop_reason = check_stop_conditions(
+                mission_state, runtime_state, stop_conditions,
+            )
+            if should_stop:
+                terminal_reason = stop_reason or "Stopped by composable stop condition."
+                _stop_status(
+                    mission_state,
+                    runtime_state=runtime_state,
+                    status="max-iterations",
+                    reason=terminal_reason,
+                )
+                contract = _outer_loop_contract(resolved_state_path, mission_state)
+                _record_ledger(
+                    resolved_state_path,
+                    mission_state=mission_state,
+                    runtime_root=runtime_root_path,
+                    contract=contract,
+                    kind="mission-runtime-stop",
+                    status="max-iterations",
+                    summary=terminal_reason,
+                    metadata={"stop_reason": terminal_reason},
+                )
+                _write_state(resolved_state_path, mission_state, runtime_state, contract=contract)
+                break
+
     if runtime_state["status"] == "running" and runtime_state["iterations_completed"] >= int(max_iterations):
         mission_state = load_mission_state(resolved_state_path)
         _stop_status(
@@ -2051,4 +2530,8 @@ def run_mission(
         "experiment_ledger_path": Path(contract["experiment_ledger_path"]),
         "research_memory_events_path": Path(contract["research_memory_events_path"]),
         "research_memory_index_path": Path(contract["research_memory_index_path"]),
+        "total_tokens": runtime_state.get("total_tokens", 0),
+        "total_input_tokens": runtime_state.get("total_input_tokens", 0),
+        "total_output_tokens": runtime_state.get("total_output_tokens", 0),
+        "accumulated_cost": runtime_state.get("accumulated_cost", 0.0),
     }

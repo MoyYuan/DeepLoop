@@ -43,13 +43,14 @@ class PlainFolderStageAdapter:
     def iter_examples(self, paths: Iterable[Path], *, limit: int | None = None):
         emitted = 0
         for path in paths:
-            for line in Path(path).read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                yield json.loads(line)
-                emitted += 1
-                if limit is not None and emitted >= limit:
-                    return
+            with open(path, encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    yield json.loads(line)
+                    emitted += 1
+                    if limit is not None and emitted >= limit:
+                        return
 
     def include_example(
         self,

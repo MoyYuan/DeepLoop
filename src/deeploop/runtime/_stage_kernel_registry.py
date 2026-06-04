@@ -27,12 +27,20 @@ def run_stage_from_config(
     return kernel.runner(Path(config_path).resolve(), resolved_adapter)
 
 
+_ALLOWED_ADAPTER_MODULE_PREFIXES = ("deeploop.runtime.", "tests.", "runtime_fixtures", "test_")
+
+
 def load_stage_adapter(adapter_spec: str | None) -> Any:
     if not adapter_spec:
         raise ValueError("adapter_spec is required when an adapter object is not provided")
     module_name, _, factory_name = adapter_spec.partition(":")
     if not module_name or not factory_name:
         raise ValueError("adapter_spec must be in the form module.path:factory")
+    if not any(module_name.startswith(prefix) for prefix in _ALLOWED_ADAPTER_MODULE_PREFIXES):
+        raise ValueError(
+            f"adapter module '{module_name}' is not in the allowed adapter module prefixes: "
+            + ", ".join(_ALLOWED_ADAPTER_MODULE_PREFIXES)
+        )
     module = importlib.import_module(module_name)
     factory = getattr(module, factory_name)
     adapter = factory()
