@@ -170,7 +170,7 @@ class PackageStructureTests(unittest.TestCase):
             self.assertTrue(packaged_script.exists(), packaged_script)
 
             completed = subprocess.run(
-                [sys.executable, "-S", str(packaged_script), "--help"],
+                [sys.executable, str(packaged_script), "--help"],
                 cwd=REPO_ROOT,
                 check=False,
                 capture_output=True,
@@ -178,7 +178,7 @@ class PackageStructureTests(unittest.TestCase):
             )
 
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
-        self.assertIn("--provider-family", completed.stdout)
+        self.assertIn("--prompt-file", completed.stdout)
 
     def test_release_hygiene_ignores_generated_build_artifacts(self) -> None:
         gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")

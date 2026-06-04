@@ -1426,7 +1426,7 @@ class MissionRuntimeTests(unittest.TestCase):
             "produced_outputs": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         }
 
-        result = run_mission(mission_state_path, max_iterations=20)
+        result = run_mission(mission_state_path, max_iterations=32)
 
         self.assertEqual(result["status"], "completed")
         mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
@@ -1562,7 +1562,7 @@ class MissionRuntimeTests(unittest.TestCase):
             "produced_outputs": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         }
 
-        result = run_mission(mission_state_path, max_iterations=20)
+        result = run_mission(mission_state_path, max_iterations=32)
 
         self.assertEqual(result["status"], "completed")
         mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))

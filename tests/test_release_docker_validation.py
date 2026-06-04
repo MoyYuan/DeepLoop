@@ -107,12 +107,12 @@ class ReleaseDockerValidationTests(unittest.TestCase):
 
         self.assertEqual(result["workflow"], "zero-start-bundled-starter")
         self.assertEqual(result["starter_project"], "translation-budget-ladder")
-        self.assertEqual(result["provider_family"], "copilot-cli")
-        self.assertIn("Copilot CLI", result["next_step"])
+        self.assertEqual(result["provider_family"], "openai-compatible-api")
+        self.assertIn("OPENAI_API_KEY", result["next_step"])
         self.assertIn("deeploop run --project-root", result["resume_command"])
         self.assertEqual(
             result["recheck_command"],
-            "deeploop provider-ready --selection-profile control-plane-copilot-cli",
+            "deeploop provider-ready --selection-profile deepseek-chat-control-plane",
         )
         self.assertTrue(Path(result["project_root"]).joinpath("docs", "budget-and-baselines.md").exists())
         self.assertTrue(Path(result["discovery_config_path"]).exists())

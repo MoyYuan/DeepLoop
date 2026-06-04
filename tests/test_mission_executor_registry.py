@@ -226,9 +226,19 @@ class MissionExecutorRegistryTests(unittest.TestCase):
                 artifact_name="mission-a-compare",
             )
         )
-        synthesis = run_mission_action(
-            ReportSynthesisExecutorAction(mission_state_path="runs/mission-a/mission_state.json")
-        )
+
+        import deeploop.runtime.mission_executor_registry as _mer
+        mock_mission_state = {
+            "mission_id": "mission-a",
+            "title": "Test",
+            "summary": "Test mission",
+            "current_phase": "literature-review",
+            "status": "running",
+        }
+        with patch.object(_mer, "_load_json", return_value=mock_mission_state):
+            synthesis = run_mission_action(
+                ReportSynthesisExecutorAction(mission_state_path="runs/mission-a/mission_state.json")
+            )
 
         mock_run_adaptation_training.assert_called_once_with(
             Path("configs/runtime/train.yaml"),

@@ -23,25 +23,15 @@ from deeploop.runtime.provider_launcher import (
 class ProviderLauncherTests(unittest.TestCase):
     def test_build_command_adds_permissions_and_dirs(self) -> None:
         command = build_provider_prompt_command(
-            "hello world",
-            provider_family="copilot-cli",
-            add_dirs=[Path("/tmp/demo"), Path("/tmp/demo"), Path("/tmp/other")],
+            prompt_file=Path("/tmp/prompt.md"),
             model="gpt-5.4",
         )
-        self.assertEqual(command[:4], ["copilot", "-p", "hello world", "--output-format"])
-        self.assertIn("--allow-all", command)
-        self.assertIn("--no-ask-user", command)
+        self.assertEqual(command[:3], [sys.executable, "-m", "deeploop.runtime.openai_compatible_adapter"])
+        self.assertIn("--prompt-file", command)
         self.assertIn("gpt-5.4", command)
-        self.assertEqual(command.count("--add-dir"), 2)
-
-    def test_build_command_rejects_unknown_provider_family(self) -> None:
-        with self.assertRaises(ValueError):
-            build_provider_prompt_command("hello world", provider_family="unknown-provider")
 
     def test_build_command_for_openai_compatible_api_uses_prompt_file(self) -> None:
         command = build_provider_prompt_command(
-            "hello world",
-            provider_family="openai-compatible-api",
             prompt_file=Path("/tmp/prompt.md"),
             result_json_path=Path("/tmp/result.json"),
             model="Qwen3.6-27B-UD-Q4_K_XL.gguf",
@@ -51,9 +41,13 @@ class ProviderLauncherTests(unittest.TestCase):
         self.assertIn("--result-json-path", command)
         self.assertIn("Qwen3.6-27B-UD-Q4_K_XL.gguf", command)
 
-    def test_build_command_for_openai_compatible_api_requires_prompt_file(self) -> None:
-        with self.assertRaises(ValueError):
-            build_provider_prompt_command("hello world", provider_family="openai-compatible-api")
+    def test_build_command_requires_prompt_file(self) -> None:
+        command = build_provider_prompt_command(
+            prompt_file=Path("/nonexistent/prompt.md"),
+            model="gpt-4",
+        )
+        self.assertIn("--prompt-file", command)
+        self.assertEqual(command[:3], [sys.executable, "-m", "deeploop.runtime.openai_compatible_adapter"])
 
     @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
     @patch("deeploop.runtime.provider_launcher.subprocess.Popen")
@@ -75,7 +69,6 @@ class ProviderLauncherTests(unittest.TestCase):
 
             completed = run_provider_prompt(
                 prompt_file,
-                provider_family="openai-compatible-api",
                 result_json_path=result_json_path,
                 cwd=root,
             )
@@ -85,10 +78,9 @@ class ProviderLauncherTests(unittest.TestCase):
         env = kwargs["env"]
         self.assertEqual(env["PYTHONPATH"].split(os.pathsep)[0], str(SRC_ROOT))
 
-    def test_resolve_provider_idle_timeout_prefers_longer_copilot_window(self) -> None:
-        self.assertEqual(resolve_provider_idle_timeout_seconds("copilot-cli", None), 900.0)
-        self.assertEqual(resolve_provider_idle_timeout_seconds("copilot-cli", 30.0), 30.0)
-        self.assertEqual(resolve_provider_idle_timeout_seconds("other-provider", None), 120.0)
+    def test_resolve_provider_idle_timeout_defaults(self) -> None:
+        self.assertEqual(resolve_provider_idle_timeout_seconds(None), 300.0)
+        self.assertEqual(resolve_provider_idle_timeout_seconds(30.0), 30.0)
 
     @patch("deeploop.runtime.provider_launcher.time.sleep", return_value=None)
     @patch("deeploop.runtime.provider_launcher.subprocess.Popen")

@@ -349,7 +349,6 @@ class RepoContractTests(unittest.TestCase):
         self.assertEqual(
             set(config["first_class_provider_families"]),
             {
-                "copilot-cli",
                 "openai-compatible-api",
                 "anthropic-api",
                 "local-transformers",
@@ -357,11 +356,6 @@ class RepoContractTests(unittest.TestCase):
             },
         )
         self.assertEqual(set(config["provider_families"]), set(config["first_class_provider_families"]))
-        self.assertEqual(config["provider_families"]["copilot-cli"]["runtime_integration"], "implemented")
-        self.assertEqual(
-            config["provider_families"]["copilot-cli"]["gate_2_release_validation"]["model_alias"],
-            "gpt-5-mini",
-        )
         self.assertEqual(config["provider_families"]["openai-compatible-api"]["runtime_integration"], "implemented")
         local_qwen_setup = config["provider_families"]["openai-compatible-api"]["deployment_profiles"][
             "local-qwen3_5-9b-openai"
@@ -427,17 +421,15 @@ class RepoContractTests(unittest.TestCase):
         self.assertEqual(
             set(config["first_class_provider_families"]),
             {
-                "copilot-cli",
                 "openai-compatible-api",
                 "anthropic-api",
                 "local-transformers",
                 "vllm",
             },
         )
-        self.assertEqual(config["selection_profiles"]["control-plane-copilot-cli"]["backend"], "copilot-cli")
         self.assertEqual(
-            config["selection_profiles"]["gate2-coding-agent-copilot-gpt5-mini"]["model_selection"]["required_model"]["alias"],
-            "gpt-5-mini",
+            config["selection_profiles"]["openai-compatible-api-control-plane"]["status"],
+            "implemented",
         )
         local_qwen_profile = config["selection_profiles"]["gate2-local-qwen3_5-9b-openai"]
         self.assertEqual(local_qwen_profile["provider_family"], "openai-compatible-api")
@@ -513,7 +505,6 @@ class RepoContractTests(unittest.TestCase):
         self.assertTrue(config["gate_2_proof_boundary"]["durable_mission_runtime_evidence_required"])
         lane_ids = {lane["lane_id"] for lane in config["required_lanes"]}
         self.assertIn("local-qwen-openai-compatible", lane_ids)
-        self.assertIn("copilot-cli-gpt-5-mini-coding-agent", lane_ids)
         local_qwen_lane = next(lane for lane in config["required_lanes"] if lane["lane_id"] == "local-qwen-openai-compatible")
         self.assertEqual(local_qwen_lane["selection_profile"], "gate2-local-qwen3_5-9b-openai")
         self.assertEqual(local_qwen_lane["deployment_profile"], "local-qwen3_5-9b-openai")
@@ -524,13 +515,8 @@ class RepoContractTests(unittest.TestCase):
             "qwen3_5-mid-fp16",
             " ".join(local_qwen_lane["fallback_or_downgrade_guidance"]),
         )
-        copilot_lane = next(lane for lane in config["required_lanes"] if lane["lane_id"] == "copilot-cli-gpt-5-mini-coding-agent")
-        self.assertEqual(copilot_lane["selection_profile"], "gate2-coding-agent-copilot-gpt5-mini")
-        self.assertEqual(copilot_lane["model_expectation"]["alias"], "gpt-5-mini")
 
         recursive_config = yaml.safe_load(recursive_example.read_text(encoding="utf-8"))
-        self.assertEqual(recursive_config["provider_selection"]["profile"], "gate2-coding-agent-copilot-gpt5-mini")
-        self.assertEqual(recursive_config["provider_selection"]["mission_default"]["model"]["alias"], "gpt-5-mini")
 
     def test_gate_2_real_runtime_validation_harness_surfaces_exist(self) -> None:
         harness_config = REPO_ROOT / "configs" / "runtime" / "gate-2-real-runtime-validation.yaml"
@@ -544,13 +530,9 @@ class RepoContractTests(unittest.TestCase):
         self.assertEqual(config["source_lane_contract"], "configs/runtime/gate-2-runtime-lanes.yaml")
         self.assertEqual(
             set(config["lanes"]),
-            {"local-qwen-openai-compatible", "copilot-cli-gpt-5-mini-coding-agent"},
+            {"local-qwen-openai-compatible"},
         )
         self.assertEqual(config["lanes"]["local-qwen-openai-compatible"]["validation_surface"], "deeploop-analyze")
-        self.assertEqual(
-            config["lanes"]["copilot-cli-gpt-5-mini-coding-agent"]["validation_surface"],
-            "recursive-agent-runtime",
-        )
 
         release_scripts_text = release_scripts_doc.read_text(encoding="utf-8").lower()
         self.assertIn("real_runtime_validation.py", release_scripts_text)

@@ -30,7 +30,7 @@ class DisposableUserSimulationCampaignAccountingTests(unittest.TestCase):
         shutil.rmtree(scenario_root, ignore_errors=True)
         self.addCleanup(shutil.rmtree, scenario_root, True)
 
-        with patch.object(run_disposable_user_simulation_matrix, "_resolve_host_copilot_mounts", return_value=[]):
+        with patch.object(run_disposable_user_simulation_matrix, "_resolve_model_artifact_mounts", return_value=[]):
             with patch.object(run_disposable_user_simulation_matrix, "_resolve_container_openai_env", return_value={}):
                 with patch.object(run_disposable_user_simulation_matrix, "_start_container"):
                     with patch.object(run_disposable_user_simulation_matrix, "_stop_container"):
@@ -51,7 +51,6 @@ class DisposableUserSimulationCampaignAccountingTests(unittest.TestCase):
                                 matrix=matrix,
                                 simulator_command=["python", "-c", "raise SystemExit(1)"],
                                 prepare_only=False,
-                                host_copilot_mount=False,
                             )
 
         payload = json.loads((scenario_root / "scenario_summary.json").read_text(encoding="utf-8"))

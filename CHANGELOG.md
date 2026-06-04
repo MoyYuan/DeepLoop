@@ -272,6 +272,10 @@ preflight.
 - release maintenance guidance now matches the real GitHub Release -> PyPI
   publish flow
 
+## 0.1.1
+
+Prepare 0.1.1 patch release ([#16](https://github.com/tnetal/DeepLoop/pull/16)).
+
 ## 0.1.0
 
 Initial public-alpha share-readiness baseline.
