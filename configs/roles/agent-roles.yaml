@@ -57,3 +57,17 @@ roles:
     artifacts:
       - summary report
       - paper-candidate package
+
+dialogue_protocol:
+  message_types:
+    PLAN: "Proposes a research plan or next steps"
+    CODE: "Implements or modifies code"
+    DIALOGUE: "Asks questions, raises concerns, provides feedback"
+    REVIEW: "Evaluates results, checks rigor, suggests changes"
+  turn_order:
+    - role: experiment-designer
+      produces: PLAN
+    - role: execution-operator
+      produces: CODE
+    - role: critic-verifier
+      produces: REVIEW
