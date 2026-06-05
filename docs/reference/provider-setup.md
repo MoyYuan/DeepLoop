@@ -35,16 +35,15 @@ first-class machine-level setup set:
 
 | Provider family | Machine setup contract | Current runtime integration | Canonical readiness summary |
 | --- | --- | --- | --- |
-| Copilot CLI | documented now | implemented | `copilot` installed, DeepLoop provider launcher available, machine already authenticated |
-| OpenAI-compatible API providers | documented now | implemented | API key env var set, endpoint/base URL chosen outside repo, auth handled outside repo, prompt/result control-plane adapter available |
+| OpenAI-compatible API providers | documented now | implemented | API key env var set, endpoint/base URL chosen outside repo, auth handled outside repo, prompt/result control-plane adapter available, DeepSeek Chat default control-plane profile |
 | Anthropic API providers | documented now | deferred | API key env var set, endpoint choice handled outside repo, auth handled outside repo |
 | local-transformers | documented now | implemented | `torch` + `transformers` import cleanly and model weights are reachable |
 | vllm | documented now | implemented | `torch` + `vllm` import cleanly and the machine exposes a suitable accelerator/runtime |
 
-The Anthropic row is still first-class in this setup contract even though its
+Anthropic remains a first-class family in this setup contract even though its
 runtime adapter remains deferred. OpenAI-compatible setup now has a public
-control-plane prompt/result adapter; the later mission selection contract is
-documented separately.
+control-plane prompt/result adapter and is the default provider path for
+DeepLoop v0.2.0+.
 
 ## Canonical sources of truth
 
@@ -61,84 +60,19 @@ the canonical source for the full machine-level provider setup contract.
 
 ## Guided readiness check
 
-Use DeepLoop's thin provider-readiness surface when you want the machine-level
-setup answer directly:
+Use DeepLoop's provider-readiness surface when you want the machine-level setup
+answer directly:
 
 ```text
-deeploop provider-ready --provider-family copilot-cli
-deeploop provider-ready --selection-profile control-plane-copilot-cli
+deeploop provider-ready
 ```
 
-The `--selection-profile` form resolves the provider family from
-`configs/runtime/provider-selection-registry.yaml`, but it still validates
-**setup only**. It does not choose a model, mutate mission config, or replace
-the separate provider-selection contract.
+This validates that the required environment variables (`OPENAI_API_KEY`,
+`OPENAI_BASE_URL`) are set and the endpoint is reachable. It checks **setup
+only** — it does not choose a model, mutate mission config, or replace the
+separate provider-selection contract.
 
 ## Family requirements
-
-### Copilot CLI
-
-- required tools:
-  - `copilot`
-  - `python`
-- expected env vars/auth prerequisites:
-  - no DeepLoop secret is stored in repo config
-  - machine must already have a valid Copilot CLI authentication state
-  - `GITHUB_TOKEN` may be present in the operator environment if the local
-    Copilot installation expects it, but it is optional in repo config
-- readiness expectations:
-  - `copilot --help` exits cleanly
-  - `python scripts/runtime/invoke_provider_prompt.py --help` exits cleanly
-  - the machine is already signed in for Copilot CLI use
-
-This family is wired into the current runtime through
-`src/deeploop/runtime/provider_launcher.py`,
-`src/deeploop/runtime/copilot_adapter.py`, and
-`scripts/runtime/invoke_provider_prompt.py`.
-
-The current Gate 2 coding-agent release-proof lane pins this family to the
-`gpt-5-mini` alias through
-`configs/runtime/gate-2-runtime-lanes.yaml` and
-`configs/runtime/provider-selection-registry.yaml`. That lane still keeps
-manual machine authentication explicit: repo automation can validate the CLI and
-launcher surface, but release proof must record that Copilot CLI auth was
-already valid on the machine.
-
-#### Custom script data routing
-
-> **Warning**: Never pass mission state, ledger contents, or other large
-> payloads as inline strings to a provider CLI flag (e.g.
-> `copilot -p "$STATE_TEXT"`). Once mission files grow beyond a few kilobytes
-> the OS rejects the call with `[Errno 7] Argument list too long`.
-
-Custom scripts that bridge DeepLoop state to a provider **must** use one of
-these safe patterns instead:
-
-1. **`deeploop analyze` (recommended)** – the built-in command that builds
-   and routes the analysis prompt from the mission state file without ever
-   expanding it into a shell argument:
-
-   ```bash
-   deeploop analyze --mission-state path/to/mission_state.json
-   ```
-
-   Pass `--prompt-file` to supply a fully custom prompt file, or `--task` to
-   override only the analysis task description.
-
-2. **`invoke_provider_prompt.py --prompt-file`** – write the prompt to a
-   file first, then pass the file path:
-
-   ```bash
-   python scripts/runtime/invoke_provider_prompt.py \
-       --prompt-file /tmp/my_prompt.md \
-       --result-json-path /tmp/result.json
-   ```
-
-3. **stdin piping** – pipe the prompt into a provider tool that reads from
-   stdin rather than a positional string argument.
-
-DeepLoop's own orchestrator always writes prompts to files and passes them by
-path. Custom scripts must follow the same rule.
 
 ### OpenAI-compatible API providers
 
@@ -154,12 +88,11 @@ path. Custom scripts must follow the same rule.
     environment
   - if `OPENAI_BASE_URL` is overridden, the chosen HTTPS endpoint is reachable
 
-DeepLoop now ships a public control-plane prompt/result adapter for this family.
+DeepLoop ships a public control-plane prompt/result adapter for this family.
 It reads prompt files, calls an OpenAI-compatible `/v1/chat/completions`
 endpoint, and materializes structured result JSON for prompt/result flows such
-as `deeploop analyze`. Tool-using recursive-agent execution still remains on the
-Copilot CLI path. Setup is documented here; mission/runtime provider selection
-is documented separately.
+as `deeploop analyze`. Setup is documented here; mission/runtime provider
+selection is documented separately.
 
 #### Documented local deployment profile: `local-qwen3_5-9b-openai`
 
@@ -190,6 +123,26 @@ this family**, not a new provider family:
   - if the dedicated 9B Gate 2 profile is not stable on the host, record an explicit
     downgrade to `qwen3_5-mid-fp16` or `single-gpu-8b-9b-fp16` from
     `configs/execution-profiles/inference-families.yaml`
+
+#### Default control-plane deployment profile: `deepseek-chat`
+
+DeepLoop v0.2.0+ ships with `deepseek-chat` as the default control-plane
+provider. This is a **deployment profile inside the OpenAI-compatible family**,
+not a new provider family:
+
+- target model: `deepseek-chat` (DeepSeek's latest chat model via API)
+- endpoint contract:
+  - `OPENAI_BASE_URL=https://api.deepseek.com` (default)
+  - `OPENAI_API_KEY` must be set to a valid DeepSeek API key
+  - standard OpenAI-compatible `/v1/chat/completions` endpoint
+- environment expectations:
+  - all control-plane commands run in the normal `deeploop` environment
+  - no additional runtime env required
+- fallback / downgrade guidance:
+  - if `deepseek-chat` is not available, configure an alternative
+    OpenAI-compatible endpoint via `OPENAI_BASE_URL`
+  - fallback model selection is handled by the provider selection contract,
+    not by machine setup
 
 ### Anthropic API providers
 

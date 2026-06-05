@@ -146,11 +146,12 @@ class ProjectRunnerTests(unittest.TestCase):
         self.assertIn("Where is the dataset located", stderr.getvalue())
         self.assertIn("mission_summary.md", stderr.getvalue())
 
-    def test_run_project_without_project_root_uses_interactive_discovery_flow(self) -> None:
+    def test_run_project_without_project_root_uses_idea_flow(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
         args = argparse.Namespace(
             project_root=None,
+            idea="Find a good starter path.",
             mission_idea="Find a good starter path.",
             mission_id="interactive-run",
             force=False,
@@ -165,25 +166,13 @@ class ProjectRunnerTests(unittest.TestCase):
         }
 
         with (
-            patch("deeploop.cli.run_project.run_interactive_discovery") as mock_discovery,
-            patch(
-                "deeploop.cli.run_project._load_run_config",
-                return_value={"mission": {"id": "interactive-run", "target_repo": "/workspaces/projects/interactive-run"}},
-            ),
-            patch("deeploop.cli.run_project._provider_readiness_result", return_value=None),
-            patch("deeploop.cli.run_project.run_config_until_complete", return_value=result) as mock_run_config,
+            patch("deeploop.cli.run_project.run_project_until_complete", return_value=result) as mock_run,
         ):
-            mock_discovery.return_value = {
-                "cancelled": False,
-                "confirmed": True,
-                "config_path": Path("/tmp/interactive-run.yaml"),
-            }
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 exit_code = _run_project(args)
 
         self.assertEqual(exit_code, 0)
-        mock_discovery.assert_called_once()
-        mock_run_config.assert_called_once()
+        mock_run.assert_called_once()
         self.assertEqual(json.loads(stdout.getvalue())["status"], "completed")
         self.assertEqual(stderr.getvalue(), "")
 
@@ -192,7 +181,7 @@ class ProjectRunnerTests(unittest.TestCase):
         stderr = io.StringIO()
         args = argparse.Namespace(
             project_root=None,
-            mission_idea="Find a good starter path.",
+            idea="Find a good starter path.",
             mission_id="interactive-run",
             force=False,
             until_complete=True,
@@ -221,38 +210,23 @@ class ProjectRunnerTests(unittest.TestCase):
             },
         }
 
-        with (
-            patch("deeploop.cli.run_project.run_interactive_discovery") as mock_discovery,
-            patch(
-                "deeploop.cli.run_project._load_run_config",
-                return_value={"mission": {"id": "interactive-run", "target_repo": "/workspaces/projects/interactive-run"}},
-            ),
-            patch("deeploop.cli.run_project._provider_readiness_result", return_value=provider_result),
-            patch("deeploop.cli.run_project.run_config_until_complete") as mock_run_config,
-        ):
-            mock_discovery.return_value = {
-                "cancelled": False,
-                "confirmed": True,
-                "config_path": Path("/workspaces/scratch/interactive-run.yaml"),
-            }
+        with patch("deeploop.cli.run_project.run_project_until_complete", return_value=provider_result):
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 exit_code = _run_project(args)
 
         self.assertEqual(exit_code, 1)
-        mock_run_config.assert_not_called()
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["status"], "provider-readiness-required")
         self.assertIn("required provider setup is not ready yet", stderr.getvalue())
         self.assertIn("copilot-cli", stderr.getvalue())
         self.assertIn("Install the Copilot CLI", stderr.getvalue())
-        self.assertIn("deeploop run --project-root /workspaces/projects/interactive-run", stderr.getvalue())
 
-    def test_run_project_without_project_root_reports_cancelled_discovery(self) -> None:
+    def test_run_project_without_project_root_reports_usage_when_no_idea(self) -> None:
         stdout = io.StringIO()
         stderr = io.StringIO()
         args = argparse.Namespace(
             project_root=None,
-            mission_idea=None,
+            idea=None,
             mission_id=None,
             force=False,
             until_complete=True,
@@ -260,17 +234,12 @@ class ProjectRunnerTests(unittest.TestCase):
             max_total_iterations=12,
         )
 
-        with patch("deeploop.cli.run_project.run_interactive_discovery") as mock_discovery:
-            mock_discovery.return_value = {
-                "cancelled": True,
-                "confirmed": False,
-                "config_path": None,
-            }
-            with redirect_stdout(stdout), redirect_stderr(stderr):
-                exit_code = _run_project(args)
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            exit_code = _run_project(args)
 
-        self.assertEqual(exit_code, 0)
-        self.assertIn("startup cancelled before DeepLoop created a mission", stdout.getvalue())
+        self.assertEqual(exit_code, 2)
+        self.assertIn("Usage: deeploop run --idea", stdout.getvalue())
+        self.assertIn("--project-root", stdout.getvalue())
         self.assertEqual(stderr.getvalue(), "")
 
     def test_run_project_help_explains_until_complete_and_manual_flow(self) -> None:
@@ -280,8 +249,7 @@ class ProjectRunnerTests(unittest.TestCase):
         help_text = parser.format_help()
         normalized_help = " ".join(help_text.split())
 
-        self.assertIn("interactive first-run flow", normalized_help)
-        self.assertIn("bundled starter project", normalized_help)
+        self.assertIn("--idea", normalized_help)
         self.assertIn("deeploop init", normalized_help)
         self.assertIn("deeploop start", normalized_help)
         self.assertIn("deeploop status", normalized_help)

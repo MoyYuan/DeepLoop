@@ -19,6 +19,7 @@ from deeploop.core.paths import (
     WORKSPACE_ROOT,
     WORKSPACE_ROOT_ENV_VAR,
     ensure_expected_external_dirs,
+    workspace_root_source,
 )
 
 _PROVIDER_SETUP_REGISTRY_PATH = REPO_ROOT / "configs" / "runtime" / "provider-setup-registry.yaml"
@@ -465,13 +466,47 @@ def render_provider_ready_report(report: dict[str, Any]) -> str:
 
 def _add_setup_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Emit the scaffold result as JSON.")
+    parser.add_argument(
+        "--yes", action="store_true",
+        help="Skip the confirmation prompt and create directories immediately.",
+    )
 
 
 def _setup_workspace(args: argparse.Namespace) -> int:
+    source, hint = workspace_root_source()
+    json_mode = bool(getattr(args, "json", False))
+
+    # Surface where output will go BEFORE creating anything
+    if not json_mode:
+        print("# DeepLoop workspace setup")
+        print()
+        print(f"  workspace_root: {WORKSPACE_ROOT}")
+        if source == "default":
+            print(f"  ⚠  {WORKSPACE_ROOT_ENV_VAR} is not set — {hint}")
+        else:
+            print(f"  ✓  {hint}")
+        print()
+        print("  Directories to create:")
+        for path in EXPECTED_EXTERNAL_DIRS:
+            marker = "  (exists)" if path.exists() else "  (new)"
+            print(f"    {path}{marker}")
+        print()
+
+        if not getattr(args, "yes", False):
+            try:
+                response = input("  Create these directories? [Y/n] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  Setup cancelled.")
+                return 1
+            if response and response not in ("y", "yes"):
+                print("  Setup cancelled. Set DEEPLOOP_WORKSPACE_ROOT to choose a different root.")
+                return 1
+
     created_dirs, existing_dirs = ensure_expected_external_dirs()
     payload = {
         "workspace_root": str(WORKSPACE_ROOT),
         "workspace_root_env_var": WORKSPACE_ROOT_ENV_VAR,
+        "workspace_root_source": source,
         "created_dirs": [str(path) for path in created_dirs],
         "existing_dirs": [str(path) for path in existing_dirs],
         "next_steps": [
@@ -479,11 +514,12 @@ def _setup_workspace(args: argparse.Namespace) -> int:
             "deeploop run --until-complete",
         ],
     }
-    if getattr(args, "json", False):
+    if json_mode:
         print(json.dumps(payload, indent=2))
         return 0
 
     lines = [
+        "",
         "# DeepLoop workspace scaffold ready",
         "",
         f"- workspace_root: `{WORKSPACE_ROOT}`",

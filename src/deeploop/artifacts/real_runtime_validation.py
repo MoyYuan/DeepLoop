@@ -28,7 +28,6 @@ from deeploop.core.shared import dedupe_strings as _dedupe_strings, slugify as _
 from deeploop.mission.orchestrator import initialize_mission
 from deeploop.mission.project_bootstrap import build_mission_config_from_project_root
 from deeploop.runtime.provider_launcher import run_provider_prompt
-from deeploop.runtime.recursive_agent_runtime import run_recursive_agent_loop
 
 GATE_2_REAL_RUNTIME_VALIDATION_CONTRACT_PATH = (
     REPO_ROOT / "configs" / "runtime" / "gate-2-real-runtime-validation.yaml"

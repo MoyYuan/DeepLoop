@@ -110,12 +110,12 @@ users. See [Examples](examples.md) for the public example surface.
 The unified first-run path is:
 
 ```text
-deeploop setup
-deeploop preflight
-deeploop run --until-complete
+export OPENAI_API_KEY="sk-..."
+export OPENAI_BASE_URL="https://api.deepseek.com"
+deeploop start --idea "your research idea"
 ```
 
-That no-argument path creates a bundled starter project under
+That one-command path creates a bundled starter project under
 `WORKSPACE_ROOT/projects/` and launches the same mission flow a user gets from
 an existing folder.
 
@@ -126,7 +126,7 @@ If that run pauses, stay on the same operator loop every time: `status`,
 Once your own folder exists, the matching existing-project path is:
 
 ```text
-deeploop run --project-root <project-folder> --until-complete
+deeploop start --project-root <project-folder> --idea "your research idea"
 ```
 
 If you are in a repo checkout, `make public-bootstrap-check` still proves the

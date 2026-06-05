@@ -7,7 +7,6 @@ modules.  Import from here instead of re-defining locally.
 from __future__ import annotations
 
 import re
-import shlex
 from pathlib import Path
 from typing import Any, Sequence
 

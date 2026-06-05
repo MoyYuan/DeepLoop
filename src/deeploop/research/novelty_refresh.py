@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import LEDGER_DIR, REPO_ROOT, RUNS_DIR, resolve_workspace_path
-from deeploop.core.structured_io import load_json_object as _load_json, load_yaml_mapping as _load_yaml
+from deeploop.core.structured_io import load_yaml_mapping as _load_yaml
 
 DEFAULT_CONTRACT_PATH = REPO_ROOT / "configs" / "autonomy" / "novelty-refresh.yaml"
 

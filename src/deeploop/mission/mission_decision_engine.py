@@ -15,7 +15,6 @@ from deeploop.autonomy.mission_autonomy import (
     ensure_valid_contract_payload,
     enrich_outer_loop_contract,
     load_mission_outer_loop_policy,
-    resolve_phase_contract,
 )
 from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE, is_autonomous_operating_mode, resolve_operating_mode
 from deeploop.core.phase_defaults import (

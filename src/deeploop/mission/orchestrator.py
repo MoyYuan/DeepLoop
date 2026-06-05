@@ -7,7 +7,6 @@ and monitoring live in :mod:`deeploop.mission.mission_runtime` and
 :mod:`deeploop.mission.mission_monitor`.
 """
 
-import json
 import sys
 from pathlib import Path
 

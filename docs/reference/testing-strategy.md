@@ -126,6 +126,62 @@ That review surface summarizes whether the current campaign is strong enough to
 serve as a multi-substrate promotion artifact instead of just a raw bounded-real
 campaign log.
 
+## Tier 5 — Acceptance tests
+
+Use this tier for end-to-end acceptance validation of the full mission lifecycle
+from install through operator handoff.
+
+Typical DeepLoop coverage:
+
+- full `deeploop start --idea` one-command flow from install to running mission
+- provider readiness validation and error handling
+- operator inbox handoff and resume cycle
+- end-to-end mission completion across provider boundaries
+
+Canonical command:
+
+```text
+make test-acceptance-e2e
+```
+
+Use it:
+
+- before major releases or milestone promotions
+- when validating the complete user-facing flow
+- as the final confidence check before publishing a new release
+
+Current coverage: approximately 25 acceptance test cases spanning the core
+user flows.
+
+## Tier 6 — Integration contract tests
+
+Use this tier for cross-component contract validation between DeepLoop layers
+without requiring a full mission runtime.
+
+Typical DeepLoop coverage:
+
+- provider adapter contract compliance
+- mission state serialization/deserialization round-trips
+- CLI command parsing and argument validation
+- config registry schema validation
+- dashboard and telemetry contract checks
+
+Canonical command:
+
+```text
+make test-integration-contract
+```
+
+Use it:
+
+- when changing provider adapter interfaces
+- after CLI command surface changes
+- when updating config registry or manifest schemas
+- as a faster alternative to full end-to-end acceptance for contract-level
+  confidence
+
+Current coverage: approximately 40 integration contract test cases.
+
 ## Final acceptance campaign
 
 Above the four engineering tiers sits a separate **acceptance campaign**. This
@@ -164,9 +220,8 @@ stronger share claim depends on a bundle of evidence:
 3. a real promotable `release_candidate_review.json` for at least one mission
    package with the required durable reviews
 4. a Gate 2 release proof that records real LLM-backed mission/runtime evidence
-   on the current approved lanes:
+   on the current approved lane:
    - local Qwen3.5-9B via an OpenAI-compatible lane
-   - Copilot CLI with GPT-5 mini for the coding-agent lane
    - use `configs/runtime/gate-2-runtime-lanes.yaml` as the machine-readable
      source of truth for that proof boundary
 5. autonomy-gap evidence showing bounded recovery is happening before operator
@@ -189,10 +244,10 @@ DeepLoop's release story sits on top of the engineering tiers:
   - proves install/bootstrap/docs integrity, not the final live runtime claim
 - **Gate 2** — required for every release and for high-risk PRs
   - run `python scripts/release/real_runtime_validation.py ...`
-  - prove both approved lanes:
+  - prove the approved lane:
     - local Qwen3.5-9B via the OpenAI-compatible lane
-    - Copilot CLI with `gpt-5-mini` for the coding-agent lane
-  - keep manual machine auth explicit and record durable evidence (`gate_2_real_runtime_validation.json` / `.md` and each lane's `validation_record.json` / `.md`)
+  - record durable evidence (`gate_2_real_runtime_validation.json` / `.md` and
+    per-lane `validation_record.json` / `.md`)
 - **Gate 3** — broader pre-release or nightly matrix confidence
   - use when you want additional provider/backend combinations or larger
     fixtures, not as the default merge gate
@@ -210,13 +265,12 @@ make clean-workspace-temp
 
 ## Disposable user-simulation matrix
 
-When you need a longer fresh-user exam beyond release smoke, DeepLoop now ships
+When you need a longer fresh-user exam beyond release smoke, DeepLoop ships
 a disposable Docker user-simulation harness:
 
 ```text
 python scripts/testing/run_disposable_user_simulation_matrix.py --prepare-only
 python scripts/testing/run_disposable_user_simulation_matrix.py \
-  --mount-host-copilot \
   --simulator-command python scripts/testing/run_disposable_user_simulation_outer_user.py ...
 ```
 
@@ -227,9 +281,7 @@ deliberately opinionated:
 - run scenarios **sequentially**, never in parallel
 - use a **fresh disposable container** for each scenario
 - require at least **3600 seconds** of wall time per simulated user
-- treat the outer simulated user as an **explicit external boundary** pinned to
-  `gpt-5-mini`
-- pin DeepLoop's control plane to Copilot CLI `gpt-5-mini`
+- pin DeepLoop's control plane to the default `deepseek-chat` profile
 - pin all DeepLoop-carried experiment execution to the simulation-only local
   `Qwen/Qwen3.5-0.8B` GGUF lane through repo-owned runtime and mission inputs
 - require the downloaded artifact
@@ -261,20 +313,17 @@ reuse `../system-scripts/sandbox_manager.py` with the same TTL / cleanup-policy
 controls used in XRTM, and records the returned sandbox manifest under the
 campaign's `metadata/managed-sandbox.json`.
 
-When you want the disposable container itself to exercise DeepLoop's pinned
-Copilot `gpt-5-mini` control-plane path, pass `--mount-host-copilot`. That
-flag is an explicit operator opt-in: it mounts the host `copilot` binary and
-`~/.config/gh` read-only plus `~/.copilot` read-write so Copilot can create
-session-state inside the container.
-
 ## Default run policy
 
 Recommended default:
 
 1. run **unit**
-2. run **mocked integration**
-3. run **tiny real smoke** when planner/runtime contracts changed
-4. run **bounded real** when you need production-like confidence
+2. run **mocked integration** (`make test-integration`)
+3. run **integration contract** (`make test-integration-contract`) when
+   provider adapter or CLI surface changed
+4. run **tiny real smoke** when planner/runtime contracts changed
+5. run **bounded real** when you need production-like confidence
+6. run **acceptance e2e** (`make test-acceptance-e2e`) before release
 
 If you want the full repo suite:
 
@@ -290,8 +339,10 @@ DeepLoop exposes the tiered runner through:
 python scripts/testing/run_test_tier.py --list
 python scripts/testing/run_test_tier.py --tier unit
 python scripts/testing/run_test_tier.py --tier integration
+python scripts/testing/run_test_tier.py --tier integration-contract
 python scripts/testing/run_test_tier.py --tier smoke
 python scripts/testing/run_test_tier.py --tier real
+python scripts/testing/run_test_tier.py --tier acceptance-e2e
 ```
 
 The runner is the source of truth for the current tier assignments.
@@ -339,8 +390,10 @@ DeepLoop should bias toward:
 
 - many **Tier 1** tests
 - strong **Tier 2** wiring tests
-- a smaller but high-value **Tier 3**
-- a selective, explicitly bounded **Tier 4**
-- a milestone-grade **acceptance campaign** above the tiers
+- focused **Tier 3** contract integration tests
+- a smaller but high-value **Tier 4**
+- a selective, explicitly bounded **Tier 5**
+- milestone-grade **acceptance tests** (Tier 6) and an **acceptance campaign**
+  above the tiers
 
 Bounded real tests are intentionally not the default fast path.

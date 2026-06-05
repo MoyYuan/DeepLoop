@@ -11,14 +11,26 @@ import time
 from pathlib import Path
 from typing import Any, Sequence
 
+import yaml
+
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
-from deeploop.core.paths import LAUNCHES_DIR
-from deeploop.core.paths import REPO_ROOT
-from deeploop.core.paths import WORKSPACE_ROOT
-from deeploop.core.paths import WORKSPACE_ROOT_ENV_VAR
-from deeploop.core.paths import workspace_root_diagnostics
+from deeploop.core.paths import (
+    LAUNCHES_DIR,
+    MISSIONS_DIR,
+    PROJECTS_DIR,
+    REPO_ROOT,
+    WORKSPACE_ROOT,
+    WORKSPACE_ROOT_ENV_VAR,
+    ensure_expected_external_dirs,
+    workspace_root_diagnostics,
+)
+from deeploop.core.shared import slugify as _slugify
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object
-from deeploop.mission._operator_surface import partition_operator_commands
+from deeploop.mission._operator_surface import (
+    _compact_status_line,
+    _render_actionable_inbox,
+    partition_operator_commands,
+)
 from deeploop.mission.mission_monitor import build_mission_snapshot, render_mission_snapshot
 from deeploop.mission.mission_state import load_mission_state
 from deeploop.cli.run_project import _add_run_args, _run_project
@@ -33,6 +45,7 @@ from deeploop.cli.bootstrap_support import (
     _preflight,
     _provider_ready,
     _setup_workspace,
+    check_provider_readiness,
 )
 from deeploop.runtime.recursive_agent_runtime import analyze_budget
 
@@ -1007,6 +1020,74 @@ def _check_editable_install_and_warn() -> None:
 
 def _handle_start(args: argparse.Namespace) -> int:
     _check_editable_install_and_warn()
+
+    # If no mission-state provided, auto-bootstrap or auto-find
+    if not getattr(args, "mission_state", None):
+        if args.command == "resume":
+            # Auto-find most recent mission
+            missions = sorted(MISSIONS_DIR.glob("*/mission_state.json"),
+                              key=lambda p: p.stat().st_mtime, reverse=True)
+            if not missions:
+                print("No missions found. Start one with: deeploop start \"your idea\"")
+                return 1
+            mission_state_path = missions[0]
+            args.mission_state = str(mission_state_path)
+            print(f"Resuming: {mission_state_path.parent.name}")
+        else:
+            # Auto-bootstrap a new mission
+            # 1. Ensure workspace dirs exist (fold in setup)
+            ensure_expected_external_dirs()
+
+            # 2. Check provider readiness
+            report = check_provider_readiness(selection_profile="deepseek-chat-control-plane")
+            if report["status"] != "ready":
+                print(f"Provider not ready: {report['next_step']}")
+                print(f"  Run: {report.get('recheck_command', 'deeploop provider-ready')}")
+                return 1
+
+            # 3. Get idea text
+            idea = getattr(args, "idea", None)
+            if not idea:
+                print("Usage: deeploop start \"your research idea\"")
+                print("  or: deeploop start --mission-state <path>")
+                return 1
+
+            # 4. Bootstrap project from idea
+            import yaml
+
+            project_root = PROJECTS_DIR / _slugify(idea)[:40]
+            project_root.mkdir(parents=True, exist_ok=True)
+            project_facts_path = project_root / "project-facts.yaml"
+            if not project_facts_path.exists():
+                payload = {
+                    "project": {
+                        "name": _slugify(idea)[:40],
+                        "title": idea[:120],
+                        "summary": idea[:500],
+                        "objective": idea[:500],
+                    }
+                }
+                project_facts_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+            # 5. Init mission
+            from deeploop.mission.project_runner import initialize_mission_from_project_root
+
+            init_result = initialize_mission_from_project_root(
+                project_root,
+                mission_id=_slugify(idea)[:30],
+            )
+            if init_result.get("status") == "bootstrap-repair-required":
+                print(f"Project bootstrap needs repair: {init_result.get('bootstrap_repair', {}).get('summary', 'unknown')}")
+                return 1
+
+            mission_state_path = Path(init_result["state_path"])
+            args.mission_state = str(mission_state_path)
+
+            print(f"Setup ready ({WORKSPACE_ROOT})")
+            print(f"Provider ready (deepseek-chat)")
+            print(f"Project bootstrapped ({mission_state_path.parent.name})")
+            print(f"Running — deeploop status for progress")
+
     mission_state_path = _resolve_existing_path(args.mission_state)
     resume_context = None
     if args.command == "resume":
@@ -1034,8 +1115,10 @@ def _handle_status(args: argparse.Namespace) -> int:
     snapshot = _resolve_snapshot(args, log_tail_lines=args.log_tail, ledger_tail=args.ledger_tail)
     if args.json:
         print(json.dumps(snapshot, indent=2))
-    else:
+    elif args.full:
         print(render_mission_snapshot(snapshot), end="")
+    else:
+        print(_compact_status_line(snapshot))
     return 0
 
 
@@ -1069,8 +1152,10 @@ def _handle_inbox(args: argparse.Namespace) -> int:
     inbox = snapshot.get("operator_inbox", {})
     if args.json:
         print(json.dumps(inbox, indent=2))
-    else:
+    elif args.full:
         print(_render_inbox(snapshot), end="")
+    else:
+        print(_render_actionable_inbox(snapshot))
     return 0
 
 
@@ -1354,8 +1439,12 @@ def build_parser() -> argparse.ArgumentParser:
         )
         command.add_argument(
             "--mission-state",
-            required=True,
-            help="Path to mission_state.json from `deeploop init` or an existing mission root.",
+            required=False,
+            help="Path to mission_state.json from `deeploop init` or an existing mission root. Omit to auto-bootstrap from --idea.",
+        )
+        command.add_argument(
+            "--idea",
+            help="Research idea text for auto-bootstrap when --mission-state is omitted.",
         )
         command.add_argument(
             "--max-iterations",
@@ -1391,6 +1480,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--launch-metadata", help="Optional override for the detached launch metadata JSON.")
     status.add_argument("--log-tail", type=int, default=20, help="Number of detached-process log lines to include.")
     status.add_argument("--ledger-tail", type=int, default=8, help="Number of recent ledger entries to include.")
+    status.add_argument("--full", action="store_true", help="Show the full operator console snapshot instead of the one-line default.")
     status.add_argument("--json", action="store_true", help="Emit the structured status snapshot as JSON.")
     status.set_defaults(handler=_handle_status)
 
@@ -1425,6 +1515,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inbox.add_argument("--mission-state", required=True, help="Path to mission_state.json.")
     inbox.add_argument("--launch-metadata", help="Optional override for the detached launch metadata JSON.")
+    inbox.add_argument("--full", action="store_true", help="Show the full inbox render instead of the actionable summary.")
     inbox.add_argument("--json", action="store_true", help="Emit the structured operator inbox payload as JSON.")
     inbox.set_defaults(handler=_handle_inbox)
 

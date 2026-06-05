@@ -48,9 +48,8 @@ stronger than it was before:
 - the next patch release keeps the same bounded claim while hardening the
   documented path; the canonical `translation-budget-ladder` smoke path reran
   cleanly after the latest post-smoke hardening pass
-- Copilot-backed recursive runs now preserve remaining loop budget on resumed
-  runs, normalize generic handoffs to the supported phase defaults, and give
-  Copilot-driven steps a longer idle window before they are treated as stalled
+- provider-backed recursive runs now preserve remaining loop budget on resumed
+  runs and normalize generic handoffs to the supported phase defaults
 - completed missions now refresh final package manifests, while package
   validation ignores transient sandbox/runtime scratch outputs that should not
   be treated as durable release artifacts
@@ -88,11 +87,10 @@ Gate 2 is required before coordinated release signoff and for high-risk changes
 that touch onboarding, packaging, provider wiring, runtime routing, Docker,
 CLI quickstarts, or docs-command claims.
 
-The current approved Gate 2 phase requires both lanes from
+The current approved Gate 2 phase requires the single lane from
 `configs/runtime/gate-2-runtime-lanes.yaml`:
 
 1. **local Qwen3.5-9B via an OpenAI-compatible lane**
-2. **Copilot CLI with GPT-5 mini (`gpt-5-mini`) for the coding-agent lane**
 
 Use the repo-owned harness:
 
@@ -100,13 +98,12 @@ Use the repo-owned harness:
 python scripts/release/real_runtime_validation.py \
   --validation-id <release-id> \
   --manual-note "fresh env + documented install path used for Gate 2" \
-  --lane-note "local-qwen-openai-compatible=host-local Qwen/Qwen3.5-9B OpenAI-compatible server was started outside DeepLoop" \
-  --lane-note "copilot-cli-gpt-5-mini-coding-agent=machine was already authenticated for Copilot CLI before the run"
+  --lane-note "local-qwen-openai-compatible=host-local Qwen/Qwen3.5-9B OpenAI-compatible server was started outside DeepLoop"
 ```
 
 What counts as Gate 2 proof:
 
-- a real LLM-backed mission/runtime path on each approved lane
+- a real LLM-backed mission/runtime path on the approved lane
 - durable mission/runtime evidence written under the configured workspace
   release-validation root
 - the batch summary (`gate_2_real_runtime_validation.json` / `.md`) plus the

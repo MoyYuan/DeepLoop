@@ -10,16 +10,14 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
 from deeploop.runtime.stage_kernels import (
-    DEFAULT_OPERATING_MODE,
-    UNKNOWN_MISSION_ID,
     KernelRunResult,
     StageAdapter,
     _adapter_runtime_contract,
     _autotune_execution_plan,
     _build_manifest,
     _build_runtime_report,
-    _configure_adapter_model_family,
     _configure_adapter_prompt,
     _dataset_name,
     _load_dataset_bundle,
@@ -28,7 +26,6 @@ from deeploop.runtime.stage_kernels import (
     _normalize_generation_config,
     _normalize_notes,
     _run_predictions,
-    _runtime_telemetry_metrics,
     _validate_manifest,
     _write_json,
 )

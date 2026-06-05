@@ -11,7 +11,7 @@ import os
 import subprocess
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -193,7 +193,6 @@ class ExperimentMonitor:
             # Detect idle timeouts when the log stops growing
             current_size = _log_file_size(self._log_file)
             if current_size <= last_log_size:
-                elapsed_idle = 0.0
                 idle_start = time.monotonic()
                 while self.is_running():
                     if time.monotonic() - idle_start >= max_idle_seconds:

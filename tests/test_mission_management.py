@@ -508,7 +508,7 @@ class MissionManagementTests(unittest.TestCase):
         status_stdout = io.StringIO()
         with redirect_stdout(status_stdout):
             status_result = manage_mission_main(
-                ["status", "--mission-state", str(mission_state_path), "--launch-metadata", str(launch_metadata_path)]
+                ["status", "--mission-state", str(mission_state_path), "--launch-metadata", str(launch_metadata_path), "--full"]
             )
         self.assertEqual(status_result, 0)
         self.assertIn("# DeepLoop operator console", status_stdout.getvalue())
@@ -556,7 +556,7 @@ class MissionManagementTests(unittest.TestCase):
 
         inbox_stdout = io.StringIO()
         with redirect_stdout(inbox_stdout):
-            inbox_result = manage_mission_main(["inbox", "--mission-state", str(mission_state_path)])
+            inbox_result = manage_mission_main(["inbox", "--mission-state", str(mission_state_path), "--full"])
         self.assertEqual(inbox_result, 0)
         self.assertIn("demo-operator-request", inbox_stdout.getvalue())
         self.assertIn("## Operator summary", inbox_stdout.getvalue())
@@ -785,7 +785,7 @@ class MissionManagementTests(unittest.TestCase):
 
         inbox_stdout = io.StringIO()
         with redirect_stdout(inbox_stdout):
-            inbox_result = manage_mission_main(["inbox", "--mission-state", str(mission_state_path)])
+            inbox_result = manage_mission_main(["inbox", "--mission-state", str(mission_state_path), "--full"])
         self.assertEqual(inbox_result, 0)
         self.assertIn("deeploop triage", inbox_stdout.getvalue())
 

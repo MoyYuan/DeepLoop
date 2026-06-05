@@ -638,6 +638,64 @@ def operator_console_snapshot(
     }
 
 
+def _phase_order() -> list[str]:
+    """Return the canonical ordered list of mission phases."""
+    return [
+        "idea-intake",
+        "literature-review",
+        "question-design",
+        "benchmark-selection",
+        "experiment-design",
+        "execution",
+        "critique",
+        "replication",
+        "final-report",
+    ]
+
+
+def _compact_status_line(snapshot: dict[str, Any]) -> str:
+    mission = snapshot.get("mission", {}) if isinstance(snapshot.get("mission"), dict) else {}
+    phase = mission.get("current_phase", "?")
+    status = mission.get("status", "?")
+    outer_loop = snapshot.get("outer_loop", {}) if isinstance(snapshot.get("outer_loop"), dict) else {}
+    runtime = outer_loop.get("runtime") if isinstance(outer_loop.get("runtime"), dict) else {}
+    iterations = runtime.get("iterations_completed", 0) if isinstance(runtime, dict) else 0
+    cost = runtime.get("accumulated_cost", 0) if isinstance(runtime, dict) else 0
+    total_phases = len(_phase_order())
+    try:
+        phase_idx = _phase_order().index(phase) + 1
+    except ValueError:
+        phase_idx = "?"
+    return f"Phase {phase_idx}/{total_phases} ({phase}) · {iterations} iterations · ${cost:.2f} spent · {status}"
+
+
+def _render_actionable_inbox(snapshot: dict[str, Any]) -> str:
+    inbox = snapshot.get("operator_inbox", {}) if isinstance(snapshot.get("operator_inbox"), dict) else {}
+    current = inbox.get("current_request") if isinstance(inbox.get("current_request"), dict) else {}
+    if not current:
+        return "No open operator requests."
+    mission = snapshot.get("mission", {}) if isinstance(snapshot.get("mission"), dict) else {}
+    summary = str(current.get("summary") or "unknown")
+    reason = str(current.get("reason") or current.get("explanation") or "")
+    request_type = str(current.get("request_type") or "")
+    lines = [
+        "DeepLoop paused — needs your input",
+        "",
+        f"  Blocked by: {summary}",
+        f"  Phase: {mission.get('current_phase', '?')}",
+    ]
+    if reason:
+        lines.append(f"  Context: {reason}")
+    lines.append("")
+    lines.append("  What now?")
+    if "dataset" in request_type.lower() or "data" in request_type.lower():
+        lines.append("    deeploop retry --dataset-path /path/to/data    provide dataset")
+    lines.append("    deeploop reroute --to <phase>                    skip this step")
+    lines.append("    deeploop stop                                     stop mission")
+    lines.append("    deeploop inbox --full                             see full details")
+    return "\n".join(lines)
+
+
 def mode_summary(mode: str) -> str:
     normalized = str(mode or "").strip()
     if normalized == "sandboxed-yolo":
@@ -656,4 +714,7 @@ __all__ = [
     "operator_console_snapshot",
     "operator_response",
     "operator_surface_fields",
+    "_compact_status_line",
+    "_phase_order",
+    "_render_actionable_inbox",
 ]

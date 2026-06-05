@@ -13,7 +13,6 @@ from typing import Any
 
 from deeploop.core.bounded_memory import BoundedMemory
 from deeploop.core.paths import REPO_ROOT
-from deeploop.core.structured_io import load_json_object as _load_json
 from deeploop.research.experiment_dag import ExperimentDAG
 
 # Default template path shipped with DeepLoop
@@ -74,7 +73,6 @@ def _collect_narrative(bounded_memory: BoundedMemory | None) -> str:
 
 def _build_intro(mission_state: dict[str, Any]) -> str:
     """Build the Introduction section from mission state."""
-    title = _resolve_value(mission_state.get("title"))
     objective = _resolve_value(mission_state.get("objective"))
     constraints = mission_state.get("constraints") or mission_state.get("autonomy_status", {}).get("constraints")
     if isinstance(constraints, list):
