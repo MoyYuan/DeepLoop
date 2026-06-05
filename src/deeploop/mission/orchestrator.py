@@ -299,28 +299,30 @@ def _extract_mission_contract_requirements(mission_cfg: dict, project_contract: 
     return requirements
 
 
-def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
-    config = _load_yaml(config_path)
-    mission_cfg = config["mission"]
-    requested_mode = str(mission_cfg.get("mode") or DEFAULT_OPERATING_MODE)
-    mission_id = mission_cfg["id"]
-    target_repo = resolve_workspace_path(mission_cfg["target_repo"])
-    project_contract = discover_project_contract(target_repo)
-    mission_artifacts = _merge_artifacts(config.get("artifacts"), project_contract, target_repo=target_repo)
-    data_artifact_paths = _data_artifact_paths(mission_artifacts["data"])
-    mission_contract_requirements = _extract_mission_contract_requirements(mission_cfg, project_contract)
-    handoff_artifacts = (
-        project_contract_input_artifacts(project_contract)
-        + mission_artifacts["docs"]
-        + mission_artifacts["configs"]
-        + data_artifact_paths
-    )
-    handoff_artifacts = list(dict.fromkeys(handoff_artifacts))
-    mission_root = MISSIONS_DIR / mission_id
+# ---------------------------------------------------------------------------
+# Step functions for initialize_mission pipeline
+# ---------------------------------------------------------------------------
 
+
+def _prepare_mission_root(mission_id: str, *, force: bool) -> Path:
+    """Create or recreate the mission root directory."""
+    mission_root = MISSIONS_DIR / mission_id
     if mission_root.exists() and force:
         _remove_tree(mission_root)
     mission_root.mkdir(parents=True, exist_ok=True)
+    return mission_root
+
+
+def _build_mission_contracts(
+    config: dict,
+    *,
+    mission_root: Path,
+    mission_id: str,
+    target_repo: Path,
+    requested_mode: str,
+    handoff_artifacts: list[str],
+) -> dict:
+    """Load contracts, resolve gates, build outer loop, and initial phase state."""
     mission_contract = config.get("mission_contract") if isinstance(config.get("mission_contract"), dict) else {}
     mission_contract_path: str | None = None
     if mission_contract:
@@ -357,8 +359,31 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     write_text(Path(outer_loop["operator_request_log_path"]), "")
     write_text(Path(outer_loop["current_operator_request_path"]), "{}\n")
 
-    roles = list(config.get("roles", []))
-    mission_constraints = _extract_nonempty_strings(mission_cfg.get("constraints"))
+    return {
+        "mission_contract": mission_contract,
+        "mission_contract_path": mission_contract_path,
+        "outer_loop": outer_loop,
+        "mission_mode": mission_mode,
+        "current_phase": current_phase,
+        "completed_phases": completed_phases,
+        "phase_history": phase_history,
+        "next_phase": next_phase,
+        "contract_snapshot": contract_snapshot,
+        "handoff_artifacts": handoff_artifacts,
+        "handoff_root": handoff_root,
+    }
+
+
+def _create_mission_sandboxes(
+    mission_id: str,
+    roles: list[str],
+    *,
+    target_repo: Path,
+    handoff_artifacts: list[str],
+    handoff_root: Path,
+    mission_artifacts: dict,
+) -> tuple[dict[str, dict], dict[str, str]]:
+    """Create sandbox specs and handoff files for each role."""
     sandboxes: dict[str, dict] = {}
     handoffs: dict[str, str] = {}
     for role in roles:
@@ -384,6 +409,35 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         handoff_path = handoff_root / f"{role}.json"
         write_json_object(handoff_path, handoff)
         handoffs[role] = str(handoff_path)
+    return sandboxes, handoffs
+
+
+def _assemble_mission_state(
+    *,
+    config: dict,
+    mission_cfg: dict,
+    mission_id: str,
+    target_repo: Path,
+    project_contract: dict,
+    mission_artifacts: dict,
+    mission_contract_requirements: dict,
+    mission_root: Path,
+    state_path: Path,
+    mission_contract_path: str | None,
+    mission_contract: dict,
+    outer_loop: dict,
+    mission_mode: str,
+    current_phase: str,
+    completed_phases: list[str],
+    phase_history: list[str],
+    next_phase: str,
+    contract_snapshot: dict,
+    roles: list[str],
+    sandboxes: dict,
+    handoffs: dict,
+) -> dict:
+    """Build the initial mission state dict."""
+    mission_constraints = _extract_nonempty_strings(mission_cfg.get("constraints"))
 
     state = {
         "mission_id": mission_id,
@@ -420,23 +474,27 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         "sandboxes": {role: sandbox["sandbox_root"] for role, sandbox in sandboxes.items()},
         "outer_loop": outer_loop,
     }
+
     mission_profile = str(mission_cfg.get("profile") or "").strip()
     if mission_profile:
         state["mission_profile"] = mission_profile
+
     experiment_coverage = mission_cfg.get("experiment_coverage")
     if isinstance(experiment_coverage, dict):
         state["experiment_coverage"] = _resolve_templates(experiment_coverage, {"target_repo": str(target_repo)})
+
     acceptance_criteria = config.get("acceptance_criteria")
     if acceptance_criteria is None:
         acceptance_criteria = mission_cfg.get("acceptance_criteria")
     if isinstance(acceptance_criteria, dict) and acceptance_criteria:
         state["acceptance_criteria"] = acceptance_criteria
+
     contract_coverage = mission_cfg.get("contract_coverage")
     if not isinstance(contract_coverage, list):
         contract_coverage = project_contract.get("contract_coverage")
     if isinstance(contract_coverage, list):
         state["contract_coverage"] = contract_coverage
-    state_path = mission_root / "mission_state.json"
+
     autopilot_cfg = config.get("autopilot") if isinstance(config.get("autopilot"), dict) else {}
     runtime_profiles: dict[str, dict[str, str]] = {}
     template_context = {
@@ -461,6 +519,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
     launch_env_name = str(autopilot_cfg.get("launch_env_name") or "").strip()
     launch_profile = str(autopilot_cfg.get("launch_profile") or mission_profile or "").strip()
     raw_launch_max_iterations = autopilot_cfg.get("max_iterations")
+
     if str(project_contract.get("status") or "") == "plain-artifacts":
         plain_folder_followups = materialize_plain_folder_followups(
             mission_id=mission_id,
@@ -484,15 +543,19 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         )
         state["artifacts"] = mission_artifacts
         state["plain_folder_followups"] = plain_folder_followups["generated_paths"]
+
     if runtime_profiles:
         state["runtime_profiles"] = runtime_profiles
     if phase_execution_hints:
         state["phase_execution_hints"] = phase_execution_hints
+
     deterministic_routing = autopilot_cfg.get("deterministic_routing")
     if isinstance(deterministic_routing, dict):
         state["deterministic_routing"] = _resolve_templates(deterministic_routing, template_context)
+
     if bootstrap:
         state["bootstrap"] = bootstrap
+
     runtime_launcher: dict[str, object] = {}
     if launch_env_name:
         runtime_launcher["env_name"] = launch_env_name
@@ -502,6 +565,7 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         runtime_launcher["profile"] = launch_profile
     if runtime_launcher:
         state["runtime_launcher"] = runtime_launcher
+
     platform_expansion = materialize_platform_expansion_bundle(
         mission_id=mission_id,
         mission_root=mission_root,
@@ -509,12 +573,28 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         target_repo=target_repo,
     )
     state["platform_expansion"] = platform_expansion
+    return state
+
+
+def _persist_mission_state(
+    *,
+    state: dict,
+    mission_root: Path,
+    state_path: Path,
+    outer_loop: dict,
+    mission_contract_path: str | None,
+    mission_id: str,
+    config_path: Path,
+) -> dict:
+    """Write mission state, memory, summary, and ledger files."""
     write_mission_state(state_path, state)
     sync_mission_memory(state_path, state, contract=outer_loop)
     sync_platform_expansion_bundle(state_path, mission_state=state)
 
     summary_path = sync_mission_summary(mission_root, state, write_if_missing=True)
     assert summary_path is not None
+
+    platform_expansion = state.get("platform_expansion", {})
 
     ledger_path = mission_root / "ledger.jsonl"
     append_jsonl(
@@ -551,3 +631,83 @@ def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
         "summary_path": summary_path,
         "ledger_path": ledger_path,
     }
+
+
+def initialize_mission(config_path: Path, *, force: bool = False) -> dict:
+    config = _load_yaml(config_path)
+    mission_cfg = config["mission"]
+    requested_mode = str(mission_cfg.get("mode") or DEFAULT_OPERATING_MODE)
+    mission_id = mission_cfg["id"]
+    target_repo = resolve_workspace_path(mission_cfg["target_repo"])
+    project_contract = discover_project_contract(target_repo)
+    mission_artifacts = _merge_artifacts(config.get("artifacts"), project_contract, target_repo=target_repo)
+    data_artifact_paths = _data_artifact_paths(mission_artifacts["data"])
+    mission_contract_requirements = _extract_mission_contract_requirements(mission_cfg, project_contract)
+    handoff_artifacts = (
+        project_contract_input_artifacts(project_contract)
+        + mission_artifacts["docs"]
+        + mission_artifacts["configs"]
+        + data_artifact_paths
+    )
+    handoff_artifacts = list(dict.fromkeys(handoff_artifacts))
+
+    # Step 1: Prepare mission root
+    mission_root = _prepare_mission_root(mission_id, force=force)
+
+    # Step 2: Build mission contracts, outer loop, and initial phase state
+    contract_ctx = _build_mission_contracts(
+        config,
+        mission_root=mission_root,
+        mission_id=mission_id,
+        target_repo=target_repo,
+        requested_mode=requested_mode,
+        handoff_artifacts=handoff_artifacts,
+    )
+
+    # Step 3: Create sandbox specs and handoff files for each role
+    roles = list(config.get("roles", []))
+    sandboxes, handoffs = _create_mission_sandboxes(
+        mission_id,
+        roles,
+        target_repo=target_repo,
+        handoff_artifacts=contract_ctx["handoff_artifacts"],
+        handoff_root=contract_ctx["handoff_root"],
+        mission_artifacts=mission_artifacts,
+    )
+
+    # Step 4: Assemble the full mission state dict
+    state_path = mission_root / "mission_state.json"
+    state = _assemble_mission_state(
+        config=config,
+        mission_cfg=mission_cfg,
+        mission_id=mission_id,
+        target_repo=target_repo,
+        project_contract=project_contract,
+        mission_artifacts=mission_artifacts,
+        mission_contract_requirements=mission_contract_requirements,
+        mission_root=mission_root,
+        state_path=state_path,
+        mission_contract_path=contract_ctx["mission_contract_path"],
+        mission_contract=contract_ctx["mission_contract"],
+        outer_loop=contract_ctx["outer_loop"],
+        mission_mode=contract_ctx["mission_mode"],
+        current_phase=contract_ctx["current_phase"],
+        completed_phases=contract_ctx["completed_phases"],
+        phase_history=contract_ctx["phase_history"],
+        next_phase=contract_ctx["next_phase"],
+        contract_snapshot=contract_ctx["contract_snapshot"],
+        roles=roles,
+        sandboxes=sandboxes,
+        handoffs=handoffs,
+    )
+
+    # Step 5: Write state, memory, summary, and ledger
+    return _persist_mission_state(
+        state=state,
+        mission_root=mission_root,
+        state_path=state_path,
+        outer_loop=contract_ctx["outer_loop"],
+        mission_contract_path=contract_ctx["mission_contract_path"],
+        mission_id=mission_id,
+        config_path=config_path,
+    )

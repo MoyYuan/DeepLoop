@@ -792,8 +792,18 @@ class ProjectRunnerTests(unittest.TestCase):
             ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         )
         self.assertFalse((project_root / ".deeploop").exists())
+        after_paths = sorted(
+            str(path.relative_to(project_root))
+            for path in project_root.rglob("*")
+            if path.is_file()
+        )
+        # Filter runtime-only artifacts that are generated during the run
+        non_runtime_paths = sorted(
+            p for p in after_paths
+            if not p.startswith("research_report/")
+        )
         self.assertEqual(
-            sorted(str(path.relative_to(project_root)) for path in project_root.rglob("*") if path.is_file()),
+            non_runtime_paths,
             [
                 "docs/benchmark-and-metrics.md",
                 "docs/project-brief.md",

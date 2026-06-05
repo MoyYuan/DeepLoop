@@ -1,0 +1,48 @@
+version: 1
+contract_id: model-tiers
+
+# Model tier configuration for DeepLoop.
+#
+# Defines named tiers that map roles and phases to specific model identifiers.
+# The runtime uses this configuration to resolve which model to invoke for a
+# given role or phase, enabling tiered LLM usage where expensive reasoning
+# models are reserved for planning and design while cheaper execution models
+# handle code generation and monitoring.
+
+tiers:
+  reasoning:
+    label: Expensive model for planning, architecture decisions, paper writing
+    model_identifier: deepseek-reasoner
+    intended_roles:
+      - planner
+      - experiment-designer
+      - critic-verifier
+      - report-synthesizer
+    intended_phases:
+      - idea-intake
+      - question-design
+      - experiment-design
+      - critique
+      - final-report
+
+  execution:
+    label: Fast/cheap model for code generation, metric parsing, monitoring
+    model_identifier: deepseek-chat
+    intended_roles:
+      - literature-scout
+      - execution-operator
+    intended_phases:
+      - literature-review
+      - benchmark-selection
+      - execution
+      - replication
+
+default_tier: execution
+
+pricing_per_1m_tokens:
+  deepseek-chat:
+    input: 0.27
+    output: 1.10
+  deepseek-reasoner:
+    input: 0.55
+    output: 2.19

@@ -12,16 +12,16 @@ campaign_defaults:
     artifacts_root: /artifacts
   simulator:
     boundary: external-user-simulator
-    required_model_alias: gpt-5-mini
+    required_model_identifier: deepseek-chat
     notes:
       - The outer simulated user is intentionally treated as an external boundary; the repo harness prepares the container, prompt bundle, and policy artifacts.
       - Use one simulator command at a time so fresh-user sessions remain sequential and durable.
   deeploop:
     control_plane:
-      selection_profile: gate2-coding-agent-copilot-gpt5-mini
-      provider_family: copilot-cli
-      backend: copilot-cli
-      model_alias: gpt-5-mini
+      selection_profile: deepseek-chat-control-plane
+      provider_family: openai-compatible-api
+      backend: openai-compatible-api
+      model_identifier: deepseek-chat
     experiment_execution:
       selection_profile: disposable-user-sim-local-qwen3_5-0p8b-openai
       deployment_profile: local-qwen3_5-0p8b-openai

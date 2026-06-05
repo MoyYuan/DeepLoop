@@ -10,10 +10,12 @@ import sys
 from typing import Any, Callable, TypeAlias
 
 from deeploop.artifacts.artifact_packager import PACKAGE_CONTRACT_PATH, package_mission_artifacts
+from deeploop.core.structured_io import load_json_object as _load_json
 from deeploop.research.self_correction import DEFAULT_CONTRACT_PATH as SELF_CORRECTION_CONTRACT_PATH
 from deeploop.research.self_correction import evaluate_self_correction
 from deeploop.runtime.adaptation_training_runtime import run_adaptation_training
 from deeploop.runtime.recursive_agent_runtime import run_recursive_agent_loop
+from deeploop.runtime.report_synthesis import synthesize_report
 from deeploop.runtime.self_healing_runtime import run_self_healing_queue
 from deeploop.runtime.stage_kernels import StageAdapter, run_stage_from_config
 
@@ -336,20 +338,40 @@ def _run_evaluation_comparison_executor(action: EvaluationComparisonExecutorActi
 
 
 def _run_report_synthesis_executor(action: ReportSynthesisExecutorAction) -> MissionExecutionResult:
-    payload = package_mission_artifacts(
+    # Load mission state
+    mission_state = _load_json(action.mission_state_path)  # type: ignore[arg-type]
+
+    # Generate the research report (LaTeX + optional PDF)
+    report_result = synthesize_report(
+        mission_state=mission_state,
+        experiment_dag=None,
+        bounded_memory=None,
+        output_dir=action.output_root,
+    )
+
+    # Also refresh the artifact package for backward compatibility
+    package_payload = package_mission_artifacts(
         action.mission_state_path,
         contract_path=action.contract_path,
         output_root=action.output_root,
     )
+
+    # Merge report paths into the package payload
+    merged_payload = dict(package_payload)
+    merged_payload["report_tex_path"] = report_result.get("report_tex_path", "")
+    merged_payload["report_pdf_path"] = report_result.get("report_pdf_path", "")
+
     return MissionExecutionResult(
         executor_id=MissionExecutorId.REPORT_SYNTHESIS,
         status="completed",
-        summary="Mission artifact package refreshed.",
-        payload=payload,
+        summary=report_result.get("summary", "Mission artifact package refreshed."),
+        payload=merged_payload,
         artifacts=_artifact_paths(
-            package_root=payload.get("package_root"),
-            manifest_path=payload.get("manifest_path"),
-            summary_path=payload.get("summary_path"),
+            package_root=merged_payload.get("package_root"),
+            manifest_path=merged_payload.get("manifest_path"),
+            summary_path=merged_payload.get("summary_path"),
+            report_tex_path=merged_payload.get("report_tex_path") or None,
+            report_pdf_path=merged_payload.get("report_pdf_path") or None,
         ),
     )
 

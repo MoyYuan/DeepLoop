@@ -11,6 +11,69 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.2.0
+
+Major release: API-only control plane with DeepSeek integration, 11 features
+from autonomous research landscape, and comprehensive test coverage.
+
+### Changed
+
+- **Provider:** removed copilot-cli support; control plane is now API-only
+  (openai-compatible-api). Default provider is DeepSeek via the
+  `deepseek-chat-control-plane` selection profile.
+- **Version:** `__version__` now single-sourced from `pyproject.toml` with CI
+  consistency check in `make repo-check`.
+- **Shared utilities:** canonical `core/shared.py` replaces 11 duplicated
+  private helpers across the codebase.
+- **Stage kernels:** split into 4 kernel files (`baseline_evaluation`,
+  `prompt_decode_sweep`, `mechanistic_localization`, `causal_intervention`).
+- **Mission runtime:** dispatch block factored into handler functions;
+  `operator_console_snapshot` split into per-state renderers;
+  `initialize_mission` broken into composable steps.
+- **Linting:** `ruff` added with basic rules (E, F, I); `make lint` now
+  enforces code quality.
+
+### Added
+
+- **Zero-cost GPU monitoring** (`runtime/gpu_monitor.py`): OS-primitive
+  process monitoring with zero LLM API calls during training.
+- **Two-tier fixed-size memory** (`core/bounded_memory.py`): frozen project
+  brief (3K chars) + rolling memory log (2K chars), total ~5K chars.
+- **Tree search experiments** (`research/tree_search.py`): best-first
+  draft/improve/debug with configurable metric direction and exploration phase.
+- **Tiered LLM usage** (`configs/runtime/model-tiers.yaml`): per-role/phase
+  model selection with cost tracking and pricing table.
+- **Agent dialogue protocol** (`mission/agent_dialogue.py`): structured
+  PLAN/CODE/DIALOGUE/REVIEW turn-taking between specialized roles.
+- **Composable stop conditions:** `tokenCountIs`, `costIs`, `maxIterations`,
+  `noProgressThreshold` — pluggable into runtime loop.
+- **Report synthesis** (`runtime/report_synthesis.py`): LaTeX generation with
+  `pdflatex` PDF compilation from experiment DAG and bounded memory.
+- **DAG experiment lineage** (`research/experiment_dag.py`): SOTA selection,
+  cycle detection, ancestor/descendant traversal.
+- **Circuit breaker:** per-task failure tracking with configurable max attempts.
+- **Dry-run validation:** 2-step CPU-only experiment validation before GPU launch.
+- **Self-writing instructions:** `patterns.md` (operational knowledge) +
+  `progress.md` (history), rolling windows with auto-compression.
+- **Subagent fan-out:** `run_parallel_subagents()` with configurable parallelism.
+
+### Fixed
+
+- Data integrity race: executor-made state mutations now merged on reload.
+- `assert` → `ValueError` for input validation in adaptation training runtime.
+- Unsafe `importlib.import_module` now restricted to `deeploop.runtime.*`.
+- `_schema_errors` warns when `jsonschema` is absent instead of silently
+  accepting invalid data.
+- Broad `except Exception` narrowed to specific types in autotune and recovery.
+- `iter_examples()` now uses line-by-line generator for memory-efficient JSONL.
+
+### Testing
+
+- **700 tests, 0 failures** (up from ~200).
+- New test tiers: acceptance (real DeepSeek API), integration (API contract +
+  GPU monitor live), unit (12 new test files for all new modules).
+- Docker release validation passes with API-only smoke tests.
+
 ## 0.1.10
 
 Patch release focused on making DeepLoop's disposable user-simulation campaign
@@ -271,6 +334,10 @@ preflight.
   rather than hanging silently
 - release maintenance guidance now matches the real GitHub Release -> PyPI
   publish flow
+
+## 0.1.1
+
+Prepare 0.1.1 patch release ([#16](https://github.com/tnetal/DeepLoop/pull/16)).
 
 ## 0.1.0
 

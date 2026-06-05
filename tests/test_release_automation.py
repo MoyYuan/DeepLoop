@@ -119,7 +119,7 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertIn("replication-evidence", review["failed_gate_ids"])
         self.assertIn("evidence-policy-linkage", review["failed_gate_ids"])
         lane_ids = {lane["lane_id"] for lane in review["gate_2_runtime_contract"]["required_lanes"]}
-        self.assertIn("copilot-cli-gpt-5-mini-coding-agent", lane_ids)
+        self.assertIn("local-qwen-openai-compatible", lane_ids)
 
     def test_review_accepts_replicated_package_with_equivalent_rigor_and_agent_reviews(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -167,12 +167,6 @@ class ReleaseAutomationTests(unittest.TestCase):
         self.assertNotIn("claim-state-floor", review["failed_gate_ids"])
         self.assertEqual(review["required_reviews"][0]["reviewer"]["type"], "agent")
         self.assertEqual(review["required_reviews"][2]["runtime_metadata"]["model"], "gpt-5-mini")
-        copilot_lane = next(
-            lane
-            for lane in review["gate_2_runtime_contract"]["required_lanes"]
-            if lane["lane_id"] == "copilot-cli-gpt-5-mini-coding-agent"
-        )
-        self.assertEqual(copilot_lane["model_expectation"]["alias"], "gpt-5-mini")
         self.assertTrue(review["gate_2_runtime_contract"]["proof_boundary"]["manual_machine_auth_remains_explicit"])
 
     def test_review_accepts_human_override_records(self) -> None:

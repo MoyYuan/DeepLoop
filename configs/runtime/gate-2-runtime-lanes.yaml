@@ -8,7 +8,7 @@ canonical_public_docs:
   - docs/design/recursive-agent-runtime.md
 approved_phase:
   id: current-approved-phase
-  description: Gate 2 release signoff requires one local OpenAI-compatible Qwen lane and one Copilot CLI coding-agent lane.
+  description: Gate 2 release signoff requires the local OpenAI-compatible Qwen lane.
 baseline_install_boundary:
   provider_free_smoke: baseline-only
   docker_clean_room: required-for-release
@@ -59,22 +59,4 @@ required_lanes:
     proof_requirements:
       - Run from a fresh or disposable environment on the documented install path.
       - Validate bootstrap and mission execution without hidden local state.
-      - Record durable mission/runtime artifacts plus provider family, backend, and model/profile metadata.
-  - lane_id: copilot-cli-gpt-5-mini-coding-agent
-    category: coding-agent-cli
-    selection_profile: gate2-coding-agent-copilot-gpt5-mini
-    provider_family: copilot-cli
-    backend: copilot-cli
-    model_expectation:
-      alias: gpt-5-mini
-    auth_boundary:
-      automated_repo_checks:
-        - copilot --help
-        - python scripts/runtime/invoke_provider_prompt.py --help
-      manual_requirements:
-        - The machine is already authenticated for Copilot CLI use before mission execution.
-        - Release proof records that machine auth was satisfied outside repo automation.
-    proof_requirements:
-      - Run a real coding-agent mission/runtime lane that materially depends on live Copilot CLI output.
-      - Keep manual machine auth explicit instead of treating provider readiness as implicit runtime proof.
       - Record durable mission/runtime artifacts plus provider family, backend, and model/profile metadata.

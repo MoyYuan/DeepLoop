@@ -10,6 +10,7 @@ import yaml
 
 from deeploop.autonomy.gate_taxonomy import resolve_gate_contract
 from deeploop.autonomy.mission_contract_snapshot import load_mission_contract_snapshot_for_state, resolve_phase_contract_for_state
+from deeploop.research.tree_search import ExperimentNode, ExperimentTree
 from deeploop.autonomy.mission_autonomy import (
     ensure_valid_contract_payload,
     enrich_outer_loop_contract,
@@ -429,6 +430,18 @@ class MissionDecisionEngine:
         current_phase = str(mission_state.get("current_phase") or "").strip()
         if not mission_id or not current_phase:
             raise ValueError("mission_state must include non-empty mission_id and current_phase")
+
+        # ── Tree-search-based action selection (opt-in via enable_tree_search) ──
+        tree_phases = {"experiment-design", "execution"}
+        tree_enabled = bool(
+            mission_state.get("enable_tree_search")
+            or isinstance(mission_state.get("experiment_tree"), dict)
+        )
+        if current_phase in tree_phases and tree_enabled:
+            outcome = self._tree_search_decision(mission_state, mission_id, current_phase)
+            if outcome is not None:
+                return outcome
+            # Fall through to existing logic if tree-search could not produce a decision
 
         evidence_snapshot = self._evidence_from_state(mission_state, evidence)
         pending_actions = self._pending_actions(mission_state)
@@ -1522,6 +1535,216 @@ class MissionDecisionEngine:
             action=resolved_action,
             missing_outputs=missing_outputs,
             notes=notes,
+        )
+
+    # ------------------------------------------------------------------
+    # Tree-search helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _serialize_tree(tree: ExperimentTree) -> dict[str, Any]:
+        """Serialize an ExperimentTree to a JSON-safe dict."""
+        return {
+            "higher_is_better": tree.higher_is_better,
+            "num_drafts": tree.num_drafts,
+            "max_debug_depth": tree.max_debug_depth,
+            "root_id": tree.root_id,
+            "nodes": {
+                node_id: {
+                    "node_id": node.node_id,
+                    "code": node.code,
+                    "plan": node.plan,
+                    "metric": node.metric,
+                    "parent_id": node.parent_id,
+                    "is_buggy": node.is_buggy,
+                    "children": list(node.children),
+                }
+                for node_id, node in tree.nodes.items()
+            },
+        }
+
+    @staticmethod
+    def _deserialize_tree(data: Mapping[str, Any]) -> ExperimentTree:
+        """Rebuild an ExperimentTree from a serialized dict."""
+        tree = ExperimentTree(
+            root_code="",
+            root_plan="",
+            higher_is_better=bool(data.get("higher_is_better", True)),
+        )
+        tree.num_drafts = int(data.get("num_drafts", 5))
+        tree.max_debug_depth = int(data.get("max_debug_depth", 3))
+        tree.root_id = str(data.get("root_id", ""))
+        raw_nodes: Mapping[str, Any] = data.get("nodes", {})
+        tree.nodes = {}
+        for node_id, node_data in raw_nodes.items():
+            tree.nodes[str(node_id)] = ExperimentNode(
+                node_id=str(node_data["node_id"]),
+                code=str(node_data.get("code", "")),
+                plan=str(node_data.get("plan", "")),
+                metric=node_data.get("metric"),
+                parent_id=node_data.get("parent_id"),
+                is_buggy=bool(node_data.get("is_buggy", False)),
+                children=list(node_data.get("children", [])),
+            )
+        return tree
+
+    @staticmethod
+    def _is_minimization_metric(mission_state: Mapping[str, Any]) -> bool:
+        """Determine whether the primary evaluation metric is minimization-style.
+
+        Checks the mission evaluation contract for metric names that suggest
+        lower-is-better (loss, perplexity, error, rmse, mae).
+        """
+        evaluation = mission_state.get("evaluation")
+        if isinstance(evaluation, Mapping):
+            metric_name = str(evaluation.get("metric") or "").lower()
+            if metric_name and any(kw in metric_name for kw in ("loss", "perplexity", "error", "rmse", "mae")):
+                return True
+        snapshot = load_mission_contract_snapshot_for_state(mission_state)
+        if isinstance(snapshot, Mapping):
+            eval_contract = snapshot.get("evaluation")
+            if isinstance(eval_contract, Mapping):
+                metric_name = str(eval_contract.get("metric") or "").lower()
+                if metric_name and any(kw in metric_name for kw in ("loss", "perplexity", "error", "rmse", "mae")):
+                    return True
+        return False
+
+    @staticmethod
+    def _resolve_recursive_config_path(mission_state: Mapping[str, Any]) -> str:
+        """Resolve a recursive-agent config path from the mission state."""
+        # Check common locations where the config path may be stored
+        raw = mission_state.get("recursive_agent_config_path")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        outer_loop = mission_state.get("outer_loop")
+        if isinstance(outer_loop, Mapping):
+            raw = outer_loop.get("recursive_agent_config_path")
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
+        # Check phase execution hints for the current phase
+        hints = mission_state.get("phase_execution_hints")
+        current_phase = str(mission_state.get("current_phase") or "")
+        if isinstance(hints, Mapping) and current_phase:
+            hint = hints.get(current_phase)
+            if isinstance(hint, Mapping):
+                executor = hint.get("executor")
+                if isinstance(executor, Mapping):
+                    params = executor.get("params")
+                    if isinstance(params, Mapping):
+                        raw = params.get("config_path")
+                        if isinstance(raw, str) and raw.strip():
+                            return raw.strip()
+        # Fall back to a constructed path from the mission root
+        mission_root = mission_state.get("mission_root")
+        if isinstance(mission_root, str) and mission_root.strip():
+            from pathlib import Path
+
+            fallback = Path(mission_root).expanduser().resolve() / "runtime" / "recursive_agent_profiles"
+            if fallback.exists():
+                profiles = sorted(fallback.glob("*.yaml"))
+                if profiles:
+                    return str(profiles[0])
+        return ""
+
+    def _tree_search_decision(
+        self,
+        mission_state: Mapping[str, Any],
+        mission_id: str,
+        current_phase: str,
+    ) -> MissionDecisionOutcome | None:
+        """Build a tree-search-based DISPATCH decision for experiment-design or execution phases.
+
+        Returns a MissionDecisionOutcome if tree-search applies, or None to fall
+        through to the existing linear decision logic.
+        """
+        tree_data = mission_state.get("experiment_tree")
+
+        if tree_data is None:
+            root_plan = str(mission_state.get("objective") or "")
+            root_code = str(mission_state.get("plan") or root_plan)
+            higher_is_better = not self._is_minimization_metric(mission_state)
+            tree = ExperimentTree(
+                root_code=root_code,
+                root_plan=root_plan,
+                higher_is_better=higher_is_better,
+            )
+        else:
+            tree = self._deserialize_tree(tree_data)
+
+        node_id, operation = tree.select_next()
+
+        # Build task description and action kind based on the selected operation
+        if operation == "draft":
+            root_plan = str(mission_state.get("objective") or "")
+            task = (
+                f"Draft a new experiment design. "
+                f"Mission objective: {root_plan}. "
+                f"Design and implement a novel experiment hypothesis."
+            )
+            kind = "local-eval"
+            target_desc = "new draft"
+        elif operation == "improve":
+            node = tree.nodes[node_id]
+            direction = "higher" if tree.higher_is_better else "lower"
+            task = (
+                f"Improve the experiment at node `{node_id}`. "
+                f"Current plan: {node.plan}. "
+                f"Current code: {node.code[:500] if node.code else '(not provided)'}. "
+                f"Direction: {direction} is better."
+            )
+            kind = "local-eval"
+            target_desc = f"node {node_id}"
+        elif operation == "debug":
+            node = tree.nodes[node_id]
+            task = (
+                f"Debug the experiment at node `{node_id}`. "
+                f"Plan: {node.plan}. "
+                f"The current code has issues that need fixing: "
+                f"{node.code[:500] if node.code else '(not provided)'}."
+            )
+            kind = "local-eval"
+            target_desc = f"buggy node {node_id}"
+        else:
+            return None
+
+        config_path = self._resolve_recursive_config_path(mission_state)
+        if not config_path:
+            return None
+
+        executor_action = RecursiveAgentExecutorAction(config_path=Path(config_path))
+        executor_dispatch = MissionExecutorDispatch(
+            executor_id=MissionExecutorId.RECURSIVE_AGENT,
+            action=executor_action,
+            summary=f"Tree search {operation} on {target_desc}",
+        )
+
+        action_id = _slug(f"{mission_id}-{current_phase}-tree-{operation}", fallback="mission-action")
+        decision_id = _slug(f"{mission_id}-{current_phase}-tree-{operation}", fallback="mission-decision")
+
+        action = MissionPlannedAction(
+            action_id=action_id,
+            mission_id=mission_id,
+            kind=kind,
+            role="planner",
+            task=task,
+            phase=current_phase,
+            decision_id=decision_id,
+            executor_dispatch=executor_dispatch,
+            produces_outputs=("experiment_design",) if operation == "draft" else ("execution_result",),
+        )
+
+        # Persist the serialized tree back to the mission_state dict
+        # so it survives across decide() calls
+        if isinstance(mission_state, dict):
+            mission_state["experiment_tree"] = self._serialize_tree(tree)
+
+        return self._selected_outcome(
+            mission_state,
+            directive=MissionDecisionDirective.DISPATCH,
+            decision_type=kind,
+            summary=f"Tree search: {operation} {target_desc}",
+            action=action,
+            missing_outputs=(),
         )
 
     def _decision_record(

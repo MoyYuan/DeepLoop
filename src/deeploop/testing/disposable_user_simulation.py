@@ -283,7 +283,7 @@ def runtime_constraints_payload(matrix: DisposableUserSimulationMatrix) -> dict[
 
 def _runtime_constraint_lines(matrix: DisposableUserSimulationMatrix) -> list[str]:
     lines = [
-        f"Use Copilot CLI `{matrix.control_plane.model_alias}` as the DeepLoop control-plane provider.",
+        f"Use the `{matrix.control_plane.selection_profile}` control-plane provider.",
         (
             "All DeepLoop-carried experiments must stay on "
             f"`{matrix.experiment_execution.model_identifier}` via selection profile "

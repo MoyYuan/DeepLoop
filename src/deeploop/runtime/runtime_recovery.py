@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,8 @@ import yaml
 from deeploop.core.ledger import append_jsonl, make_ledger_entry
 from deeploop.core.paths import REPO_ROOT
 from deeploop.runtime.stage_kernels import StageAdapter, load_stage_adapter, run_stage_from_config
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_POLICY_PATH = REPO_ROOT / "configs" / "runtime" / "recovery-policy.yaml"
 
@@ -219,7 +223,8 @@ def run_stage_with_recovery(
                 attempts[-1].action = str(policy.get("classifications", {}).get(classification, {}).get("action", "stop"))
                 final_status = last_result.status
             break
-        except Exception as exc:  # noqa: BLE001
+        except (subprocess.CalledProcessError, OSError, json.JSONDecodeError, ValueError, RuntimeError) as exc:
+            logger.warning("Recovery attempt failed with expected error: %s", exc)
             classification = _classify_exception(exc)
             action = str(policy.get("classifications", {}).get(classification, {}).get("action", "stop"))
             attempts.append(

@@ -2,7 +2,6 @@ version: 1
 contract_id: public-provider-setup
 canonical_public_doc: docs/reference/provider-setup.md
 first_class_provider_families:
-  - copilot-cli
   - openai-compatible-api
   - anthropic-api
   - local-transformers
@@ -23,41 +22,29 @@ related_runtime_surfaces:
   recursive_agent_runtime_example: configs/runtime/recursive-agent-runtime-provider.example.yaml
   gate_2_runtime_lanes: configs/runtime/gate-2-runtime-lanes.yaml
 provider_families:
-  copilot-cli:
-    display_name: Copilot CLI
-    public_contract_tier: first-class
-    runtime_integration: implemented
-    gate_2_release_validation:
-      lane_id: copilot-cli-gpt-5-mini-coding-agent
-      model_alias: gpt-5-mini
-      auth_boundary: manual-machine-auth-explicit
-      proof_requirement: durable mission/runtime artifacts must record the resolved runtime lane
-    required_tools:
-      - command: copilot
-        purpose: CLI entrypoint used by deeploop.runtime.provider_launcher
-      - command: python
-        purpose: runs scripts/runtime/invoke_provider_prompt.py
-    expected_env_vars:
-      required: []
-      optional:
-        - GITHUB_TOKEN
-    auth_prerequisites:
-      - complete Copilot CLI authentication on the machine before mission execution
-    readiness_expectations:
-      automated:
-        - kind: command
-          command: copilot --help
-          expectation: exits 0
-        - kind: command
-          command: python scripts/runtime/invoke_provider_prompt.py --help
-          expectation: exits 0
-      manual:
-        - an authenticated Copilot CLI session is already available on the machine
   openai-compatible-api:
     display_name: OpenAI-compatible API providers
     public_contract_tier: first-class
     runtime_integration: implemented
     deployment_profiles:
+      deepseek-chat:
+        lane_id: deepseek-chat-api
+        model_identifier: deepseek-chat
+        endpoint_contract:
+          path: /v1/chat/completions
+          required_env_vars:
+            - OPENAI_API_KEY
+          optional_env_vars:
+            - OPENAI_BASE_URL
+            - OPENAI_MODEL
+        environment_expectations:
+          control_plane_env: deeploop
+        manual_requirements:
+          - set OPENAI_API_KEY outside the repo to your DeepSeek API key
+          - set OPENAI_BASE_URL to https://api.deepseek.com/v1 (or leave unset if using the default)
+        fallback_guidance:
+          - DeepSeek API is fully OpenAI-compatible; the existing openai_compatible_adapter handles it
+          - for reduced cost, consider deepseek-chat (V3) over deepseek-reasoner (R1) for routine control-plane tasks
       local-qwen3_5-9b-openai:
         lane_id: local-qwen-openai-compatible
         model_identifier: Qwen/Qwen3.5-9B

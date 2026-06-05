@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -35,6 +36,7 @@ def _schema_errors(payload: dict[str, Any], schema_path: Path) -> list[str]:
     try:
         import jsonschema
     except ImportError:
+        warnings.warn("jsonschema not installed; schema validation is incomplete")
         errors: list[str] = []
         for key in schema.get("required", []):
             if key not in payload:

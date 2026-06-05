@@ -249,19 +249,28 @@ def _runtime_snapshot(mission_state_path: Path, mission_state: dict[str, Any]) -
     if "latest_history" not in merged:
         merged["latest_history"] = runtime_history[-1:] if runtime_history else []
     merged["history_tail"] = runtime_history[-5:]
-    executor_usage_counts: Counter[str] = Counter()
-    for record in runtime_history:
-        if not isinstance(record, Mapping):
-            continue
-        summary = str(record.get("summary") or "")
-        marker = "through executor `"
-        if marker not in summary:
-            continue
-        executor_id = summary.split(marker, 1)[1].split("`", 1)[0].strip()
-        if executor_id:
-            executor_usage_counts[executor_id] += 1
-    merged["executor_usage_counts"] = dict(executor_usage_counts)
-    merged["recursive_agent_invocations"] = int(executor_usage_counts.get("recursive-agent", 0))
+    last_executor_id = merged.get("last_executor_id")
+    if last_executor_id:
+        # Use structured runtime_state data (last_executor_id is set from mission_runtime.py dispatch path)
+        executor_usage_counts = Counter({last_executor_id: 1})
+        merged["executor_usage_counts"] = dict(executor_usage_counts)
+        merged["recursive_agent_invocations"] = int(last_executor_id == "recursive-agent")
+    else:
+        # Fall back to parsing executor usage from history summaries when
+        # structured runtime_state data is unavailable.
+        executor_usage_counts: Counter[str] = Counter()
+        for record in runtime_history:
+            if not isinstance(record, Mapping):
+                continue
+            summary = str(record.get("summary") or "")
+            marker = "through executor `"
+            if marker not in summary:
+                continue
+            executor_id = summary.split(marker, 1)[1].split("`", 1)[0].strip()
+            if executor_id:
+                executor_usage_counts[executor_id] += 1
+        merged["executor_usage_counts"] = dict(executor_usage_counts)
+        merged["recursive_agent_invocations"] = int(executor_usage_counts.get("recursive-agent", 0))
     recursive_agent = _recursive_agent_snapshot(mission_state)
     if recursive_agent is not None:
         merged["recursive_agent"] = recursive_agent

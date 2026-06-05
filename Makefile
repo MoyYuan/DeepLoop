@@ -9,6 +9,7 @@ TEST_RUNS_ROOT := $(TEST_RUNTIME_ROOT)/runs/deeploop
 .PHONY: \
 	setup clean clean-workspace-temp repo-check \
 	test test-unit test-integration test-mission-runtime test-smoke test-real test-proof-matrix test-acceptance \
+	test-acceptance-e2e test-integration-contract \
 	public-bootstrap-preflight public-bootstrap-check smoke-manifest lint docs-build docs-serve \
 	mission-smoke sanity-gate-smoke record-finding autoexec-smoke \
 	mission-advance mission-run mission-meta-eval mission-package mission-release-review mission-release-promote mission-monitor mission-agent-loop \
@@ -88,6 +89,14 @@ test-proof-matrix:
 test-acceptance:
 	@$(PYTHON) scripts/testing/run_acceptance_campaign.py --campaign translation-paper-scale
 
+test-acceptance-e2e:
+	@echo "Running E2E acceptance tests (requires DEEPLOOP_ACCEPTANCE_API_KEY)..."
+	@PYTHONPATH=src $(PYTHON) -m unittest discover -s tests/acceptance -p 'test_*.py' -v
+
+test-integration-contract:
+	@echo "Running integration/contract tests (some require DEEPLOOP_INTEGRATION_API_KEY)..."
+	@PYTHONPATH=src $(PYTHON) -m unittest discover -s tests/integration -p 'test_*.py' -v
+
 smoke-manifest:
 	@$(PYTHON) scripts/smoke_manifest.py
 
@@ -156,4 +165,4 @@ mission-agent-loop:
 	@$(PYTHON) scripts/mission/run_recursive_agent_loop.py --config $(CONFIG)
 
 lint:
-	@echo "No repo-wide linter is enforced yet; add one only with documented policy."
+	@ruff check src/

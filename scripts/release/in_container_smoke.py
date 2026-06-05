@@ -297,22 +297,22 @@ def _run_zero_start_bundled_starter_provider_gate_smoke(*, mission_id: str) -> d
     provider_readiness = (
         payload.get("provider_readiness") if isinstance(payload.get("provider_readiness"), dict) else {}
     )
-    if provider_readiness.get("provider_family") != "copilot-cli":
+    if provider_readiness.get("provider_family") != "openai-compatible-api":
         raise SystemExit("docker-smoke: zero-start run did not resolve the expected provider family")
     if provider_readiness.get("status") != "action-required":
         raise SystemExit("docker-smoke: zero-start run did not report action-required provider readiness")
     next_step = str(provider_readiness.get("next_step") or "")
-    if "Copilot CLI" not in next_step:
+    if "OPENAI_API_KEY" not in next_step:
         raise SystemExit("docker-smoke: zero-start run did not surface the expected next setup step")
     resume_command = str(provider_readiness.get("resume_command") or "")
     if f"deeploop run --project-root {project_root}" not in resume_command:
         raise SystemExit("docker-smoke: zero-start run did not provide the expected resume command")
     recheck_command = str(provider_readiness.get("recheck_command") or "")
-    if recheck_command != "deeploop provider-ready --selection-profile control-plane-copilot-cli":
+    if recheck_command != "deeploop provider-ready --selection-profile deepseek-chat-control-plane":
         raise SystemExit("docker-smoke: zero-start run did not provide the expected readiness recheck command")
     failed_checks = provider_readiness.get("failed_checks") if isinstance(provider_readiness.get("failed_checks"), list) else []
-    if not any(str(check.get("name") or "") == "copilot" for check in failed_checks):
-        raise SystemExit("docker-smoke: zero-start run did not record the missing Copilot CLI check")
+    if not any(str(check.get("name") or "") == "OPENAI_API_KEY" for check in failed_checks):
+        raise SystemExit("docker-smoke: zero-start run did not record the missing OPENAI_API_KEY check")
 
     return {
         "workflow": "zero-start-bundled-starter",

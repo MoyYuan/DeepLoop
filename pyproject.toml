@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deeploop"
-version = "0.1.10"
+version = "0.2.0"
 description = "DeepLoop autonomous research autopilot control plane."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,7 +18,6 @@ dependencies = [
   "pandas",
   "pyyaml",
   "rich",
-  "typer",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -58,7 +57,11 @@ llm = [
 ]
 dev = [
   "deeploop[docs]",
+  "ruff",
 ]
+
+[tool.ruff]
+select = ["E", "F", "I"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

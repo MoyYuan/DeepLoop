@@ -19,39 +19,16 @@ from deeploop.cli.bootstrap_support import _provider_ready, check_provider_readi
 
 
 class BootstrapSupportTests(unittest.TestCase):
-    @patch("deeploop.cli.bootstrap_support.shutil.which")
-    @patch("deeploop.cli.bootstrap_support.subprocess.run")
-    def test_check_provider_readiness_reports_missing_copilot_tool_from_selection_profile(
-        self,
-        mock_run,
-        mock_which,
-    ) -> None:
-        def _fake_which(command_name: str) -> str | None:
-            return None if command_name == "copilot" else f"/usr/bin/{command_name}"
-
-        def _fake_run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-            if command[0] == "copilot":
-                raise FileNotFoundError("copilot is not installed")
-            return subprocess.CompletedProcess(command, 0, stdout="usage", stderr="")
-
-        mock_which.side_effect = _fake_which
-        mock_run.side_effect = _fake_run
-
+    def test_check_provider_readiness_reports_missing_openai_compatible_api_key(self) -> None:
         report = check_provider_readiness(
-            selection_profile="control-plane-copilot-cli",
+            provider_family="openai-compatible-api",
             resume_command="deeploop run --until-complete",
         )
 
         self.assertEqual(report["status"], "action-required")
-        self.assertEqual(report["provider_family"], "copilot-cli")
-        self.assertEqual(report["selection_profile"], "control-plane-copilot-cli")
-        self.assertIn("Copilot CLI", report["next_step"])
+        self.assertEqual(report["provider_family"], "openai-compatible-api")
+        self.assertIn("OPENAI_API_KEY", report["next_step"])
         self.assertEqual(report["resume_command"], "deeploop run --until-complete")
-        self.assertEqual(
-            report["recheck_command"],
-            "deeploop provider-ready --selection-profile control-plane-copilot-cli",
-        )
-        self.assertTrue(any(check["name"] == "copilot" for check in report["failed_checks"]))
 
     def test_check_provider_readiness_reports_missing_openai_api_key(self) -> None:
         with patch.dict(os.environ, {}, clear=True):

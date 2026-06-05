@@ -6,6 +6,7 @@ from typing import Any
 
 import yaml
 
+from deeploop.core.shared import slugify as _slugify
 from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
 from deeploop.project_contract import CONTRACT_OPERATIONAL_FIELDS, discover_project_contract
 
@@ -92,6 +93,18 @@ _TASK_TYPE_PATTERNS = (
     ("benchmarking", ("benchmark", "baseline comparison", "ablation")),
 )
 
+_DATASET_KEYS = ("dataset_path", "dataset_paths", "data_path", "data_paths", "dataset_access", "datasets", "data")
+_TARGET_KEYS = ("target", "target_variable", "label", "label_column", "prediction_target")
+_SPLIT_POLICY_KEYS = ("split_policy", "evaluation_split", "holdout_policy", "train_validation_test_split")
+_BENCHMARK_KEYS = ("benchmark_expectations", "benchmark", "comparison", "comparisons", "baselines")
+_SUCCESS_CRITERIA_KEYS = ("success_criteria", "success", "acceptance_criteria", "metrics", "metric")
+_DELIVERABLES_KEYS = ("deliverables", "artifacts", "artifact_requirements", "artifact_expectations")
+_NOVELTY_KEYS = ("novelty_target", "research_ambition", "ambition")
+_COMPUTE_BUDGET_KEYS = ("compute_budget", "budget", "budgets", "max_gpu_hours", "max_cpu_hours")
+_STOP_RULES_KEYS = ("stop_rules", "stop_rule", "termination")
+_LEAKAGE_KEYS = ("leakage_constraints", "leakage_policy", "data_leakage")
+_PUBLICATION_KEYS = ("publication_boundary", "external_publication", "sharing_boundary")
+
 
 def _clean_text(value: Any, *, fallback: str) -> str:
     if isinstance(value, str):
@@ -161,21 +174,6 @@ def _promoted_contract_requirements_for_config(contract: dict[str, Any], project
         elif field == "budgets" and field in human_inputs:
             promoted[field] = human_inputs[field]
     return promoted
-
-
-def _slugify(value: str) -> str:
-    slug_chars: list[str] = []
-    pending_dash = False
-    for char in value.lower():
-        if char.isalnum():
-            if pending_dash and slug_chars:
-                slug_chars.append("-")
-            slug_chars.append(char)
-            pending_dash = False
-        elif slug_chars:
-            pending_dash = True
-    slug = "".join(slug_chars).strip("-")
-    return slug or "deeploop-project"
 
 
 def resolve_project_root_for_bootstrap(project_root: Path) -> Path:
@@ -512,22 +510,22 @@ def compile_mission_contract(
     task_requires_target = task_type in {"classification", "regression", "retrieval"}
     dataset_value = _first_mapping_value(
         human_inputs,
-        ("dataset_path", "dataset_paths", "data_path", "data_paths", "dataset_access", "datasets", "data"),
+        _DATASET_KEYS,
     )
     if dataset_value is None:
         dataset_value = _first_mapping_value(
             project_metadata,
-            ("dataset_path", "dataset_paths", "data_path", "data_paths", "dataset_access", "datasets", "data"),
+            _DATASET_KEYS,
         )
     dataset_value = _coerce_summary_value(dataset_value) or _extract_path_hints(combined_text) or None
     target_value = _coerce_summary_value(
         _first_mapping_value(
             human_inputs,
-            ("target", "target_variable", "label", "label_column", "prediction_target"),
+            _TARGET_KEYS,
         )
         or _first_mapping_value(
             project_metadata,
-            ("target", "target_variable", "label", "label_column", "prediction_target"),
+            _TARGET_KEYS,
         )
     )
     if target_value is None:
@@ -535,11 +533,11 @@ def compile_mission_contract(
     split_policy = _coerce_summary_value(
         _first_mapping_value(
             human_inputs,
-            ("split_policy", "evaluation_split", "holdout_policy", "train_validation_test_split"),
+            _SPLIT_POLICY_KEYS,
         )
         or _first_mapping_value(
             project_metadata,
-            ("split_policy", "evaluation_split", "holdout_policy", "train_validation_test_split"),
+            _SPLIT_POLICY_KEYS,
         )
     )
     if split_policy is None and re.search(r"\b(train|validation|test|holdout)\b", combined_text, flags=re.IGNORECASE):
@@ -550,11 +548,11 @@ def compile_mission_contract(
     benchmark_expectations = _coerce_summary_value(
         _first_mapping_value(
             human_inputs,
-            ("benchmark_expectations", "benchmark", "comparison", "comparisons", "baselines"),
+            _BENCHMARK_KEYS,
         )
         or _first_mapping_value(
             project_metadata,
-            ("benchmark_expectations", "benchmark", "comparison", "comparisons", "baselines"),
+            _BENCHMARK_KEYS,
         )
     )
     if benchmark_expectations is None and re.search(r"\b(compare|baseline|benchmark|vs\.)\b", combined_text, flags=re.IGNORECASE):
@@ -562,11 +560,11 @@ def compile_mission_contract(
     success_criteria = _coerce_summary_value(
         _first_mapping_value(
             human_inputs,
-            ("success_criteria", "success", "acceptance_criteria", "metrics", "metric"),
+            _SUCCESS_CRITERIA_KEYS,
         )
         or _first_mapping_value(
             project_metadata,
-            ("success_criteria", "success", "acceptance_criteria", "metrics", "metric"),
+            _SUCCESS_CRITERIA_KEYS,
         )
     )
     if success_criteria is None and re.search(r"\b(improve|gain|beat|higher|lower|reduce)\b", combined_text, flags=re.IGNORECASE):
@@ -574,11 +572,11 @@ def compile_mission_contract(
     deliverables = _coerce_summary_value(
         _first_mapping_value(
             human_inputs,
-            ("deliverables", "artifacts", "artifact_requirements", "artifact_expectations"),
+            _DELIVERABLES_KEYS,
         )
         or _first_mapping_value(
             project_metadata,
-            ("deliverables", "artifacts", "artifact_requirements", "artifact_expectations"),
+            _DELIVERABLES_KEYS,
         )
     )
     inferred_deliverables = _infer_deliverables(combined_text)
@@ -587,17 +585,17 @@ def compile_mission_contract(
     elif isinstance(deliverables, list):
         deliverables = deliverables + [item for item in inferred_deliverables if item not in deliverables]
     novelty_target = _coerce_summary_value(
-        _first_mapping_value(human_inputs, ("novelty_target", "research_ambition", "ambition"))
-        or _first_mapping_value(project_metadata, ("novelty_target", "research_ambition", "ambition"))
+        _first_mapping_value(human_inputs, _NOVELTY_KEYS)
+        or _first_mapping_value(project_metadata, _NOVELTY_KEYS)
     )
     compute_budget = _coerce_summary_value(
         _first_mapping_value(
             human_inputs,
-            ("compute_budget", "budget", "budgets", "max_gpu_hours", "max_cpu_hours"),
+            _COMPUTE_BUDGET_KEYS,
         )
         or _first_mapping_value(
             project_metadata,
-            ("compute_budget", "budget", "budgets", "max_gpu_hours", "max_cpu_hours"),
+            _COMPUTE_BUDGET_KEYS,
         )
     )
     if compute_budget is None:
@@ -610,20 +608,20 @@ def compile_mission_contract(
             "max_iterations": int(autopilot["max_iterations"]),
         }
     stop_rules = _coerce_summary_value(
-        _first_mapping_value(human_inputs, ("stop_rules", "stop_rule", "termination"))
-        or _first_mapping_value(project_metadata, ("stop_rules", "stop_rule", "termination"))
+        _first_mapping_value(human_inputs, _STOP_RULES_KEYS)
+        or _first_mapping_value(project_metadata, _STOP_RULES_KEYS)
     )
     if stop_rules is None and re.search(r"\b(stop|abort|max iterations|halt)\b", combined_text, flags=re.IGNORECASE):
         stop_rules = "Kickoff includes an explicit stopping instruction."
     leakage_policy = _coerce_summary_value(
-        _first_mapping_value(human_inputs, ("leakage_constraints", "leakage_policy", "data_leakage"))
-        or _first_mapping_value(project_metadata, ("leakage_constraints", "leakage_policy", "data_leakage"))
+        _first_mapping_value(human_inputs, _LEAKAGE_KEYS)
+        or _first_mapping_value(project_metadata, _LEAKAGE_KEYS)
     )
     if leakage_policy is None and "leak" in combined_text.lower():
         leakage_policy = "Kickoff explicitly mentions leakage constraints."
     publication_boundary = _coerce_summary_value(
-        _first_mapping_value(human_inputs, ("publication_boundary", "external_publication", "sharing_boundary"))
-        or _first_mapping_value(project_metadata, ("publication_boundary", "external_publication", "sharing_boundary"))
+        _first_mapping_value(human_inputs, _PUBLICATION_KEYS)
+        or _first_mapping_value(project_metadata, _PUBLICATION_KEYS)
     )
     if publication_boundary is None and re.search(r"\b(internal only|publish|publication|external)\b", combined_text, flags=re.IGNORECASE):
         publication_boundary = "Kickoff mentions publication or external sharing expectations."

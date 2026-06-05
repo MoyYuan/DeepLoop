@@ -5,7 +5,6 @@ placement_order:
       - policy is cross-repo
       - policy is stable and safety-relevant
     locations:
-      - ~/.copilot/copilot-instructions.md
       - workspace://AGENTS.md
   - layer: deeploop-shared
     use_when:

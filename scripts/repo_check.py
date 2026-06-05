@@ -15,8 +15,6 @@ REQUIRED_PATHS = [
     REPO_ROOT / "AGENTS.md",
     REPO_ROOT / "Makefile",
     REPO_ROOT / "environment.yml",
-    REPO_ROOT / ".github" / "copilot-instructions.md",
-    REPO_ROOT / ".github" / "workflows" / "copilot-setup-steps.yml",
     REPO_ROOT / "configs" / "autonomy" / "gates.yaml",
     REPO_ROOT / "configs" / "autonomy" / "mission-outer-loop.yaml",
     REPO_ROOT / "configs" / "autonomy" / "research-sanity-gates.yaml",
@@ -126,15 +124,53 @@ REQUIRED_PATHS = [
 ]
 
 
+def _check_version_consistency() -> list[str]:
+    errors: list[str] = []
+    try:
+        from deeploop import __version__
+    except ImportError:
+        errors.append("Cannot import deeploop.__version__")
+        return errors
+
+    import tomllib
+    pyproject_path = REPO_ROOT / "pyproject.toml"
+    if not pyproject_path.exists():
+        errors.append("pyproject.toml not found")
+        return errors
+
+    try:
+        with open(pyproject_path, "rb") as handle:
+            data = tomllib.load(handle)
+    except Exception as exc:
+        errors.append(f"Failed to parse pyproject.toml: {exc}")
+        return errors
+
+    project_version = data.get("project", {}).get("version")
+    if project_version is None:
+        errors.append("pyproject.toml missing project.version")
+    elif project_version != __version__:
+        errors.append(
+            f"Version mismatch: __init__.py={__version__} != pyproject.toml={project_version}"
+        )
+    return errors
+
+
 def main() -> int:
     if PACKAGE_REPO_ROOT != REPO_ROOT:
         raise SystemExit("Package repo root does not match script repo root.")
 
+    errors: list[str] = []
+
     missing = [path for path in REQUIRED_PATHS if not path.exists()]
     if missing:
-        raise SystemExit(
+        errors.append(
             "Missing required scaffold paths:\n" + "\n".join(f"- {path}" for path in missing)
         )
+
+    errors.extend(_check_version_consistency())
+
+    if errors:
+        raise SystemExit("\n".join(errors))
 
     for external_dir in EXPECTED_EXTERNAL_DIRS:
         external_dir.mkdir(parents=True, exist_ok=True)

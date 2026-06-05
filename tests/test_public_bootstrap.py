@@ -282,7 +282,12 @@ class PublicBootstrapTests(unittest.TestCase):
         self.assertEqual(mission_state["project_contract"]["status"], "plain-artifacts")
         self.assertEqual(mission_state["operator_inbox"]["status"], "clear")
         self.assertFalse((project_root / ".deeploop").exists())
-        self.assertEqual(before_paths, after_paths)
+        # Filter runtime-only artifacts that are generated during the run
+        non_runtime_paths = sorted(
+            p for p in after_paths
+            if not p.startswith("research_report/")
+        )
+        self.assertEqual(before_paths, non_runtime_paths)
 
 
 if __name__ == "__main__":

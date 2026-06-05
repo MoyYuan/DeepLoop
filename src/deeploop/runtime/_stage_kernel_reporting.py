@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import warnings
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +37,7 @@ def validate_manifest(manifest: dict[str, Any], *, load_json: Callable[[Path], d
     try:
         import jsonschema
     except ImportError:
+        warnings.warn("jsonschema not installed; schema validation is incomplete")
         return
     schema = load_json(RUN_MANIFEST_SCHEMA_PATH)
     jsonschema.validate(manifest, schema)

@@ -41,38 +41,6 @@ _SCRIPT_SPEC.loader.exec_module(run_disposable_user_simulation_matrix)
 
 
 class DisposableUserSimulationTests(unittest.TestCase):
-    def test_resolve_host_copilot_mounts_is_explicit(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = Path(tmpdir)
-            (home / ".config" / "gh").mkdir(parents=True, exist_ok=True)
-            (home / ".copilot").mkdir(parents=True, exist_ok=True)
-            fake_binary = home / "bin" / "copilot"
-            fake_binary.parent.mkdir(parents=True, exist_ok=True)
-            fake_binary.write_text("#!/bin/sh\n", encoding="utf-8")
-
-            with patch.object(run_disposable_user_simulation_matrix.shutil, "which", return_value=str(fake_binary)):
-                mounts = run_disposable_user_simulation_matrix._resolve_host_copilot_mounts(enabled=True, home=home)
-
-        self.assertEqual(mounts[0]["target"], "/usr/local/bin/copilot")
-        self.assertTrue(mounts[0]["read_only"])
-        self.assertEqual(mounts[1]["target"], "/home/deeploop/.config/gh")
-        self.assertEqual(mounts[2]["target"], "/home/deeploop/.copilot")
-        self.assertFalse(mounts[2]["read_only"])
-
-    def test_resolve_host_copilot_mounts_requires_binary_and_gh_config(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = Path(tmpdir)
-            with patch.object(run_disposable_user_simulation_matrix.shutil, "which", return_value=None):
-                with self.assertRaisesRegex(FileNotFoundError, "host `copilot` binary"):
-                    run_disposable_user_simulation_matrix._resolve_host_copilot_mounts(enabled=True, home=home)
-
-            fake_binary = home / "bin" / "copilot"
-            fake_binary.parent.mkdir(parents=True, exist_ok=True)
-            fake_binary.write_text("#!/bin/sh\n", encoding="utf-8")
-            with patch.object(run_disposable_user_simulation_matrix.shutil, "which", return_value=str(fake_binary)):
-                with self.assertRaisesRegex(FileNotFoundError, "~/.config/gh"):
-                    run_disposable_user_simulation_matrix._resolve_host_copilot_mounts(enabled=True, home=home)
-
     def test_resolve_container_openai_env_rewrites_localhost_for_container(self) -> None:
         env = run_disposable_user_simulation_matrix._resolve_container_openai_env(
             env={
@@ -93,9 +61,12 @@ class DisposableUserSimulationTests(unittest.TestCase):
 
         self.assertTrue(matrix.sequential_execution)
         self.assertEqual(matrix.minimum_session_seconds, 3600)
-        self.assertEqual(matrix.simulator.required_model_alias, "gpt-5-mini")
-        self.assertEqual(matrix.control_plane.selection_profile, "gate2-coding-agent-copilot-gpt5-mini")
-        self.assertEqual(matrix.control_plane.model_alias, "gpt-5-mini")
+        self.assertEqual(matrix.simulator.required_model_alias, "")
+        self.assertEqual(
+            matrix.control_plane.selection_profile,
+            "deepseek-chat-control-plane",
+        )
+        self.assertEqual(matrix.control_plane.model_alias, "")
         self.assertEqual(matrix.experiment_execution.selection_profile, "disposable-user-sim-local-qwen3_5-0p8b-openai")
         self.assertEqual(matrix.experiment_execution.model_identifier, "Qwen/Qwen3.5-0.8B")
         self.assertEqual(
@@ -128,7 +99,7 @@ class DisposableUserSimulationTests(unittest.TestCase):
         self.assertIn("existing", project["constraints"])
         self.assertTrue(any("Qwen/Qwen3.5-0.8B" in item for item in project["constraints"]))
         self.assertTrue(any("/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf" in item for item in project["constraints"]))
-        self.assertEqual(project["human_inputs"]["outer_user_simulator_model"], "gpt-5-mini")
+        self.assertEqual(project["human_inputs"]["outer_user_simulator_model"], "")
         self.assertEqual(
             project["human_inputs"]["deeploop_experiment_execution_model_artifact_path"],
             "/models/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
@@ -155,7 +126,7 @@ class DisposableUserSimulationTests(unittest.TestCase):
 
         self.assertTrue(docs_exists)
         self.assertEqual(facts["project"]["human_inputs"]["user_simulation_scenario"], scenario.scenario_id)
-        self.assertIn("gpt-5-mini", " ".join(facts["project"]["constraints"]))
+        self.assertIn("deepseek-chat-control-plane", " ".join(facts["project"]["constraints"]))
 
     def test_recommended_commands_use_project_root_when_present(self) -> None:
         matrix = load_disposable_user_simulation_matrix(DEFAULT_MATRIX_PATH)
@@ -191,7 +162,6 @@ class DisposableUserSimulationTests(unittest.TestCase):
                 matrix=matrix,
                 simulator_command=None,
                 prepare_only=True,
-                host_copilot_mount=False,
             )
 
             contract = json.loads((scenario_root / "scenario_contract.json").read_text(encoding="utf-8"))
@@ -199,7 +169,7 @@ class DisposableUserSimulationTests(unittest.TestCase):
             container_mounts = json.loads((scenario_root / "container_mounts.json").read_text(encoding="utf-8"))
 
         self.assertEqual(summary["status"], "prepared")
-        self.assertEqual(contract["runtime_constraints"]["deeploop_control_plane"]["model"]["alias"], "gpt-5-mini")
+        self.assertEqual(contract["runtime_constraints"]["deeploop_control_plane"]["model"]["alias"], "")
         self.assertEqual(
             runtime_pins["runtime_constraints"]["deeploop_experiment_execution"]["model"]["identifier"],
             "Qwen/Qwen3.5-0.8B",
@@ -464,7 +434,8 @@ class DisposableUserSimulationTests(unittest.TestCase):
 
         contract = build_scenario_contract(matrix, scenario, campaign_id="campaign-2", container_name="demo-container")
 
-        self.assertEqual(contract["runtime_constraints"]["outer_user_simulator"]["model_alias"], "gpt-5-mini")
+        self.assertEqual(contract["runtime_constraints"]["outer_user_simulator"]["boundary"], "external-user-simulator")
+        self.assertEqual(contract["runtime_constraints"]["outer_user_simulator"]["model_alias"], "")
         self.assertEqual(
             contract["runtime_constraints"]["deeploop_experiment_execution"]["host_execution_profile"],
             "qwen3_5-0p8b-openai-local",
@@ -507,7 +478,7 @@ class DisposableUserSimulationTests(unittest.TestCase):
             runtime_pins_text="runtime_constraints: {}",
         )
 
-        self.assertIn("gpt-5-mini", prompt)
+        self.assertIn("deepseek-chat", prompt)
         self.assertIn("Outer prompt body", prompt)
         self.assertIn("contract_id", prompt)
         self.assertIn("runtime_constraints", prompt)
@@ -585,7 +556,6 @@ class DisposableUserSimulationTests(unittest.TestCase):
         )
 
         current = [0.0]
-        call_count = [0]
 
         def fake_clock() -> float:
             return current[0]
@@ -593,24 +563,22 @@ class DisposableUserSimulationTests(unittest.TestCase):
         def fake_sleep(seconds: float) -> None:
             current[0] += seconds
 
-        def fake_run(command, **kwargs):
-            call_count[0] += 1
-            self.assertIn("--model", command)
-            self.assertIn(DEFAULT_OUTER_USER_MODEL, command)
+        def fake_invoke_api(prompt_text, *, model):
+            self.assertEqual(model, DEFAULT_OUTER_USER_MODEL)
             current[0] += 0.25
-            return run_disposable_user_simulation_matrix.subprocess.CompletedProcess(
-                command,
-                0,
-                f"phase-{call_count[0]} output\n",
-                "",
-            )
+            return f"phase output\n"
 
-        summary = run_disposable_user_simulation(
-            inputs,
-            runner=fake_run,
-            clock=fake_clock,
-            sleeper=fake_sleep,
-        )
+        import deeploop.testing.disposable_user_simulation_outer_user as _outer_user_module
+        with patch.object(
+            _outer_user_module,
+            "_invoke_openai_compatible",
+            side_effect=fake_invoke_api,
+        ):
+            summary = run_disposable_user_simulation(
+                inputs,
+                clock=fake_clock,
+                sleeper=fake_sleep,
+            )
 
         run_root = scenario_root / "artifacts" / "outer-user-simulation"
         self.assertEqual(summary["status"], "passed")
@@ -618,7 +586,6 @@ class DisposableUserSimulationTests(unittest.TestCase):
         self.assertTrue((run_root / "transcript.md").exists())
         self.assertTrue((run_root / "phases" / "01-opening" / "phase.json").exists())
         self.assertGreaterEqual(summary["elapsed_seconds"], 3600)
-        self.assertEqual(call_count[0], 3)
 
 
 if __name__ == "__main__":

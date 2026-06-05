@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
-import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,9 +10,9 @@ from typing import Any, Callable, Mapping
 import yaml
 
 from deeploop.core.structured_io import write_json_object, write_markdown, write_text
-from deeploop.runtime.copilot_adapter import build_copilot_prompt_command
+from deeploop.runtime.openai_compatible_adapter import _invoke_openai_compatible, _extract_first_json_object
 
-DEFAULT_OUTER_USER_MODEL = "gpt-5-mini"
+DEFAULT_OUTER_USER_MODEL = "deepseek-chat"
 _PHASE_NAMES = ("opening", "midpoint", "closing")
 
 
@@ -89,7 +87,8 @@ def _validate_runtime_pins(contract: dict[str, Any], runtime_pins: dict[str, Any
     if not isinstance(contract_constraints, dict):
         raise ValueError("Scenario contract must contain runtime_constraints.")
     outer_user = runtime_constraints.get("outer_user_simulator")
-    if not isinstance(outer_user, dict) or outer_user.get("model_alias") != model:
+    outer_model_alias = outer_user.get("model_alias") if isinstance(outer_user, dict) else ""
+    if outer_model_alias and outer_model_alias != model:
         raise ValueError("Runtime pins do not preserve the outer user simulator model alias.")
     contract_control = contract_constraints.get("deeploop_control_plane")
     runtime_control = runtime_constraints.get("deeploop_control_plane")
@@ -197,15 +196,8 @@ def build_phase_prompt(
     return "\n".join(lines)
 
 
-def _build_copilot_command(prompt_text: str, *, add_dir: Path, model: str) -> list[str]:
-    return build_copilot_prompt_command(
-        prompt_text,
-        add_dirs=(add_dir,),
-        model=model,
-        allow_all=True,
-        no_ask_user=True,
-        output_format="text",
-    )
+def _invoke_api(prompt_text: str, *, model: str) -> str:
+    return _invoke_openai_compatible(prompt_text, model=model)
 
 
 def _wait_until(
@@ -225,7 +217,6 @@ def run_disposable_user_simulation(
     *,
     model: str = DEFAULT_OUTER_USER_MODEL,
     phase_count: int = 3,
-    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     clock: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
@@ -302,28 +293,27 @@ def run_disposable_user_simulation(
             contract_text=contract_text,
             runtime_pins_text=runtime_pins_text,
         )
-        command = _build_copilot_command(prompt, add_dir=inputs.scenario_root, model=model)
         phase_dir = phase_root / f"{phase_index + 1:02d}-{phase_name}"
         phase_dir.mkdir(parents=True, exist_ok=True)
         write_text(phase_dir / "prompt.md", prompt)
-        write_text(phase_dir / "command.txt", shlex.join(command))
         phase_started = clock()
-        completed = runner(
-            command,
-            cwd=inputs.scenario_root,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            response_text = _invoke_api(prompt, model=model)
+            returncode = 0
+            stderr_text = ""
+        except Exception as exc:
+            response_text = ""
+            returncode = 1
+            stderr_text = f"API call failed: {exc}"
         phase_elapsed = clock() - phase_started
-        write_text(phase_dir / "stdout.txt", completed.stdout)
-        write_text(phase_dir / "stderr.txt", completed.stderr)
+        write_text(phase_dir / "stdout.txt", response_text)
+        write_text(phase_dir / "stderr.txt", stderr_text)
         phase_record = {
             "phase_index": phase_index + 1,
             "phase_name": phase_name,
             "target_offset_seconds": phase_targets[phase_index],
             "elapsed_seconds": round(phase_elapsed, 3),
-            "returncode": completed.returncode,
+            "returncode": returncode,
             "stdout_path": str(phase_dir / "stdout.txt"),
             "stderr_path": str(phase_dir / "stderr.txt"),
         }
@@ -343,20 +333,20 @@ def run_disposable_user_simulation(
                 "### Output",
                 "",
                 "```text",
-                completed.stdout.strip() or "(no stdout)",
+                response_text.strip() or "(no output)",
                 "```",
                 "",
-                f"### Return code: `{completed.returncode}`",
+                f"### Status: {'success' if returncode == 0 else 'failed'}",
                 "",
             ]
         )
-        previous_transcript = completed.stdout.strip() or previous_transcript
-        if completed.returncode != 0:
+        previous_transcript = response_text.strip() or previous_transcript
+        if returncode != 0:
             failure = {
                 "phase_index": phase_index + 1,
                 "phase_name": phase_name,
-                "returncode": completed.returncode,
-                "message": f"Copilot exited {completed.returncode} during phase `{phase_name}`.",
+                "returncode": returncode,
+                "message": f"API call failed during phase `{phase_name}`.",
             }
             break
 

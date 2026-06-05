@@ -6,6 +6,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
@@ -77,25 +78,24 @@ class DisposableUserSimulationOuterUserRegressionTests(unittest.TestCase):
         def fake_sleep(seconds: float) -> None:
             current[0] += seconds
 
-        def fake_run(command, **kwargs):
-            del command, kwargs
+        import deeploop.testing.disposable_user_simulation_outer_user as _outer_user_module
+
+        def fake_invoke_api(prompt_text, *, model):
+            del prompt_text, model
             phase_calls.append(f"phase-{len(phase_calls) + 1}")
             duration = 1.0 if len(phase_calls) == 1 else 0.5
             current[0] += duration
-            return subprocess.CompletedProcess(
-                args=["copilot"],
-                returncode=0 if len(phase_calls) == 1 else 17,
-                stdout=f"{phase_calls[-1]} output\n",
-                stderr="",
-            )
+            if len(phase_calls) >= 2:
+                raise RuntimeError("phase `midpoint` API error")
+            return f"{phase_calls[-1]} output\n"
 
-        with self.assertRaisesRegex(RuntimeError, "phase `midpoint`"):
-            run_disposable_user_simulation(
-                inputs,
-                runner=fake_run,
-                clock=fake_clock,
-                sleeper=fake_sleep,
-            )
+        with patch.object(_outer_user_module, "_invoke_openai_compatible", side_effect=fake_invoke_api):
+            with self.assertRaisesRegex(RuntimeError, "phase `midpoint`"):
+                run_disposable_user_simulation(
+                    inputs,
+                    clock=fake_clock,
+                    sleeper=fake_sleep,
+                )
 
         self.assertEqual(phase_calls, ["phase-1", "phase-2"])
         self.assertEqual(current[0], inputs.minimum_session_seconds)
@@ -111,24 +111,26 @@ class DisposableUserSimulationOuterUserRegressionTests(unittest.TestCase):
         def fake_sleep(seconds: float) -> None:
             current[0] += seconds
 
-        def fake_run(command, **kwargs):
-            del command, kwargs
-            phase_number = len(phase_names) - 1
-            current[0] += 0.25
-            return subprocess.CompletedProcess(
-                args=["copilot"],
-                returncode=0 if phase_number == 1 else 23,
-                stdout=f"{phase_names.pop(0)} output\n",
-                stderr="simulated failure\n" if phase_number == 0 else "",
-            )
+        import deeploop.testing.disposable_user_simulation_outer_user as _outer_user_module
 
-        with self.assertRaisesRegex(RuntimeError, "phase `midpoint`"):
-            run_disposable_user_simulation(
-                inputs,
-                runner=fake_run,
-                clock=fake_clock,
-                sleeper=fake_sleep,
-            )
+        call_idx = [0]
+
+        def fake_invoke_api(prompt_text, *, model):
+            del model
+            idx = call_idx[0]
+            call_idx[0] += 1
+            current[0] += 0.25
+            if idx == 1:
+                raise RuntimeError("API error")
+            return f"{phase_names[idx]} output\n"
+
+        with patch.object(_outer_user_module, "_invoke_openai_compatible", side_effect=fake_invoke_api):
+            with self.assertRaisesRegex(RuntimeError, "phase `midpoint`"):
+                run_disposable_user_simulation(
+                    inputs,
+                    clock=fake_clock,
+                    sleeper=fake_sleep,
+                )
 
         run_root = scenario_root / "artifacts" / "outer-user-simulation"
         summary = json.loads((run_root / "summary.json").read_text(encoding="utf-8"))
@@ -136,13 +138,13 @@ class DisposableUserSimulationOuterUserRegressionTests(unittest.TestCase):
 
         self.assertEqual(summary["status"], "failed")
         self.assertEqual(summary["failure"]["phase_name"], "midpoint")
-        self.assertEqual(summary["failure"]["returncode"], 23)
+        self.assertEqual(summary["failure"]["returncode"], 1)
         self.assertEqual(len(summary["phases"]), 2)
         self.assertTrue((run_root / "phases" / "01-opening" / "phase.json").exists())
         self.assertTrue((run_root / "phases" / "02-midpoint" / "phase.json").exists())
         self.assertFalse((run_root / "phases" / "03-closing" / "phase.json").exists())
         self.assertIn("opening output", transcript)
-        self.assertIn("midpoint output", transcript)
+        self.assertNotIn("midpoint output", transcript)
 
     def test_successful_run_still_waits_until_minimum_session_seconds(self) -> None:
         inputs, _ = self._build_inputs("successful-run-waits")
@@ -155,23 +157,20 @@ class DisposableUserSimulationOuterUserRegressionTests(unittest.TestCase):
         def fake_sleep(seconds: float) -> None:
             current[0] += seconds
 
-        def fake_run(command, **kwargs):
-            del command, kwargs
+        import deeploop.testing.disposable_user_simulation_outer_user as _outer_user_module
+
+        def fake_invoke_api(prompt_text, *, model):
+            del prompt_text, model
             call_count[0] += 1
             current[0] += 0.1
-            return subprocess.CompletedProcess(
-                args=["copilot"],
-                returncode=0,
-                stdout=f"phase-{call_count[0]} output\n",
-                stderr="",
-            )
+            return f"phase-{call_count[0]} output\n"
 
-        summary = run_disposable_user_simulation(
-            inputs,
-            runner=fake_run,
-            clock=fake_clock,
-            sleeper=fake_sleep,
-        )
+        with patch.object(_outer_user_module, "_invoke_openai_compatible", side_effect=fake_invoke_api):
+            summary = run_disposable_user_simulation(
+                inputs,
+                clock=fake_clock,
+                sleeper=fake_sleep,
+            )
 
         self.assertEqual(summary["status"], "passed")
         self.assertEqual(call_count[0], 3)

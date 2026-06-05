@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import concurrent.futures
+import copy
 import json
 import os
+import shlex
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -11,9 +15,11 @@ import yaml
 
 from deeploop.core.phase_defaults import default_kind_for_phase, default_role_for_phase
 from deeploop.autonomy.mission_contract_snapshot import resolve_phase_contract_for_state
+from deeploop.core.bounded_memory import BoundedMemory
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import WORKSPACE_URI_PREFIX, resolve_workspace_path
 from deeploop.core.paths import REPO_ROOT as DEEPLOOP_REPO_ROOT
+from deeploop.core.shared import build_command as _build_command, dedupe_strings as _dedupe_strings, is_relative_to as _is_relative_to
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object, write_markdown
 from deeploop.mission.mission_state import load_mission_state, write_mission_state
 from deeploop.runtime._prompt_renderer import (
@@ -21,6 +27,7 @@ from deeploop.runtime._prompt_renderer import (
     loop_report_markdown as _loop_report_markdown,
     render_prompt as _render_prompt,
 )
+from deeploop.runtime.provider_launcher import resolve_model_for_role
 from deeploop.runtime.sandbox import build_sandbox_spec
 
 DEFAULT_POLICY_PATH = DEEPLOOP_REPO_ROOT / "configs" / "runtime" / "recursive-agent-runtime.yaml"
@@ -64,15 +71,6 @@ def _normalize_list(raw: Any) -> list[str]:
     if isinstance(raw, list):
         return [str(item) for item in raw]
     raise ValueError(f"Expected list-like value, got {type(raw).__name__}")
-
-
-def _dedupe_strings(values: list[str]) -> list[str]:
-    deduped: list[str] = []
-    for value in values:
-        text = str(value).strip()
-        if text and text not in deduped:
-            deduped.append(text)
-    return deduped
 
 
 def _boundary_watch_roots(mission_state: Mapping[str, Any] | None, target_repo: Path) -> list[Path]:
@@ -552,14 +550,6 @@ def _degraded_result_outcome(
     return _normalized_result_outcome(degraded_payload, action, mission_state=mission_state)
 
 
-def _is_relative_to(path: Path, root: Path) -> bool:
-    try:
-        path.relative_to(root)
-    except ValueError:
-        return False
-    return True
-
-
 def _resolved_artifact_path(raw_path: str, *, mission_root: Path) -> Path:
     path = Path(raw_path).expanduser()
     if not path.is_absolute():
@@ -732,12 +722,6 @@ def _deep_merge(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]
     return merged
 
 
-def _build_command(command: list[str], env_name: str | None) -> list[str]:
-    if env_name is None:
-        return command
-    return ["conda", "run", "-n", env_name, *command]
-
-
 def _runtime_root(mission_state_path: Path, artifact_dir_name: str, loop_name: str) -> Path:
     return mission_state_path.parent / "runtime" / artifact_dir_name / loop_name
 
@@ -767,6 +751,7 @@ def _loop_state(runtime_root: Path, mission_id: str, loop_name: str) -> dict[str
         "status": "initialized",
         "iterations_completed": 0,
         "consecutive_failures": 0,
+        "_task_failure_counts": {},
         "action_cursor": 0,
         "initial_task_consumed": False,
         "pending_action": None,
@@ -851,8 +836,6 @@ def _sync_outer_runtime_summary_from_recursive_agent(mission_state: Mapping[str,
         _write_markdown(summary_markdown_path, lines)
     except OSError:
         pass
-
-
 
 
 def _validate_result(payload: dict[str, Any]) -> list[str]:
@@ -1118,7 +1101,7 @@ def _apply_result_to_mission(
         "max_iterations": state.get("max_iterations"),
         "iterations_completed": state["iterations_completed"],
         "iterations_remaining": state.get("iterations_remaining"),
-        "consecutive_failures": state["consecutive_failures"],
+        "consecutive_failures": sum(state.get("_task_failure_counts", {}).values()),
         "latest_result_path": state.get("latest_result_path"),
         "latest_iteration_path": state.get("latest_iteration_path"),
         "pending_action": state.get("pending_action"),
@@ -1169,6 +1152,92 @@ def _write_findings(mission_root: Path, iteration_number: int, role: str, findin
     return path
 
 
+def _update_patterns_file(
+    runtime_root: Path,
+    findings: list[str],
+    max_patterns: int = 20,
+) -> None:
+    """Append new findings/learnings to separate durable files.
+
+    Splits findings entries into two files:
+      - patterns_path / "patterns.md": operational knowledge (Pattern:/Learn: prefix)
+        max 10 entries. Injected into next iteration's prompt context.
+      - patterns_path / "progress.md": progress history (everything else)
+        max 30 entries.
+
+    The files are append-only markdown documents.  Each entry is prefixed
+    with a timestamp header.  When the number of entries exceeds the max,
+    the oldest entries are trimmed.
+    """
+    if not findings:
+        return
+
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    patterns_path = runtime_root / "patterns.md"
+    progress_path = runtime_root / "progress.md"
+
+    # Split findings by prefix
+    pattern_findings: list[str] = []
+    progress_findings: list[str] = []
+    for finding in findings:
+        stripped = finding.strip()
+        if stripped.startswith("Pattern:") or stripped.startswith("Learn:"):
+            pattern_findings.append(stripped)
+        else:
+            progress_findings.append(stripped)
+
+    from datetime import datetime, timezone as _timezone
+
+    now_str = datetime.now(_timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def _write_file(path: Path, entries: list[str], header: str, max_entries: int) -> None:
+        if not entries:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        existing_lines: list[str] = []
+        if path.exists():
+            existing_lines = path.read_text(encoding="utf-8").splitlines()
+
+        new_lines: list[str] = []
+        new_lines.append("")
+        new_lines.append(f"## {header} — {now_str}")
+        new_lines.append("")
+        for entry in entries:
+            new_lines.append(f"- {entry}")
+
+        combined = existing_lines + new_lines
+
+        # Split combined lines into entry blocks delimited by "## {header} —".
+        blocks: list[list[str]] = []
+        current_block: list[str] = []
+        marker = f"## {header} —"
+        for line in combined:
+            if line.startswith(marker):
+                if current_block:
+                    blocks.append(current_block)
+                current_block = [line]
+            else:
+                current_block.append(line)
+        if current_block:
+            blocks.append(current_block)
+
+        if len(blocks) > max_entries:
+            blocks = blocks[-max_entries:]
+
+        output: list[str] = []
+        for block in blocks:
+            if output and block:
+                output.extend(block)
+            else:
+                output.extend(block)
+
+        path.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+    _write_file(patterns_path, pattern_findings, "Pattern", 10)
+    _write_file(progress_path, progress_findings, "Progress", 30)
+
+
 def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     config = _load_yaml(Path(config_path).resolve())
     policy_path = Path(config.get("policy_path") or DEFAULT_POLICY_PATH).expanduser().resolve()
@@ -1192,7 +1261,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     state["max_iterations"] = max_iterations
     state["iterations_remaining"] = max(0, max_iterations - int(state.get("iterations_completed", 0)))
     remaining_budget = int(state["iterations_remaining"])
-    max_consecutive_failures = int(config.get("max_consecutive_failures", policy.get("max_consecutive_failures", 2)))
+    max_consecutive_failures = int(config.get("max_consecutive_failures", policy.get("max_consecutive_failures", 3)))
     recent_ledger_limit = int(config.get("recent_ledger_limit", policy.get("recent_ledger_limit", 8)))
     recent_memory_limit = int(config.get("recent_memory_limit", policy.get("recent_memory_limit", 6)))
     agent_cfg = config.get("agent", {})
@@ -1240,7 +1309,8 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             )
             if (pending_phase and current_phase and pending_phase != current_phase) or should_prefer_mission_action:
                 state["pending_action"] = None
-                state["consecutive_failures"] = 0
+                pending_task_id = _optional_string(candidate_action.get("action_id")) or _optional_string(candidate_action.get("loop_action_id")) or "unknown"
+                state.setdefault("_task_failure_counts", {}).pop(pending_task_id, None)
                 pending_action = None
             else:
                 action = candidate_action
@@ -1342,6 +1412,25 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         branch_log_path = Path(outer_loop["branch_log_path"]) if isinstance(outer_loop.get("branch_log_path"), str) else None
         branch_record = _latest_matching_record(branch_log_path, "branch_id", action.get("branch_id"))
         decision_record = _latest_matching_record(decision_log_path, "decision_id", action.get("decision_id"))
+
+        # ── BoundedMemory: load or create from mission state ──
+        bounded_memory_data = mission_state.get("bounded_memory")
+        if isinstance(bounded_memory_data, dict):
+            bm = BoundedMemory(project_brief=str(bounded_memory_data.get("brief", "")))
+            bm._key_results = list(bounded_memory_data.get("key_results", []))
+            bm._recent_decisions = list(bounded_memory_data.get("recent_decisions", []))
+            bm._compressed_count = int(bounded_memory_data.get("compressed_count", 0))
+        else:
+            contract = mission_state.get("mission_contract", {})
+            if not isinstance(contract, dict):
+                contract = {}
+            project_brief = str(
+                mission_state.get("objective")
+                or (contract.get("objective", {}).get("text", ""))
+                or ""
+            )
+            bm = BoundedMemory(project_brief=project_brief)
+
         prompt_text = _render_prompt(
             mission_state=mission_state,
             action=action,
@@ -1353,6 +1442,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             result_json_path=result_json_path,
             iteration_number=iteration_number,
             max_iterations=max_iterations,
+            bounded_memory=bm,
         )
         prompt_path.write_text(prompt_text, encoding="utf-8")
         if remaining_after_this_iteration == 0 and (
@@ -1388,6 +1478,12 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         ]
         full_command = _build_command(base_command, _resolved_env_name(agent_cfg.get("env_name")))
 
+        # Resolve tiered model for this action's role and phase
+        resolved_model = resolve_model_for_role(
+            role=action["role"],
+            phase=action.get("phase"),
+        )
+
         environment = dict(os.environ)
         environment.update(
             {
@@ -1407,6 +1503,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                 "DEEPLOOP_MISSION_ACTION_ID": action.get("action_id") or "",
                 "DEEPLOOP_MISSION_BRANCH_ID": action.get("branch_id") or "",
                 "DEEPLOOP_MISSION_DECISION_ID": action.get("decision_id") or "",
+                "OPENAI_MODEL": resolved_model,
             }
         )
 
@@ -1520,6 +1617,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             "started_at": started_at,
             "completed_at": completed_at,
             "returncode": returncode,
+            "model": resolved_model,
             "prompt_path": str(prompt_path),
             "result_json_path": str(result_json_path),
             "log_path": str(log_path),
@@ -1559,6 +1657,24 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             "findings_path": str(findings_path) if findings_path is not None else None,
         }
         _append_jsonl(_memory_path(runtime_root), memory_entry)
+
+        # ── Record iteration outcome in BoundedMemory and persist ──
+        if bm is not None:
+            decision_summary = (
+                f"{action['role']} iter {iteration_number}: "
+                f"{normalized_outcome.get('summary', '') if normalized_outcome is not None else 'unknown'}"
+            )
+            bm.record_decision(decision_summary)
+            result_summary = (
+                f"{action['role']} iter {iteration_number}: {iteration_status}"
+            )
+            bm.record_result(result_summary)
+            mission_state["bounded_memory"] = {
+                "brief": bm.project_brief,
+                "key_results": list(bm._key_results),
+                "recent_decisions": list(bm._recent_decisions),
+                "compressed_count": bm._compressed_count,
+            }
 
         append_jsonl(
             ledger_path,
@@ -1628,10 +1744,13 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             }
         )
 
+        task_id = action.get("action_id") or action.get("loop_action_id") or "unknown"
+        task_counts: dict[str, int] = state.setdefault("_task_failure_counts", {})
         if iteration_status in {"failed", "blocked"}:
-            state["consecutive_failures"] = int(state.get("consecutive_failures", 0)) + 1
+            task_counts[task_id] = task_counts.get(task_id, 0) + 1
             state["pending_action"] = dict(action)
-            if state["consecutive_failures"] >= max_consecutive_failures or iteration_status == "blocked":
+            if task_counts[task_id] >= max_consecutive_failures or iteration_status == "blocked":
+                task_counts[task_id] = 0
                 status = "blocked"
                 state["status"] = status
                 _save_loop_state(runtime_root, state)
@@ -1647,7 +1766,17 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
                 )
                 break
         else:
-            state["consecutive_failures"] = 0
+            task_counts[task_id] = 0
+
+            # Self-writing instructions: persist findings to durable patterns file
+            if normalized_outcome is not None:
+                outcome_findings = normalized_outcome.get("findings", [])
+                if outcome_findings:
+                    patterns_root = mission_root / "runtime"
+                    _update_patterns_file(patterns_root, outcome_findings)
+                    mission_state["patterns_file_path"] = str(patterns_root / "patterns.md")
+                    mission_state["progress_file_path"] = str(patterns_root / "progress.md")
+
             continuation = latest_outcome.get("continuation") if latest_outcome is not None else None
             if _should_yield_to_outer_runtime(latest_outcome, action=action):
                 state["pending_action"] = None
@@ -1747,7 +1876,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         "max_iterations": max_iterations,
         "iterations_completed": state["iterations_completed"],
         "iterations_remaining": max(0, max_iterations - int(state["iterations_completed"])),
-        "consecutive_failures": state["consecutive_failures"],
+        "consecutive_failures": sum(state.get("_task_failure_counts", {}).values()),
         "runtime_root": str(runtime_root),
         "memory_path": str(_memory_path(runtime_root)),
         "state_path": str(_state_path(runtime_root)),
@@ -1768,7 +1897,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             summary=f"Recursive agent loop {loop_name} finished with status {status}",
             status=status,
             related_paths=[str(report_json_path), str(report_markdown_path)],
-            metadata={"iterations_completed": state["iterations_completed"], "consecutive_failures": state["consecutive_failures"]},
+            metadata={"iterations_completed": state["iterations_completed"], "consecutive_failures": sum(state.get("_task_failure_counts", {}).values())},
         ),
     )
     return {
@@ -1776,7 +1905,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         "max_iterations": max_iterations,
         "iterations_completed": state["iterations_completed"],
         "iterations_remaining": max(0, max_iterations - int(state["iterations_completed"])),
-        "consecutive_failures": state["consecutive_failures"],
+        "consecutive_failures": sum(state.get("_task_failure_counts", {}).values()),
         "runtime_root": runtime_root,
         "memory_path": _memory_path(runtime_root),
         "state_path": _state_path(runtime_root),
@@ -1884,3 +2013,230 @@ def analyze_budget(
         "status": status,
         "warnings": warnings,
     }
+
+
+def run_parallel_subagents(
+    tasks: list[dict[str, Any]],
+    *,
+    mission_state_path: Path,
+    runtime_root: Path,
+    max_parallel: int = 4,
+    timeout_per_task: float = 1800,
+) -> list[dict[str, Any]]:
+    """Execute multiple independent agent tasks in parallel.
+
+    Main context acts as scheduler; subagents are workers.
+    Returns aggregated results.
+
+    Parameters
+    ----------
+    tasks:
+        Each dict must contain at least ``"task"`` (the prompt / instruction
+        to execute) and ``"role"`` (agent role).  Optional keys:
+        ``"artifacts"``, ``"action_id"``, ``"loop_action_id"``, ``"kind"``,
+        ``"phase"``, ``"branch_id"``, ``"decision_id"``, ``"notes"``.
+    mission_state_path:
+        Path to the mission state JSON.
+    runtime_root:
+        Root directory under which per-subagent sandbox directories are
+        created.
+    max_parallel:
+        Maximum number of subagents to run concurrently.
+    timeout_per_task:
+        Wall-clock timeout in seconds for each subagent.
+
+    Returns
+    -------
+    A list of result dicts (one per task), each containing:
+    - ``"task_index"`` -- original position in *tasks*
+    - ``"role"`` -- the agent role
+    - ``"task"`` -- the original task description
+    - ``"status"`` -- ``"completed"``, ``"failed"``, or ``"timeout"``
+    - ``"summary"`` -- human-readable outcome
+    - ``"agent_result"`` -- parsed agent result JSON (if produced)
+    - ``"result_path"`` -- path to the subagent's ``agent_result.json``
+    - ``"sandbox_root"`` -- dedicated sandbox root for this subagent
+    - ``"error"`` -- exception message on failure, otherwise *None*
+    """
+    resolved_ms_path = Path(mission_state_path).expanduser().resolve()
+    resolved_runtime_root = Path(runtime_root).expanduser().resolve()
+    resolved_runtime_root.mkdir(parents=True, exist_ok=True)
+
+    mission_state = load_mission_state(resolved_ms_path)
+    target_repo = str(mission_state.get("target_repo", ""))
+    mission_id = str(mission_state.get("mission_id", "unknown"))
+
+    # ------------------------------------------------------------------
+    # Prepare task wrappers
+    # ------------------------------------------------------------------
+    _task_payloads: list[dict[str, Any]] = []
+    for idx, raw in enumerate(tasks):
+        payload = copy.deepcopy(raw) if isinstance(raw, dict) else {}
+        payload.setdefault("task_index", idx)
+        payload.setdefault("role", "subagent")
+        payload.setdefault("task", str(payload.get("task", "")))
+        payload.setdefault("artifacts", [])
+        payload.setdefault("action_id", None)
+        payload.setdefault("loop_action_id", None)
+        payload.setdefault("kind", None)
+        payload.setdefault("phase", None)
+        payload.setdefault("branch_id", None)
+        payload.setdefault("decision_id", None)
+        payload.setdefault("notes", [])
+        _task_payloads.append(payload)
+
+    aggregated: list[dict[str, Any]] = []
+    lock = threading.Lock()
+
+    def _execute_one(task_payload: dict[str, Any]) -> dict[str, Any]:
+        task_index = int(task_payload.get("task_index", 0))
+        role = str(task_payload.get("role", "subagent"))
+        task_text = str(task_payload.get("task", ""))
+        sandbox = build_sandbox_spec(
+            mission_id,
+            role,
+            Path(target_repo).expanduser() if target_repo else resolved_runtime_root,
+            reset=True,
+        )
+        subagent_root = resolved_runtime_root / f"subagent-{task_index:04d}-{role}"
+        subagent_root.mkdir(parents=True, exist_ok=True)
+        result_json_path = subagent_root / "agent_result.json"
+        log_path = subagent_root / "agent.log"
+
+        env = dict(os.environ)
+        env.update(
+            {
+                "DEEPLOOP_AGENT_ITERATION": "0",
+                "DEEPLOOP_AGENT_ROLE": role,
+                "DEEPLOOP_MISSION_ID": mission_id,
+                "DEEPLOOP_MISSION_STATE_PATH": str(resolved_ms_path),
+                "DEEPLOOP_SANDBOX_ROOT": sandbox["sandbox_root"],
+                "DEEPLOOP_SANDBOX_INPUTS_DIR": sandbox["inputs_dir"],
+                "DEEPLOOP_SANDBOX_OUTPUTS_DIR": sandbox["outputs_dir"],
+                "DEEPLOOP_RESULT_JSON_PATH": str(result_json_path),
+                "DEEPLOOP_RULE_SOURCES": os.pathsep.join(sandbox["rule_sources"]),
+                "DEEPLOOP_LOOP_ACTION_ID": str(task_payload.get("loop_action_id") or ""),
+                "DEEPLOOP_MISSION_ACTION_PHASE": str(task_payload.get("phase") or ""),
+                "DEEPLOOP_MISSION_ACTION_KIND": str(task_payload.get("kind") or ""),
+                "DEEPLOOP_MISSION_ACTION_ID": str(task_payload.get("action_id") or ""),
+                "DEEPLOOP_MISSION_BRANCH_ID": str(task_payload.get("branch_id") or ""),
+                "DEEPLOOP_MISSION_DECISION_ID": str(task_payload.get("decision_id") or ""),
+            }
+        )
+
+        # Write the task prompt for the subagent
+        prompt_path = subagent_root / "prompt.md"
+        prompt_path.write_text(task_text, encoding="utf-8")
+
+        _cmd = shlex.split(task_text) if task_text else [sys.executable, "-c", "print('no task')"]
+        started_at = now_utc()
+
+        try:
+            completed = subprocess.run(
+                _cmd,
+                cwd=Path(target_repo).expanduser().resolve() if target_repo else resolved_runtime_root,
+                capture_output=True,
+                text=True,
+                timeout=timeout_per_task,
+                check=False,
+                env=env,
+            )
+            returncode = completed.returncode
+            log_path.write_text(
+                f"STDOUT:\n{completed.stdout}\nSTDERR:\n{completed.stderr}",
+                encoding="utf-8",
+            )
+        except subprocess.TimeoutExpired as exc:
+            returncode = 124
+            log_path.write_text(
+                f"STDOUT:\n{exc.stdout or ''}\nSTDERR:\n{exc.stderr or ''}\n"
+                f"TIMEOUT after {timeout_per_task}s",
+                encoding="utf-8",
+            )
+
+        # Parse agent result if produced
+        agent_result: dict[str, Any] | None = None
+        status = "completed"
+        summary = f"Subagent {role} task {task_index} completed (rc={returncode})."
+        error: str | None = None
+        if result_json_path.exists():
+            try:
+                agent_result = load_json_object(result_json_path)
+            except Exception as exc:
+                error = f"Failed to parse agent_result.json: {exc}"
+                status = "failed"
+                summary = error
+        elif returncode != 0:
+            if returncode == 124:
+                status = "timeout"
+                summary = f"Subagent {role} task {task_index} timed out after {timeout_per_task}s."
+            else:
+                status = "failed"
+                summary = f"Subagent {role} task {task_index} exited with rc={returncode}."
+            error = summary
+
+        result_entry: dict[str, Any] = {
+            "task_index": task_index,
+            "role": role,
+            "task": task_text,
+            "status": status,
+            "summary": summary,
+            "agent_result": agent_result,
+            "result_path": str(result_json_path),
+            "sandbox_root": sandbox["sandbox_root"],
+            "error": error,
+            "started_at": started_at,
+            "completed_at": now_utc(),
+        }
+        with lock:
+            aggregated.append(result_entry)
+        return result_entry
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_parallel) as executor:
+        futures = {executor.submit(_execute_one, tp): tp for tp in _task_payloads}
+        for future in concurrent.futures.as_completed(futures):
+            task_payload = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                task_index = int(task_payload.get("task_index", -1))
+                role = str(task_payload.get("role", "subagent"))
+                error_entry = {
+                    "task_index": task_index,
+                    "role": role,
+                    "task": str(task_payload.get("task", "")),
+                    "status": "failed",
+                    "summary": f"Subagent {role} task {task_index} raised unhandled exception: {exc}",
+                    "agent_result": None,
+                    "result_path": None,
+                    "sandbox_root": None,
+                    "error": str(exc),
+                    "started_at": now_utc(),
+                    "completed_at": now_utc(),
+                }
+                with lock:
+                    aggregated.append(error_entry)
+
+    # Sort by original task index
+    aggregated.sort(key=lambda r: int(r.get("task_index", 0)))
+
+    # Compute aggregate summary
+    completed_count = sum(1 for r in aggregated if r.get("status") == "completed")
+    failed_count = sum(1 for r in aggregated if r.get("status") in ("failed", "timeout"))
+
+    write_json_object(
+        resolved_runtime_root / "parallel_subagent_report.json",
+        {
+            "schema_version": 1,
+            "generated_at": now_utc(),
+            "mission_id": mission_id,
+            "total_tasks": len(tasks),
+            "completed": completed_count,
+            "failed": failed_count,
+            "max_parallel": max_parallel,
+            "timeout_per_task": timeout_per_task,
+            "results": aggregated,
+        },
+    )
+
+    return aggregated

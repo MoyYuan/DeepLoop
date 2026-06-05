@@ -8,7 +8,6 @@ dependencies:
   - jsonschema
   - pandas
   - rich
-  - typer
   - mkdocs
   - mkdocs-material
   - pymdown-extensions

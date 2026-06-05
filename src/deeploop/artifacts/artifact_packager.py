@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import shutil
 import time
 from pathlib import Path
@@ -13,6 +14,7 @@ from deeploop.artifacts.release_automation import (
     load_release_candidate_policy,
     materialize_release_candidate_review,
 )
+from deeploop.core.shared import is_relative_to as _is_relative_to
 from deeploop.core.structured_io import (
     load_json_object as _load_json,
     load_jsonl_objects as _load_jsonl,
@@ -53,6 +55,8 @@ DEFAULT_CATEGORIES = (
 )
 DATA_REFERENCE_POLICIES = {"reference", "reference-only", "external-reference"}
 
+logger = logging.getLogger(__name__)
+
 
 def _remove_tree(path: Path) -> None:
     for attempt in range(3):
@@ -62,15 +66,8 @@ def _remove_tree(path: Path) -> None:
         if attempt < 2:
             time.sleep(0.1)
     if path.exists():
+        logger.warning("Failed to remove tree: %s", path)
         raise OSError(f"Unable to remove existing package directory: {path}")
-
-
-def _is_relative_to(path: Path, parent: Path) -> bool:
-    try:
-        path.resolve().relative_to(parent.resolve())
-        return True
-    except ValueError:
-        return False
 
 
 def _safe_resolve(path: str | Path) -> Path:

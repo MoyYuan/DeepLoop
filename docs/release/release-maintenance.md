@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` now declares `0.1.9`, so the
-publishable tag and GitHub Release tag must be `v0.1.9`.
+For the next public release, `pyproject.toml` now declares `0.1.10`, so the
+publishable tag and GitHub Release tag must be `v0.1.10`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -234,10 +234,10 @@ Do not widen the public claim beyond what the harness and lane contract prove:
         evidence
       - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.1.9`)
+## GitHub release notes draft (`v0.1.10`)
 
 ```text
-## DeepLoop v0.1.9
+## DeepLoop v0.1.10
 
 This patch release keeps DeepLoop's workspace hygiene and release-smoke
 behavior aligned with the documented workspace contract without widening the

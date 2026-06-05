@@ -5,6 +5,7 @@ from typing import Any
 
 import yaml
 
+from deeploop.core.shared import dedupe_strings as _dedupe_strings
 
 _RECOMMENDED_CONTRACT_FILES = (
     ("project.yaml", "project metadata and default DeepLoop artifact wiring"),
@@ -93,17 +94,6 @@ def normalize_data_artifacts(values: Any, *, base_dir: Path) -> list[dict[str, A
             record["size_bytes"] = path.stat().st_size
         normalized.append(record)
     return normalized
-
-
-def _dedupe_strings(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        ordered.append(value)
-    return ordered
 
 
 def _extract_contract_requirement_value(payload: dict[str, Any], project: dict[str, Any], field: str) -> Any:

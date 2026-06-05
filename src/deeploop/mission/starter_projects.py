@@ -7,6 +7,7 @@ from typing import Any
 import yaml
 
 from deeploop.core.paths import PROJECTS_DIR, REPO_ROOT
+from deeploop.core.shared import slugify as _slugify
 
 STARTER_CATALOG: tuple[dict[str, str], ...] = (
     {
@@ -39,21 +40,6 @@ def resolve_starter_source(starter_id: str) -> Path:
         if starter["id"] == starter_id:
             return Path(starter["source_path"]).expanduser().resolve()
     raise FileNotFoundError(f"Unknown bundled starter project: {starter_id}")
-
-
-def _slugify(value: str) -> str:
-    slug_chars: list[str] = []
-    pending_dash = False
-    for char in value.lower():
-        if char.isalnum():
-            if pending_dash and slug_chars:
-                slug_chars.append("-")
-            slug_chars.append(char)
-            pending_dash = False
-        elif slug_chars:
-            pending_dash = True
-    slug = "".join(slug_chars).strip("-")
-    return slug or "deeploop-project"
 
 
 def _ensure_unique_destination(base_name: str) -> Path:

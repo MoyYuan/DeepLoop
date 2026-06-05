@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import time
 from copy import deepcopy
@@ -17,6 +18,8 @@ from deeploop.runtime import (
     _stage_kernel_reporting as stage_kernel_reporting,
     _stage_kernel_resolution as stage_kernel_resolution,
 )
+
+logger = logging.getLogger(__name__)
 
 
 STAGE_REGISTRY_CONTRACT_PATH = stage_kernel_registry.STAGE_REGISTRY_CONTRACT_PATH
@@ -465,908 +468,6 @@ def load_stage_registry_contract() -> dict:
     return stage_kernel_registry.load_stage_registry_contract(load_yaml=_load_yaml)
 
 
-def run_baseline_evaluation(config_path: Path, *, adapter: StageAdapter) -> KernelRunResult:
-    config = _load_yaml(config_path)
-    dataset_cfg = config["dataset"]
-    selection = dataset_cfg["selection"]
-    prompt_cfg = config.get("prompt", {})
-    promotion_manifest_path = Path(
-        dataset_cfg.get("promotion_manifest", str(adapter.default_promotion_manifest()))
-    ).expanduser()
-    dataset_bundle = _load_dataset_bundle(
-        adapter,
-        promotion_manifest_path=promotion_manifest_path,
-        tiers=selection.get("tiers"),
-        split_kinds=selection.get("split_kinds"),
-        split_families=selection.get("split_families"),
-        lexicalizations=selection.get("lexicalizations"),
-        rule_families=selection.get("rule_families"),
-        limit=dataset_cfg.get("limit_examples"),
-    )
-
-    model_cfg = config["model"]
-    _configure_adapter_model_family(adapter, model_cfg)
-    _configure_adapter_prompt(adapter, prompt_cfg)
-    model_identifier = model_cfg.get("identifier", model_cfg.get("checkpoint", model_cfg.get("label", "")))
-    prompt_samples = [adapter.format_prompt(example) for example, _ in dataset_bundle["examples"]]
-    runtime_model_cfg = {
-        "family": model_cfg.get("family"),
-        "identifier": model_identifier,
-        "backend": model_cfg.get("backend"),
-        "dtype": str(model_cfg.get("dtype", "float16")),
-        "max_new_tokens": int(model_cfg.get("max_new_tokens", 32) or 32),
-    }
-    execution_plan, predictor = _autotune_execution_plan(
-        "baseline-evaluation",
-        execution_profile=str(config["execution_profile"]),
-        model_cfg=runtime_model_cfg,
-        prompts=prompt_samples,
-        runtime_contract=_adapter_runtime_contract(adapter),
-    )
-    manifest_model = {
-        "family": model_cfg["family"],
-        "identifier": model_identifier,
-        "backend": execution_plan.resolved_backend,
-        "dtype": str(model_cfg.get("dtype", "float16")),
-        "max_new_tokens": int(execution_plan.max_new_tokens),
-    }
-
-    output_dir = Path(config["run"]["output_dir"]).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    predictions_path = output_dir / "predictions.jsonl"
-    metrics_path = output_dir / "metrics.json"
-    manifest_path = output_dir / "run_manifest.json"
-    runtime_report_path = output_dir / "runtime_report.json"
-
-    records = _run_predictions(
-        adapter,
-        predictor,
-        dataset_bundle["examples"],
-        predictions_path=predictions_path,
-    )
-    runtime_report = _build_runtime_report(
-        stage_id="baseline-evaluation",
-        execution_plan=execution_plan,
-        predictor=predictor,
-        model=manifest_model,
-        output_dir=output_dir,
-    )
-    _write_json(runtime_report_path, runtime_report)
-    runtime_manifest_payload = _runtime_manifest_payload(runtime_report)
-    metrics = {**adapter.compute_metrics(records), **_runtime_telemetry_metrics(runtime_report)}
-    _write_json(metrics_path, metrics)
-
-    manifest = _build_manifest(
-        adapter=adapter,
-        stage_id="baseline-evaluation",
-        loop_id=config["run"]["loop_id"],
-        mode=config["mode"],
-        claim_state=config["claim_state"],
-        mission_id=config.get("mission_id", UNKNOWN_MISSION_ID),
-        resource_tier=config["resource_tier"],
-        execution_profile=config["execution_profile"],
-        model=manifest_model,
-        dataset={
-            "name": _dataset_name(adapter, dataset_bundle["promotion_manifest"]),
-            "slice": _selection_slice(dataset_bundle["selected_files"]),
-            "provenance": str(promotion_manifest_path),
-        },
-        prompt={
-            "template_id": prompt_cfg.get("template_id", adapter.prompt_template_id),
-            "parser_id": prompt_cfg.get("parser_id", getattr(adapter, "parser_id", "unknown-parser")),
-        },
-        output_dir=output_dir,
-        command=f"baseline-evaluation --config {config_path}",
-        seed=int(config["run"].get("seed", 0)),
-        notes=_normalize_notes(config["run"].get("notes", [])),
-        metrics=metrics,
-        stage_context={
-            "selection": selection,
-            "dataset_record_count": len(dataset_bundle["examples"]),
-            "config_path": str(config_path),
-            "execution_contract": runtime_manifest_payload["execution_plan"],
-            "runtime_telemetry": runtime_manifest_payload["telemetry"],
-            "runtime_budget": runtime_manifest_payload["budget"],
-            "capabilities": runtime_manifest_payload["capabilities"],
-            "runtime_autotune": runtime_manifest_payload["autotune"],
-            "execution_search": runtime_manifest_payload["execution_search"],
-            "artifacts": {
-                "predictions_path": str(predictions_path),
-                "metrics_path": str(metrics_path),
-                "runtime_report_path": str(runtime_report_path),
-            },
-        },
-        report_paths=[str(runtime_report_path)],
-        runtime_payload={
-            "execution_profile": runtime_manifest_payload["execution_plan"],
-            "telemetry": runtime_manifest_payload["telemetry"],
-            "budget": runtime_manifest_payload["budget"],
-            "capabilities": runtime_manifest_payload["capabilities"],
-            "autotune": runtime_manifest_payload["autotune"],
-            "execution_search": runtime_manifest_payload["execution_search"],
-            "runtime_report_path": str(runtime_report_path),
-        },
-    )
-    _validate_manifest(manifest)
-    _write_json(manifest_path, manifest)
-
-    return KernelRunResult(
-        stage_id="baseline-evaluation",
-        status="completed",
-        output_dir=output_dir,
-        manifest_path=manifest_path,
-        artifacts={
-            "predictions": predictions_path,
-            "metrics": metrics_path,
-            "runtime_report": runtime_report_path,
-            "manifest": manifest_path,
-        },
-    )
-
-
-def run_prompt_decode_sweep(config_path: Path, *, adapter: StageAdapter) -> KernelRunResult:
-    config = _load_yaml(config_path)
-    direction = str(config["selected_direction"])
-    runtime_root = Path(config.get("runtime_root", adapter.runs_root)).expanduser()
-    output_paths = _prompt_sweep_output_paths(config, direction=direction, runtime_root=runtime_root)
-    output_dir = output_paths["output_dir"]
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_paths["reports_dir"].mkdir(parents=True, exist_ok=True)
-    dataset_materialization = dict(config.get("dataset_materialization", {}))
-    promotion_manifest_path = Path(
-        dataset_materialization.get("promotion_manifest_path", adapter.default_promotion_manifest())
-    ).expanduser()
-    primary_bundle = _prompt_sweep_selection(
-        adapter,
-        promotion_manifest_path=promotion_manifest_path,
-        selection=_prompt_sweep_selection_config(dataset_materialization, "primary_dev_selection", direction),
-    )
-    holdout_bundle = _prompt_sweep_selection(
-        adapter,
-        promotion_manifest_path=promotion_manifest_path,
-        selection=_prompt_sweep_selection_config(dataset_materialization, "secondary_holdout_selection", direction),
-    )
-    final_bundle = _prompt_sweep_selection(
-        adapter,
-        promotion_manifest_path=promotion_manifest_path,
-        selection=_prompt_sweep_selection_config(dataset_materialization, "final_test_selection", direction),
-    )
-    model_cfg = _prompt_sweep_model_config(config)
-    runtime_lock = dict(config.get("runtime_lock", {}))
-    locked_context_bucket = str(runtime_lock.get("context_bucket", "short"))
-    metric_path = _metric_path(config.get("metric_path"), default=("sacrebleu", "score"))
-    diagnostic_metric_path = _metric_path(
-        config.get("diagnostic_metric_path"),
-        default=tuple(metric_path),
-    )
-    promotion_rules = _prompt_sweep_promotion_rules(config)
-    loop_id = str(config.get("run", {}).get("loop_id", f"prompt-decode-{direction}"))
-    seed = int(config.get("run", {}).get("seed", 0))
-    variant_matrix = list(config.get("variant_matrix", []))[: int(config.get("max_variants", len(config.get("variant_matrix", []))))]
-    rows: list[dict[str, Any]] = []
-    executed_results: list[dict[str, Any]] = []
-    total_stage_gpu_hours = 0.0
-
-    for raw_variant in variant_matrix:
-        variant = deepcopy(raw_variant)
-        variant_id = str(variant["variant_id"])
-        context_bucket = str(variant.get("context_bucket", locked_context_bucket))
-        if context_bucket != locked_context_bucket:
-            rows.append(
-                {
-                    "variant_id": variant_id,
-                    "status": "skipped",
-                    "prompt_family": variant.get("prompt_family", variant.get("template_id")),
-                    "context_bucket": context_bucket,
-                    "trusted_source_ids": list(variant.get("trusted_source_ids", [])),
-                    "skip_reason": (
-                        f"context_bucket={context_bucket} drifts from locked runtime "
-                        f"context_bucket={locked_context_bucket}"
-                    ),
-                }
-            )
-            continue
-        decode_config = _decode_policy_config(
-            variant.get("decode"),
-            decode_policy=variant.get("decode_policy"),
-            max_new_tokens=int(model_cfg.get("max_new_tokens", 32) or 32),
-        )
-        variant_result = _run_prompt_sweep_variant(
-            adapter=adapter,
-            stage_id="prompt-decode-sweep",
-            execution_profile=str(config["execution_profile"]),
-            model_cfg=model_cfg,
-            variant=variant,
-            decode_config=decode_config,
-            primary_examples=primary_bundle["examples"],
-            holdout_examples=holdout_bundle["examples"],
-            output_dir=output_dir / variant_id,
-            seed=seed,
-        )
-        total_stage_gpu_hours += float(variant_result["runtime_gpu_hours"])
-        row = {
-            "variant_id": variant_id,
-            "status": "completed",
-            "prompt_family": variant_result["prompt_family"],
-            "context_bucket": context_bucket,
-            "trusted_source_ids": list(variant.get("trusted_source_ids", [])),
-            "wmt18_primary": {
-                "score": _metric_at_path(variant_result["primary_metrics"], metric_path),
-                "runtime_gpu_hours": round(float(variant_result["primary_runtime_gpu_hours"]), 6),
-            },
-            "wmt17_holdout": {
-                "score": _metric_at_path(variant_result["holdout_metrics"], metric_path),
-                "runtime_gpu_hours": round(float(variant_result["holdout_runtime_gpu_hours"]), 6),
-            },
-            "artifacts": variant_result["artifacts"],
-        }
-        executed_results.append(
-            {
-                "variant": variant,
-                "decode_config": decode_config,
-                "result": variant_result,
-                "row": row,
-            }
-        )
-        rows.append(row)
-
-    if not executed_results:
-        raise ValueError("Prompt/decode sweep had no executable variants under the current runtime contract.")
-
-    best_executed = _select_best_prompt_variant(executed_results, metric_path=metric_path)
-    baseline_anchor_cfg = dict(config.get("baseline_anchor_replay", {}))
-    baseline_anchor_template_id = str(baseline_anchor_cfg.get("template_id", "baseline-plain-v1"))
-    baseline_anchor = _run_prompt_sweep_baseline_anchor(
-        adapter=adapter,
-        stage_id="prompt-decode-sweep",
-        execution_profile=str(config["execution_profile"]),
-        model_cfg=model_cfg,
-        template_id=baseline_anchor_template_id,
-        final_examples=final_bundle["examples"],
-        output_dir=output_dir / "baseline-anchor",
-        seed=seed,
-    )
-    total_stage_gpu_hours += float(baseline_anchor["runtime_gpu_hours"])
-    final_result = _run_prompt_sweep_final_candidate(
-        adapter=adapter,
-        stage_id="prompt-decode-sweep",
-        execution_profile=str(config["execution_profile"]),
-        model_cfg=model_cfg,
-        variant=best_executed["variant"],
-        decode_config=best_executed["decode_config"],
-        final_examples=final_bundle["examples"],
-        output_dir=output_dir / best_executed["variant"]["variant_id"],
-        seed=seed,
-    )
-    total_stage_gpu_hours += float(final_result["runtime_gpu_hours"])
-    best_row = best_executed["row"]
-    final_score = _metric_at_path(final_result["metrics"], metric_path)
-    if final_score is None:
-        raise ValueError("Prompt/decode sweep final candidate metrics are missing the requested metric.")
-    promotion_reference = _prompt_sweep_reference_payload(
-        config,
-        metric_path=metric_path,
-        baseline_anchor=baseline_anchor,
-    )
-    baseline_anchor_preflight = _prompt_sweep_baseline_anchor_preflight(
-        reference=promotion_reference,
-        baseline_anchor=baseline_anchor,
-    )
-    best_row["wmt19_final"] = {
-        "score": final_score,
-        "runtime_gpu_hours": round(float(final_result["runtime_gpu_hours"]), 6),
-    }
-    if promotion_reference["score"] is None:
-        raise ValueError("Prompt/decode sweep promotion reference is missing the requested metric.")
-    full_set_gain = round(
-        float(final_score) - float(promotion_reference["score"]),
-        4,
-    )
-    reference_metrics = promotion_reference.get("metrics")
-    slice_override = _prompt_sweep_slice_override(
-        baseline_metrics=reference_metrics if isinstance(reference_metrics, dict) else {},
-        candidate_metrics=final_result["metrics"],
-        metric_path=diagnostic_metric_path,
-        full_set_gain=full_set_gain,
-        override_rules=promotion_rules["slice_signal_override"],
-    )
-    best_row["wmt19_final"]["gain_vs_reference"] = full_set_gain
-    best_row["wmt19_final"]["reference_label"] = promotion_reference["label"]
-    if promotion_reference["kind"] == "baseline-anchor":
-        best_row["wmt19_final"]["gain_vs_baseline_anchor"] = full_set_gain
-    else:
-        best_row["wmt19_final"]["gain_vs_locked_baseline"] = full_set_gain
-    required_slice_ids = _string_list(
-        dict(config.get("slice_audit", {})).get("required_slice_ids")
-    ) or _string_list(promotion_rules["slice_signal_override"].get("eligible_slice_ids"))
-    slice_audit = _prompt_sweep_diagnostic_slice_audit(
-        direction=direction,
-        best_variant=best_executed["variant"],
-        reference=promotion_reference,
-        reference_metrics=reference_metrics if isinstance(reference_metrics, dict) else None,
-        candidate_metrics=final_result["metrics"],
-        eligible_slice_ids=required_slice_ids,
-    )
-    _write_json(output_paths["diagnostic_slice_audit_path"], slice_audit)
-    if config.get("slice_audit") and not slice_audit["clean"]:
-        raise ValueError(
-            "Prompt/decode diagnostic slice audit is incomplete: "
-            + ", ".join(slice_audit["issues"])
-        )
-    decision = _prompt_sweep_promotion_decision(
-        best_variant=best_executed["variant"],
-        best_row=best_row,
-        best_result=best_executed["result"],
-        final_result=final_result,
-        reference=promotion_reference,
-        baseline_anchor=baseline_anchor,
-        baseline_anchor_preflight=baseline_anchor_preflight,
-        slice_override=slice_override,
-        promotion_rules=promotion_rules,
-        metric_path=metric_path,
-    )
-    scoreboard = {
-        "version": 2,
-        "mission_id": config.get("mission_id"),
-        "loop_action_id": config.get("loop_action_id"),
-        "stage_id": "prompt-decode",
-        "selected_direction": direction,
-        "selected_starter": config.get("selected_starter"),
-        "promotion_reference": promotion_reference,
-        "baseline_anchor": baseline_anchor["summary"],
-        "baseline_anchor_preflight": baseline_anchor_preflight,
-        "smoke_limit_from_baseline": None,
-        "rows": rows,
-    }
-    _write_json(output_paths["scoreboard_path"], scoreboard)
-    summary = {
-        "version": 2,
-        "mission_id": config.get("mission_id"),
-        "loop_action_id": config.get("loop_action_id"),
-        "stage_id": "prompt-decode",
-        "status": "completed",
-        "selected_direction": direction,
-        "selected_starter": config.get("selected_starter"),
-        "executed_variant_ids": [item["variant"]["variant_id"] for item in executed_results],
-        "skipped_variant_ids": [
-            item["variant_id"] for item in rows if item.get("status") == "skipped"
-        ],
-        "stage_spent_gpu_hours": round(total_stage_gpu_hours, 6),
-        "decision": decision["decision"],
-        "best_candidate": decision["best_candidate"],
-        "promotion_reference": promotion_reference,
-        "baseline_anchor": baseline_anchor["summary"],
-        "baseline_anchor_preflight": baseline_anchor_preflight,
-        "notes": _normalize_notes(
-            [
-                config.get("notes", []),
-                baseline_anchor_cfg.get("notes", []),
-                "DeepLoop executed the prompt/decode sweep through the shared stage-kernel surface.",
-            ]
-        ),
-    }
-    _update_prompt_sweep_crash_notes(
-        output_paths["crash_notes_path"],
-        summary=summary,
-        scoreboard_path=output_paths["scoreboard_path"],
-        promotion_decision_path=output_paths["promotion_decision_path"],
-        summary_path=output_paths["summary_path"],
-        diagnostic_slice_audit_path=output_paths["diagnostic_slice_audit_path"],
-    )
-    manifest = _build_manifest(
-        adapter=adapter,
-        stage_id="prompt-decode-sweep",
-        loop_id=loop_id,
-        mode=str(config.get("mode", DEFAULT_OPERATING_MODE)),
-        claim_state=str(config.get("claim_state", "exploratory")),
-        mission_id=config.get("mission_id"),
-        resource_tier=str(config["resource_tier"]),
-        execution_profile=str(config["execution_profile"]),
-        model=model_cfg,
-        dataset={
-            "name": _dataset_name(adapter, primary_bundle["promotion_manifest"]),
-            "slice": f"primary-dev:{direction},secondary-holdout:{direction},final-test:{direction}",
-            "provenance": str(promotion_manifest_path),
-        },
-        prompt={
-            "template_id": str(best_executed["variant"].get("template_id")),
-            "parser_id": getattr(adapter, "parser_id", "unknown-parser"),
-        },
-        output_dir=output_dir,
-        command=f"prompt-decode-sweep --config {config_path}",
-        seed=seed,
-        notes=_normalize_notes(config.get("notes", [])),
-        metrics={
-            "best_primary_score": _metric_at_path(best_executed["result"]["primary_metrics"], metric_path),
-            "best_holdout_score": _metric_at_path(best_executed["result"]["holdout_metrics"], metric_path),
-            "best_final_score": final_score,
-            "reference_kind": promotion_reference["kind"],
-            "reference_score": promotion_reference["score"],
-            "baseline_anchor_score": _metric_at_path(baseline_anchor["metrics"], metric_path),
-            "gain_vs_reference": full_set_gain,
-            "decision": decision["decision"],
-            "executed_variants": len(executed_results),
-            "skipped_variants": len(rows) - len(executed_results),
-        },
-        stage_context={
-            "direction": direction,
-            "runtime_root": str(runtime_root),
-            "locked_context_bucket": locked_context_bucket,
-            "dataset_materialization": {
-                "promotion_manifest_path": str(promotion_manifest_path),
-                "primary_dev_selection": _prompt_sweep_selection_config(
-                    dataset_materialization,
-                    "primary_dev_selection",
-                    direction,
-                ),
-                "secondary_holdout_selection": _prompt_sweep_selection_config(
-                    dataset_materialization,
-                    "secondary_holdout_selection",
-                    direction,
-                ),
-                "final_test_selection": _prompt_sweep_selection_config(
-                    dataset_materialization,
-                    "final_test_selection",
-                    direction,
-                ),
-            },
-            "variant_matrix": variant_matrix,
-            "promotion_rules": promotion_rules,
-            "promotion_reference": promotion_reference,
-            "baseline_anchor": baseline_anchor["summary"],
-            "baseline_anchor_preflight": baseline_anchor_preflight,
-            "artifacts": {
-                "scoreboard_path": str(output_paths["scoreboard_path"]),
-                "promotion_decision_path": str(output_paths["promotion_decision_path"]),
-                "diagnostic_slice_audit_path": str(output_paths["diagnostic_slice_audit_path"]),
-                "summary_path": str(output_paths["summary_path"]),
-                "crash_notes_path": str(output_paths["crash_notes_path"]),
-            },
-        },
-        report_paths=[
-            str(output_paths["scoreboard_path"]),
-            str(output_paths["promotion_decision_path"]),
-            str(output_paths["diagnostic_slice_audit_path"]),
-            str(output_paths["summary_path"]),
-            str(output_paths["crash_notes_path"]),
-        ],
-    )
-    manifest_path = output_dir / "run_manifest.json"
-    _validate_manifest(manifest)
-    _write_json(manifest_path, manifest)
-    _write_json(output_paths["promotion_decision_path"], decision)
-    _write_json(output_paths["summary_path"], summary)
-    decision["replication_gate"] = _prompt_sweep_replication_gate(
-        config,
-        output_paths=output_paths,
-        manifest_path=manifest_path,
-        slice_audit=slice_audit,
-        reference=promotion_reference,
-    )
-    summary["replication_gate"] = decision["replication_gate"]
-    _write_json(output_paths["promotion_decision_path"], decision)
-    _write_json(output_paths["summary_path"], summary)
-    return KernelRunResult(
-        stage_id="prompt-decode-sweep",
-        status="completed",
-        output_dir=output_dir,
-        manifest_path=manifest_path,
-        summary_path=output_paths["summary_path"],
-        artifacts={
-            "scoreboard": output_paths["scoreboard_path"],
-            "promotion_decision": output_paths["promotion_decision_path"],
-            "diagnostic_slice_audit": output_paths["diagnostic_slice_audit_path"],
-            "summary": output_paths["summary_path"],
-            "crash_notes": output_paths["crash_notes_path"],
-            "manifest": manifest_path,
-        },
-    )
-
-
-def run_mechanistic_localization(config_path: Path, *, adapter: StageAdapter) -> KernelRunResult:
-    config = _load_yaml(config_path)
-    source_manifest_path = Path(config["behavioral_source_manifest"]).expanduser()
-    source_manifest = _load_json(source_manifest_path)
-    study_id = config["study_id"]
-    output_dir = Path(config.get("run", {}).get("output_dir", adapter.runs_root / study_id)).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = output_dir / "study_summary.json"
-    observations_path = output_dir / "localization_observations.jsonl"
-    candidates_path = output_dir / "localization_candidates.json"
-    manifest_path = output_dir / "study_manifest.json"
-
-    dataset_cfg = config["dataset"]
-    promotion_manifest_path = Path(
-        source_manifest.get("dataset", {}).get("provenance", adapter.default_promotion_manifest())
-    ).expanduser()
-    dataset_bundle = _load_dataset_bundle(
-        adapter,
-        promotion_manifest_path=promotion_manifest_path,
-        tiers=dataset_cfg.get("tiers"),
-        split_kinds=dataset_cfg.get("split_kinds"),
-        split_families=dataset_cfg.get("split_families"),
-        lexicalizations=dataset_cfg.get("lexicalizations"),
-        rule_families=dataset_cfg.get("rule_families"),
-        limit=dataset_cfg.get("limit_examples"),
-    )
-
-    model_cfg = _merge_model_config(config.get("model", {}), source_manifest.get("model", {}))
-    prompt_cfg = source_manifest.get("prompt", config.get("prompt", {}))
-    _configure_adapter_model_family(adapter, model_cfg)
-    _configure_adapter_prompt(adapter, prompt_cfg)
-    prompt_samples = [adapter.format_prompt(example) for example, _ in dataset_bundle["examples"]]
-    execution_plan, predictor = _autotune_execution_plan(
-        "mechanistic-localization",
-        execution_profile=str(source_manifest.get("execution_profile", "mechanistic-proxy")),
-        model_cfg=model_cfg,
-        prompts=prompt_samples,
-        runtime_contract=_adapter_runtime_contract(adapter),
-    )
-    model_cfg["backend"] = execution_plan.resolved_backend
-    model_cfg["max_new_tokens"] = int(execution_plan.max_new_tokens)
-    baseline_records = _run_predictions(
-        adapter,
-        predictor,
-        dataset_bundle["examples"],
-        predictions_path=None,
-    )
-    runtime_report_path = output_dir / "runtime_report.json"
-    runtime_report = _build_runtime_report(
-        stage_id="mechanistic-localization",
-        execution_plan=execution_plan,
-        predictor=predictor,
-        model=model_cfg,
-        output_dir=output_dir,
-    )
-    _write_json(runtime_report_path, runtime_report)
-    runtime_manifest_payload = _runtime_manifest_payload(runtime_report)
-    metrics = {**adapter.compute_metrics(baseline_records), **_runtime_telemetry_metrics(runtime_report)}
-    allowed_units = _units_from_layer_spec(config["model"].get("layer_selection"))
-    observations, candidates = _mechanistic_proxy_outputs(
-        baseline_records,
-        allowed_units=allowed_units,
-        methods=config.get("methods", {}),
-    )
-    _write_jsonl(observations_path, observations)
-    _write_json(candidates_path, {"study_id": study_id, "candidate_units": candidates})
-
-    top_candidate = candidates[0] if candidates else None
-    summary = {
-        "study_id": study_id,
-        "phase": config["phase"],
-        "status": "completed",
-        "behavioral_source_manifest": str(source_manifest_path),
-        "source_accuracy": source_manifest.get("metrics", {}).get("accuracy"),
-        "executed_examples": len(observations),
-        "candidate_units": [candidate["unit_id"] for candidate in candidates],
-        "top_candidate": top_candidate["unit_id"] if top_candidate else None,
-        "methods": config.get("methods", {}),
-        "notes": _normalize_notes(
-            [
-                "DeepLoop runnable kernel executed a deterministic localization proxy rather than a prep-only bundle.",
-                config.get("reporting", {}).get("notes", []),
-            ]
-        ),
-    }
-    _write_json(summary_path, summary)
-
-    manifest = _build_manifest(
-        adapter=adapter,
-        stage_id="mechanistic-localization",
-        loop_id=study_id,
-        mode=DEFAULT_OPERATING_MODE,
-        claim_state="exploratory",
-        mission_id=source_manifest.get("mission_id", UNKNOWN_MISSION_ID),
-        resource_tier=source_manifest.get("resource_tier", "cpu-smoke"),
-        execution_profile=source_manifest.get("execution_profile", "mechanistic-proxy"),
-        model=model_cfg,
-        dataset={
-            "name": _dataset_name(adapter, dataset_bundle["promotion_manifest"]),
-            "slice": _selection_slice(dataset_bundle["selected_files"]),
-            "provenance": str(promotion_manifest_path),
-        },
-        prompt=prompt_cfg
-        if isinstance(prompt_cfg, dict)
-        else {"template_id": adapter.prompt_template_id, "parser_id": getattr(adapter, "parser_id", "unknown-parser")},
-        output_dir=output_dir,
-        command=f"mechanistic-localization --config {config_path}",
-        seed=int(config.get("run", {}).get("seed", 0)),
-        notes=_normalize_notes(
-            [
-                "Deterministic proxy localization; model-internals execution remains future work.",
-                config.get("reporting", {}).get("notes", []),
-            ]
-        ),
-        metrics={
-            "executed_examples": len(observations),
-            "baseline_accuracy": metrics.get("accuracy"),
-            "top_candidate_score": top_candidate["normalized_score"] if top_candidate else None,
-            "candidate_count": len(candidates),
-            **_runtime_telemetry_metrics(runtime_report),
-        },
-        stage_context={
-            "behavioral_source_manifest": str(source_manifest_path),
-            "dataset_filters": dataset_cfg,
-            "methods": config.get("methods", {}),
-            "candidate_units": candidates,
-            "execution_contract": runtime_manifest_payload["execution_plan"],
-            "runtime_telemetry": runtime_manifest_payload["telemetry"],
-            "runtime_budget": runtime_manifest_payload["budget"],
-            "capabilities": runtime_manifest_payload["capabilities"],
-            "runtime_autotune": runtime_manifest_payload["autotune"],
-            "execution_search": runtime_manifest_payload["execution_search"],
-            "artifacts": {
-                "summary_path": str(summary_path),
-                "observations_path": str(observations_path),
-                "candidates_path": str(candidates_path),
-                "runtime_report_path": str(runtime_report_path),
-            },
-            "proxy_kernel": True,
-        },
-        report_paths=[str(summary_path), str(candidates_path), str(runtime_report_path)],
-        runtime_payload={
-            "execution_profile": runtime_manifest_payload["execution_plan"],
-            "telemetry": runtime_manifest_payload["telemetry"],
-            "budget": runtime_manifest_payload["budget"],
-            "capabilities": runtime_manifest_payload["capabilities"],
-            "autotune": runtime_manifest_payload["autotune"],
-            "execution_search": runtime_manifest_payload["execution_search"],
-            "runtime_report_path": str(runtime_report_path),
-        },
-    )
-    _validate_manifest(manifest)
-    _write_json(manifest_path, manifest)
-
-    return KernelRunResult(
-        stage_id="mechanistic-localization",
-        status="completed",
-        output_dir=output_dir,
-        manifest_path=manifest_path,
-        summary_path=summary_path,
-        artifacts={
-            "summary": summary_path,
-            "observations": observations_path,
-            "candidates": candidates_path,
-            "runtime_report": runtime_report_path,
-            "manifest": manifest_path,
-        },
-    )
-
-
-def run_causal_intervention(config_path: Path, *, adapter: StageAdapter) -> KernelRunResult:
-    config = _load_yaml(config_path)
-    localization_source = Path(config["localization_source"]).expanduser()
-    study_id = config["study_id"]
-    output_dir = Path(config.get("run", {}).get("output_dir", adapter.runs_root / study_id)).expanduser()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    summary_path = output_dir / "study_summary.json"
-    predictions_path = output_dir / "intervention_predictions.jsonl"
-    metrics_path = output_dir / "intervention_metrics.json"
-    manifest_path = output_dir / "study_manifest.json"
-
-    compare_manifest_path = Path(config["evaluation"]["compare_against"]).expanduser()
-    compare_manifest = _load_json(compare_manifest_path)
-
-    if not localization_source.exists():
-        summary = {
-            "study_id": study_id,
-            "phase": config["phase"],
-            "status": "blocked",
-            "localization_source": str(localization_source),
-            "compare_against": str(compare_manifest_path),
-            "notes": _normalize_notes(config.get("reporting", {}).get("notes", [])),
-        }
-        _write_json(summary_path, summary)
-        manifest = _build_manifest(
-            adapter=adapter,
-            stage_id="causal-intervention",
-            loop_id=study_id,
-            mode=DEFAULT_OPERATING_MODE,
-            claim_state="exploratory",
-            mission_id=compare_manifest.get("mission_id", UNKNOWN_MISSION_ID),
-            resource_tier=compare_manifest.get("resource_tier", "cpu-smoke"),
-            execution_profile=compare_manifest.get("execution_profile", "intervention-proxy"),
-            model=_merge_model_config(config.get("model", {}), compare_manifest.get("model", {})),
-            dataset=compare_manifest.get("dataset", {}),
-            prompt=compare_manifest.get("prompt", {}),
-            output_dir=output_dir,
-            command=f"causal-intervention --config {config_path}",
-            seed=int(config.get("run", {}).get("seed", 0)),
-            notes=_normalize_notes(
-                [
-                    "Blocked because localization evidence is missing.",
-                    config.get("reporting", {}).get("notes", []),
-                ]
-            ),
-            metrics={"localization_source_exists": False},
-            stage_context={
-                "localization_source": str(localization_source),
-                "compare_against": str(compare_manifest_path),
-                "proxy_kernel": True,
-            },
-            report_paths=[str(summary_path)],
-            status="blocked",
-        )
-        _validate_manifest(manifest)
-        _write_json(manifest_path, manifest)
-        return KernelRunResult(
-            stage_id="causal-intervention",
-            status="blocked",
-            output_dir=output_dir,
-            manifest_path=manifest_path,
-            summary_path=summary_path,
-            artifacts={"summary": summary_path, "manifest": manifest_path},
-        )
-
-    localization_manifest = _load_json(localization_source)
-    candidates_path = Path(
-        localization_manifest.get("stage_context", {})
-        .get("artifacts", {})
-        .get("candidates_path", localization_source.parent / "localization_candidates.json")
-    ).expanduser()
-    candidates_payload = _load_json(candidates_path)
-    candidates = candidates_payload.get("candidate_units", [])
-    dataset_filters = dict(localization_manifest.get("stage_context", {}).get("dataset_filters", {}))
-    promotion_manifest_path = Path(
-        localization_manifest.get("dataset", {}).get("provenance")
-        or compare_manifest.get("dataset", {}).get("provenance")
-        or adapter.default_promotion_manifest()
-    ).expanduser()
-    dataset_bundle = _load_dataset_bundle(
-        adapter,
-        promotion_manifest_path=promotion_manifest_path,
-        tiers=dataset_filters.get("tiers"),
-        split_kinds=dataset_filters.get("split_kinds"),
-        split_families=dataset_filters.get("split_families"),
-        lexicalizations=dataset_filters.get("lexicalizations"),
-        rule_families=dataset_filters.get("rule_families"),
-        limit=dataset_filters.get("limit_examples"),
-    )
-
-    model_cfg = _merge_model_config(config.get("model", {}), compare_manifest.get("model", {}))
-    prompt_cfg = compare_manifest.get("prompt", config.get("prompt", {}))
-    _configure_adapter_model_family(adapter, model_cfg)
-    _configure_adapter_prompt(adapter, prompt_cfg)
-    prompt_samples = [adapter.format_prompt(example) for example, _ in dataset_bundle["examples"]]
-    execution_plan, predictor = _autotune_execution_plan(
-        "causal-intervention",
-        execution_profile=str(compare_manifest.get("execution_profile", "intervention-proxy")),
-        model_cfg=model_cfg,
-        prompts=prompt_samples,
-        runtime_contract=_adapter_runtime_contract(adapter),
-    )
-    model_cfg["backend"] = execution_plan.resolved_backend
-    model_cfg["max_new_tokens"] = int(execution_plan.max_new_tokens)
-    baseline_records = _run_predictions(
-        adapter,
-        predictor,
-        dataset_bundle["examples"],
-        predictions_path=None,
-    )
-    runtime_report_path = output_dir / "runtime_report.json"
-    runtime_report = _build_runtime_report(
-        stage_id="causal-intervention",
-        execution_plan=execution_plan,
-        predictor=predictor,
-        model=model_cfg,
-        output_dir=output_dir,
-    )
-    _write_json(runtime_report_path, runtime_report)
-    runtime_manifest_payload = _runtime_manifest_payload(runtime_report)
-    targeted_units = _select_target_units(config["model"].get("target_layers"), candidates)
-    post_records, intervention_metrics = _apply_intervention_proxy(
-        baseline_records,
-        candidates=candidates,
-        targeted_units=targeted_units,
-        strength=str(config["intervention"].get("strength", "small")),
-        side_effect_response=str(config["intervention"].get("side_effect_response", "preserve")).lower(),
-        metric_fn=adapter.compute_metrics,
-    )
-    _write_jsonl(predictions_path, post_records)
-    _write_json(metrics_path, intervention_metrics)
-
-    summary = {
-        "study_id": study_id,
-        "phase": config["phase"],
-        "status": "completed",
-        "localization_source": str(localization_source),
-        "compare_against": str(compare_manifest_path),
-        "targeted_units": targeted_units,
-        "accuracy_delta": intervention_metrics["accuracy_delta"],
-        "notes": _normalize_notes(
-            [
-                "DeepLoop runnable kernel executed a deterministic intervention proxy rather than a prep-only gate.",
-                config.get("reporting", {}).get("notes", []),
-            ]
-        ),
-    }
-    _write_json(summary_path, summary)
-
-    manifest = _build_manifest(
-        adapter=adapter,
-        stage_id="causal-intervention",
-        loop_id=study_id,
-        mode=DEFAULT_OPERATING_MODE,
-        claim_state="exploratory",
-        mission_id=compare_manifest.get("mission_id", UNKNOWN_MISSION_ID),
-        resource_tier=compare_manifest.get("resource_tier", "cpu-smoke"),
-        execution_profile=compare_manifest.get("execution_profile", "intervention-proxy"),
-        model=model_cfg,
-        dataset={
-            "name": _dataset_name(adapter, dataset_bundle["promotion_manifest"]),
-            "slice": _selection_slice(dataset_bundle["selected_files"]),
-            "provenance": str(promotion_manifest_path),
-        },
-        prompt=prompt_cfg
-        if isinstance(prompt_cfg, dict)
-        else {"template_id": adapter.prompt_template_id, "parser_id": getattr(adapter, "parser_id", "unknown-parser")},
-        output_dir=output_dir,
-        command=f"causal-intervention --config {config_path}",
-        seed=int(config.get("run", {}).get("seed", 0)),
-        notes=_normalize_notes(
-            [
-                "Deterministic proxy intervention; model-internals execution remains future work.",
-                config.get("reporting", {}).get("notes", []),
-            ]
-        ),
-        metrics={
-            "accuracy_pre": intervention_metrics["pre_metrics"].get("accuracy"),
-            "accuracy_post": intervention_metrics["post_metrics"].get("accuracy"),
-            "accuracy_delta": intervention_metrics["accuracy_delta"],
-            "recoveries": intervention_metrics["recoveries"],
-            "side_effect_count": intervention_metrics["side_effect_count"],
-            "side_effect_rate": intervention_metrics["side_effect_rate"],
-            **_runtime_telemetry_metrics(runtime_report),
-        },
-        stage_context={
-            "localization_source": str(localization_source),
-            "compare_against": str(compare_manifest_path),
-            "targeted_units": targeted_units,
-            "dataset_filters": dataset_filters,
-            "execution_contract": runtime_manifest_payload["execution_plan"],
-            "runtime_telemetry": runtime_manifest_payload["telemetry"],
-            "runtime_budget": runtime_manifest_payload["budget"],
-            "capabilities": runtime_manifest_payload["capabilities"],
-            "runtime_autotune": runtime_manifest_payload["autotune"],
-            "execution_search": runtime_manifest_payload["execution_search"],
-            "artifacts": {
-                "summary_path": str(summary_path),
-                "predictions_path": str(predictions_path),
-                "metrics_path": str(metrics_path),
-                "candidates_path": str(candidates_path),
-                "runtime_report_path": str(runtime_report_path),
-            },
-            "proxy_kernel": True,
-            "intervention": config.get("intervention", {}),
-        },
-        report_paths=[str(summary_path), str(metrics_path), str(runtime_report_path)],
-        runtime_payload={
-            "execution_profile": runtime_manifest_payload["execution_plan"],
-            "telemetry": runtime_manifest_payload["telemetry"],
-            "budget": runtime_manifest_payload["budget"],
-            "capabilities": runtime_manifest_payload["capabilities"],
-            "autotune": runtime_manifest_payload["autotune"],
-            "execution_search": runtime_manifest_payload["execution_search"],
-            "runtime_report_path": str(runtime_report_path),
-        },
-    )
-    _validate_manifest(manifest)
-    _write_json(manifest_path, manifest)
-
-    return KernelRunResult(
-        stage_id="causal-intervention",
-        status="completed",
-        output_dir=output_dir,
-        manifest_path=manifest_path,
-        summary_path=summary_path,
-        artifacts={
-            "summary": summary_path,
-            "predictions": predictions_path,
-            "metrics": metrics_path,
-            "runtime_report": runtime_report_path,
-            "manifest": manifest_path,
-        },
-    )
 
 
 def _load_yaml(path: Path) -> dict:
@@ -2220,7 +1321,8 @@ def _autotune_execution_plan(
                 decode_config=decode_config,
             )
         base_predictor = _attach_runtime_context(base_predictor, stage_id=stage_id, model=model_cfg)
-    except Exception as exc:
+    except (RuntimeError, OSError, ValueError) as exc:
+        logger.warning("Base predictor build failed during autotune: %s", exc)
         base_build_error = exc
     if len(candidates) <= 1 or base_plan.resolved_backend.startswith("mock-"):
         if base_predictor is None:
@@ -2294,7 +1396,8 @@ def _autotune_execution_plan(
                 best_rank = rank
                 best_plan = candidate_plan
                 best_predictor = candidate_predictor
-        except Exception as exc:
+        except (RuntimeError, OSError, ValueError) as exc:
+            logger.warning("Candidate backend failed during autotune: %s", exc)
             candidate_records.append(
                 {
                     "plan": candidate_plan.to_dict(),
@@ -2702,757 +1805,123 @@ def _selection_slice(selected_files: list[dict]) -> str:
     return ",".join(seen)
 
 
-def _string_list(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        return [raw] if raw.strip() else []
-    if isinstance(raw, list):
-        return [str(item) for item in raw if str(item).strip()]
-    return [str(raw)]
 
 
-def _metric_path(raw: Any, *, default: tuple[str, ...]) -> tuple[str, ...]:
-    path = tuple(_string_list(raw))
-    return path or tuple(default)
 
 
-def _metric_at_path(payload: Any, metric_path: tuple[str, ...]) -> float | None:
-    current = payload
-    for key in metric_path:
-        if not isinstance(current, dict) or key not in current:
-            return None
-        current = current[key]
-    if current is None:
-        return None
-    return float(current)
 
 
-def _prompt_sweep_reference_value(payload: Any, metric_path: tuple[str, ...]) -> float | None:
-    if not isinstance(payload, dict):
-        return None
-    direct = _metric_at_path(payload, metric_path)
-    if direct is not None:
-        return direct
-    if len(metric_path) >= 2 and metric_path[-1] == "score":
-        current = payload.get(metric_path[0])
-        if isinstance(current, (int, float)):
-            return float(current)
-    return None
 
 
-def _prompt_sweep_selected_starter_reference(
-    selected_starter: dict[str, Any],
-    metric_path: tuple[str, ...],
-) -> float | None:
-    if not metric_path:
-        return None
-    metric_name = metric_path[0]
-    candidate_keys = (
-        f"locked_baseline_{metric_name}",
-        f"baseline_{metric_name}",
-        metric_name,
-    )
-    for key in candidate_keys:
-        value = selected_starter.get(key)
-        if isinstance(value, (int, float)):
-            return float(value)
-    return None
 
 
-def _prompt_sweep_reference_payload(
-    config: dict[str, Any],
-    *,
-    metric_path: tuple[str, ...],
-    baseline_anchor: dict[str, Any],
-) -> dict[str, Any]:
-    promotion_reference = dict(config.get("promotion_reference", {}))
-    selected_starter = dict(config.get("selected_starter", {}))
-    reference_metrics_path = promotion_reference.get("baseline_metrics_path") or promotion_reference.get("metrics_path")
-    reference_metrics = None
-    if reference_metrics_path:
-        reference_metrics = _load_json(Path(reference_metrics_path).expanduser())
-    reference_score = None
-    for candidate in (
-        _prompt_sweep_reference_value(reference_metrics, metric_path),
-        _prompt_sweep_reference_value(promotion_reference.get("reference_numbers"), metric_path),
-        _prompt_sweep_selected_starter_reference(selected_starter, metric_path),
-    ):
-        if candidate is not None:
-            reference_score = round(float(candidate), 4)
-            break
-    if reference_score is not None:
-        return {
-            "kind": str(promotion_reference.get("kind", "locked-baseline")),
-            "label": str(
-                promotion_reference.get("label")
-                or promotion_reference.get("kind")
-                or "locked-baseline"
-            ),
-            "run_id": promotion_reference.get("baseline_run_id") or selected_starter.get("locked_baseline_run_id"),
-            "metrics_path": str(reference_metrics_path) if reference_metrics_path else None,
-            "metrics": reference_metrics,
-            "score": reference_score,
-            "scoring_signatures": dict(promotion_reference.get("scoring_signatures", {})),
-        }
-    anchor_score = _metric_at_path(baseline_anchor["metrics"], metric_path)
-    return {
-        "kind": "baseline-anchor",
-        "label": "baseline-anchor-replay",
-        "run_id": None,
-        "metrics_path": baseline_anchor["summary"]["artifacts"]["metrics_path"],
-        "metrics": baseline_anchor["metrics"],
-        "score": round(float(anchor_score), 4) if anchor_score is not None else None,
-        "scoring_signatures": {},
-    }
 
 
-def _prompt_sweep_baseline_anchor_preflight(
-    *,
-    reference: dict[str, Any],
-    baseline_anchor: dict[str, Any],
-) -> dict[str, Any]:
-    expected_signatures = dict(reference.get("scoring_signatures", {}))
-    reference_metrics = reference.get("metrics")
-    if not expected_signatures and isinstance(reference_metrics, dict):
-        for metric_name in ("sacrebleu", "chrf"):
-            metric_payload = reference_metrics.get(metric_name)
-            if isinstance(metric_payload, dict) and metric_payload.get("signature"):
-                expected_signatures[metric_name] = str(metric_payload["signature"])
-    checks: list[dict[str, Any]] = []
-    if not expected_signatures:
-        return {
-            "status": "not-applicable",
-            "reference_kind": reference["kind"],
-            "checks": checks,
-        }
-    for metric_name, expected in sorted(expected_signatures.items()):
-        actual = None
-        metric_payload = baseline_anchor["metrics"].get(metric_name)
-        if isinstance(metric_payload, dict):
-            actual = metric_payload.get("signature")
-        checks.append(
-            {
-                "metric": metric_name,
-                "expected": expected,
-                "actual": actual,
-                "status": "passed" if expected == actual else "failed",
-            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def dry_run_validate(config_path: Path, *, max_steps: int = 2, timeout: float = 60) -> bool:
+    """Run a quick validation of experiment code before full GPU launch.
+
+    Validates config loading, imports, and stage kernel wiring without
+    requiring a GPU.  Runs the experiment subprocess with a short timeout
+    and returns False if anything fails so the caller can abort the full
+    GPU run before burning expensive compute.
+
+    Parameters
+    ----------
+    config_path:
+        Path to the experiment YAML / JSON configuration file.
+    max_steps:
+        Maximum number of examples / iterations to run during validation.
+    timeout:
+        Maximum wall-clock seconds to allow the validation subprocess.
+
+    Returns
+    -------
+    True if the dry run succeeded without errors, False otherwise.
+    """
+    import os as _os
+    import subprocess
+    import sys as _sys
+
+    resolved = Path(config_path).expanduser().resolve()
+    env = dict(_os.environ)
+    env["CUDA_VISIBLE_DEVICES"] = ""       # force CPU-only path
+    env["DEEPLOOP_DRY_RUN"] = "1"
+    env["DEEPLOOP_DRY_RUN_MAX_STEPS"] = str(max(int(max_steps), 1))
+
+    # Build a small self-contained validation script that is shipped to
+    # the subprocess so import / syntax errors are caught there.
+    script = (
+        "import sys, traceback\n"
+        "from pathlib import Path\n"
+        "config_path = Path({})\n".format(repr(str(resolved)))
+        + (
+            "try:\n"
+            "    import yaml\n"
+            "    config = yaml.safe_load(config_path.read_text('utf-8'))\n"
+            "    if not isinstance(config, dict):\n"
+            "        print('ERROR: config is not a mapping', file=sys.stderr)\n"
+            "        sys.exit(1)\n"
+            "    stage_id = config.get('stage_id', '')\n"
+            "    if not stage_id:\n"
+            "        print('ERROR: no stage_id in config', file=sys.stderr)\n"
+            "        sys.exit(1)\n"
+            "    adapter_spec = config.get('adapter') or config.get('adapter_spec')\n"
+            "    from deeploop.runtime.stage_kernels import run_stage_from_config\n"
+            "    result = run_stage_from_config(stage_id, config_path, adapter_spec=adapter_spec)\n"
+            "    print(f'OK: status={result.status}')\n"
+            "except Exception:\n"
+            "    traceback.print_exc()\n"
+            "    sys.exit(1)\n"
         )
-    failures = [item for item in checks if item["status"] != "passed"]
-    if failures:
-        raise ValueError(
-            "Prompt/decode baseline-anchor preflight failed: "
-            + "; ".join(
-                f"{item['metric']} expected {item['expected']} got {item['actual']}"
-                for item in failures
+    )
+
+    try:
+        completed = subprocess.run(
+            [_sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=float(timeout),
+            env=env,
+        )
+        if completed.returncode != 0:
+            stderr_snippet = completed.stderr.strip()[-500:] if completed.stderr.strip() else "(no stderr)"
+            print(
+                f"[deeploop] Dry-run validation FAILED for {resolved}\n"
+                f"  returncode={completed.returncode}\n"
+                f"  {stderr_snippet}",
+                file=_sys.stderr,
             )
+            return False
+        return True
+    except subprocess.TimeoutExpired:
+        print(
+            f"[deeploop] Dry-run validation TIMED OUT ({timeout}s) for {resolved}",
+            file=_sys.stderr,
         )
-    return {
-        "status": "passed",
-        "reference_kind": reference["kind"],
-        "checks": checks,
-    }
-
-
-def _prompt_sweep_slice_metric(metric_payload: Any, metric_name: str) -> dict[str, Any]:
-    nested = metric_payload.get(metric_name) if isinstance(metric_payload, dict) else None
-    if isinstance(nested, dict):
-        return {
-            "score": nested.get("score"),
-            "signature": nested.get("signature"),
-        }
-    return {
-        "score": None,
-        "signature": None,
-    }
-
-
-def _prompt_sweep_delta(candidate_value: Any, reference_value: Any) -> float | None:
-    if candidate_value is None or reference_value is None:
-        return None
-    return round(float(candidate_value) - float(reference_value), 4)
-
-
-def _prompt_sweep_diagnostic_slice_audit(
-    *,
-    direction: str,
-    best_variant: dict[str, Any],
-    reference: dict[str, Any],
-    reference_metrics: dict[str, Any] | None,
-    candidate_metrics: dict[str, Any],
-    eligible_slice_ids: list[str],
-) -> dict[str, Any]:
-    reference_slices = dict(reference_metrics.get("diagnostic_slices", {})) if isinstance(reference_metrics, dict) else {}
-    candidate_slices = dict(candidate_metrics.get("diagnostic_slices", {}))
-    slices: dict[str, Any] = {}
-    issues: list[str] = []
-    for slice_id in eligible_slice_ids:
-        reference_slice = reference_slices.get(slice_id, {})
-        candidate_slice = candidate_slices.get(slice_id, {})
-        candidate_count = candidate_slice.get("count") if isinstance(candidate_slice, dict) else None
-        reference_count = reference_slice.get("count") if isinstance(reference_slice, dict) else None
-        count = candidate_count if candidate_count is not None else reference_count
-        if not isinstance(candidate_slice, dict):
-            issues.append(f"missing-candidate-slice:{slice_id}")
-        if count is None:
-            issues.append(f"missing-count:{slice_id}")
-        slices[slice_id] = {
-            "count": count,
-            "sacrebleu": _prompt_sweep_slice_metric(candidate_slice, "sacrebleu"),
-            "chrf": _prompt_sweep_slice_metric(candidate_slice, "chrf"),
-            "output_length_ratio": (
-                candidate_slice.get("output_length_ratio") if isinstance(candidate_slice, dict) else None
-            ),
-            "reference_count": reference_count,
-            "reference_sacrebleu": _prompt_sweep_slice_metric(reference_slice, "sacrebleu"),
-            "reference_chrf": _prompt_sweep_slice_metric(reference_slice, "chrf"),
-            "reference_output_length_ratio": (
-                reference_slice.get("output_length_ratio") if isinstance(reference_slice, dict) else None
-            ),
-            "delta": {
-                "sacrebleu": _prompt_sweep_delta(
-                    _metric_at_path(candidate_slice, ("sacrebleu", "score")),
-                    _metric_at_path(reference_slice, ("sacrebleu", "score")),
-                ),
-                "chrf": _prompt_sweep_delta(
-                    _metric_at_path(candidate_slice, ("chrf", "score")),
-                    _metric_at_path(reference_slice, ("chrf", "score")),
-                ),
-                "output_length_ratio": _prompt_sweep_delta(
-                    candidate_slice.get("output_length_ratio") if isinstance(candidate_slice, dict) else None,
-                    reference_slice.get("output_length_ratio") if isinstance(reference_slice, dict) else None,
-                ),
-            },
-            "status": "ok" if count is not None and isinstance(candidate_slice, dict) else "incomplete",
-        }
-    return {
-        "version": 1,
-        "stage_id": "prompt-decode",
-        "direction": direction,
-        "reference": {
-            "kind": reference["kind"],
-            "label": reference["label"],
-            "run_id": reference.get("run_id"),
-            "metrics_path": reference.get("metrics_path"),
-        },
-        "candidate": {
-            "variant_id": str(best_variant["variant_id"]),
-        },
-        "required_slice_ids": eligible_slice_ids,
-        "clean": not issues,
-        "issues": issues,
-        "slices": slices,
-    }
-
-
-def _prompt_sweep_replication_gate(
-    config: dict[str, Any],
-    *,
-    output_paths: dict[str, Path],
-    manifest_path: Path,
-    slice_audit: dict[str, Any],
-    reference: dict[str, Any],
-) -> dict[str, Any]:
-    gate_cfg = dict(config.get("replication_gate", {}))
-    required_artifacts = _string_list(gate_cfg.get("required_artifacts"))
-    if not required_artifacts:
-        required_artifacts = [
-            str(manifest_path),
-            str(output_paths["scoreboard_path"]),
-            str(output_paths["promotion_decision_path"]),
-            str(output_paths["summary_path"]),
-            str(output_paths["diagnostic_slice_audit_path"]),
-        ]
-    artifact_statuses = [
-        {
-            "path": path,
-            "exists": Path(path).expanduser().exists(),
-        }
-        for path in required_artifacts
-    ]
-    follow_up_manifest_complete = all(item["exists"] for item in artifact_statuses)
-    follow_up_manifest_clean = (
-        follow_up_manifest_complete
-        and bool(slice_audit.get("clean"))
-        and reference["kind"] != "baseline-anchor"
-    )
-    return {
-        "status": "closed",
-        "policy_status": str(gate_cfg.get("status", "closed-until-clean-follow-up")),
-        "follow_up_manifest_complete": follow_up_manifest_complete,
-        "follow_up_manifest_clean": follow_up_manifest_clean,
-        "required_artifacts": required_artifacts,
-        "artifact_statuses": artifact_statuses,
-        "reason": (
-            "Execution produced a follow-up package, but replication remains closed until critique reviews the clean manifest bundle."
-        ),
-    }
-
-
-def _prompt_sweep_output_paths(config: dict[str, Any], *, direction: str, runtime_root: Path) -> dict[str, Path]:
-    run_cfg = config.get("run", {})
-    output_dir = Path(
-        run_cfg.get("output_dir", runtime_root / "runs" / f"prompt-{direction}")
-    ).expanduser()
-    reports_dir = Path(config.get("reports_dir", runtime_root / "reports")).expanduser()
-    return {
-        "output_dir": output_dir,
-        "reports_dir": reports_dir,
-        "scoreboard_path": reports_dir / "prompt_decode_scoreboard.json",
-        "promotion_decision_path": reports_dir / "prompt_decode_promotion_decision.json",
-        "diagnostic_slice_audit_path": reports_dir / "diagnostic_slice_audit.json",
-        "summary_path": output_dir / "summary.json",
-        "crash_notes_path": Path(config.get("crash_notes_path", runtime_root / "crash_stability_notes.json")).expanduser(),
-    }
-
-
-def _prompt_sweep_selection_config(
-    dataset_materialization: dict[str, Any],
-    key: str,
-    direction: str,
-) -> dict[str, Any]:
-    defaults = {
-        "primary_dev_selection": {"tiers": ["primary-dev"], "split_kinds": ["primary-dev"]},
-        "secondary_holdout_selection": {"tiers": ["secondary-holdout"], "split_kinds": ["secondary-holdout"]},
-        "final_test_selection": {"tiers": ["final-test"], "split_kinds": ["final-test"]},
-    }
-    selection = deepcopy(defaults.get(key, {}))
-    selection.update(deepcopy(dataset_materialization.get(key, {})))
-    selection["split_families"] = _string_list(selection.get("split_families")) or [direction]
-    if "limit_examples" not in selection and dataset_materialization.get("limit_examples") is not None:
-        selection["limit_examples"] = int(dataset_materialization["limit_examples"])
-    return selection
-
-
-def _prompt_sweep_selection(
-    adapter: StageAdapter,
-    *,
-    promotion_manifest_path: Path,
-    selection: dict[str, Any],
-) -> dict[str, Any]:
-    return _load_dataset_bundle(
-        adapter,
-        promotion_manifest_path=promotion_manifest_path,
-        tiers=_string_list(selection.get("tiers")),
-        split_kinds=_string_list(selection.get("split_kinds")),
-        split_families=_string_list(selection.get("split_families")),
-        lexicalizations=_string_list(selection.get("lexicalizations")) or None,
-        rule_families=_string_list(selection.get("rule_families")) or None,
-        limit=int(selection["limit_examples"]) if selection.get("limit_examples") is not None else None,
-    )
-
-
-def _prompt_sweep_model_config(config: dict[str, Any]) -> dict[str, Any]:
-    runtime_lock = dict(config.get("runtime_lock", {}))
-    selected_starter = dict(config.get("selected_starter", {}))
-    identifier = (
-        runtime_lock.get("resolved_model_path")
-        or runtime_lock.get("resolved_model_id")
-        or selected_starter.get("resolved_model_id")
-        or config.get("model", {}).get("identifier")
-    )
-    if not identifier:
-        raise ValueError("prompt-decode-sweep requires a resolved model path or identifier in runtime_lock.")
-    family = str(
-        runtime_lock.get("family")
-        or config.get("model", {}).get("family")
-        or ("qwen3.5" if "qwen" in str(identifier).lower() else "unknown")
-    )
-    return {
-        "family": family,
-        "identifier": str(identifier),
-        "backend": str(runtime_lock.get("backend", config.get("model", {}).get("backend", "local-transformers"))),
-        "dtype": str(runtime_lock.get("dtype", config.get("model", {}).get("dtype", "float16"))),
-        "max_new_tokens": int(
-            runtime_lock.get("max_new_tokens", config.get("model", {}).get("max_new_tokens", 256)) or 256
-        ),
-    }
-
-
-def _decode_policy_config(raw_decode: Any, *, decode_policy: Any, max_new_tokens: int) -> dict[str, Any]:
-    if isinstance(raw_decode, dict):
-        return _normalize_generation_config(raw_decode, max_new_tokens=max_new_tokens)
-    policy = str(decode_policy or "greedy")
-    if policy == "greedy":
-        return _normalize_generation_config(
-            {
-                "do_sample": False,
-                "temperature": 0.0,
-                "top_p": 1.0,
-                "repetition_penalty": 1.0,
-                "max_new_tokens": max_new_tokens,
-            },
-            max_new_tokens=max_new_tokens,
+        return False
+    except OSError as exc:
+        print(
+            f"[deeploop] Dry-run validation OS ERROR: {exc}",
+            file=_sys.stderr,
         )
-    if policy == "temperature-0.2":
-        return _normalize_generation_config(
-            {
-                "do_sample": True,
-                "temperature": 0.2,
-                "top_p": 0.95,
-                "repetition_penalty": 1.02,
-                "max_new_tokens": max_new_tokens,
-            },
-            max_new_tokens=max_new_tokens,
-        )
-    raise ValueError(f"Unsupported prompt/decode policy: {policy}")
-
-
-def _prompt_sweep_split_execution(
-    adapter: StageAdapter,
-    predictor: Any,
-    *,
-    examples: list[tuple[dict, dict]],
-    split_id: str,
-    output_dir: Path,
-) -> dict[str, Any]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    predictions_path = output_dir / f"{split_id}_predictions.jsonl"
-    metrics_path = output_dir / f"{split_id}_metrics.json"
-    started = time.monotonic()
-    records = _run_predictions(adapter, predictor, examples, predictions_path=predictions_path)
-    elapsed_s = max(time.monotonic() - started, 1e-9)
-    metrics = adapter.compute_metrics(records)
-    _write_json(metrics_path, metrics)
-    return {
-        "records": records,
-        "metrics": metrics,
-        "runtime_gpu_hours": round(elapsed_s / 3600.0, 6),
-        "artifacts": {
-            "predictions_path": str(predictions_path),
-            "metrics_path": str(metrics_path),
-        },
-    }
-
-
-def _prompt_sweep_prompt_samples(
-    adapter: StageAdapter,
-    examples: list[tuple[dict, dict]],
-) -> list[str]:
-    sample_examples = examples[: min(len(examples), 4)]
-    return [adapter.format_prompt(example) for example, _ in sample_examples]
-
-
-def _run_prompt_sweep_variant(
-    *,
-    adapter: StageAdapter,
-    stage_id: str,
-    execution_profile: str,
-    model_cfg: dict[str, Any],
-    variant: dict[str, Any],
-    decode_config: dict[str, Any],
-    primary_examples: list[tuple[dict, dict]],
-    holdout_examples: list[tuple[dict, dict]],
-    output_dir: Path,
-    seed: int,
-) -> dict[str, Any]:
-    _configure_adapter_prompt(adapter, {"template_id": variant["template_id"]})
-    prompt_samples = _prompt_sweep_prompt_samples(adapter, primary_examples or holdout_examples)
-    execution_plan, predictor = _autotune_execution_plan(
-        stage_id,
-        execution_profile=execution_profile,
-        model_cfg=model_cfg,
-        prompts=prompt_samples,
-        runtime_contract=_adapter_runtime_contract(adapter),
-        decode_config=decode_config,
-    )
-    primary_run = _prompt_sweep_split_execution(
-        adapter,
-        predictor,
-        examples=primary_examples,
-        split_id="primary_dev",
-        output_dir=output_dir,
-    )
-    holdout_run = _prompt_sweep_split_execution(
-        adapter,
-        predictor,
-        examples=holdout_examples,
-        split_id="secondary_holdout",
-        output_dir=output_dir,
-    )
-    runtime_report = _build_runtime_report(
-        stage_id=stage_id,
-        execution_plan=execution_plan,
-        predictor=predictor,
-        model=model_cfg,
-        output_dir=output_dir,
-    )
-    runtime_report_path = output_dir / "runtime_report.json"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(runtime_report_path, runtime_report)
-    return {
-        "prompt_family": str(variant.get("prompt_family", variant.get("template_id", "unknown"))),
-        "primary_metrics": primary_run["metrics"],
-        "holdout_metrics": holdout_run["metrics"],
-        "primary_runtime_gpu_hours": primary_run["runtime_gpu_hours"],
-        "holdout_runtime_gpu_hours": holdout_run["runtime_gpu_hours"],
-        "runtime_gpu_hours": round(primary_run["runtime_gpu_hours"] + holdout_run["runtime_gpu_hours"], 6),
-        "execution_plan": execution_plan.to_dict(),
-        "seed": seed,
-        "artifacts": {
-            "primary_dev": primary_run["artifacts"],
-            "secondary_holdout": holdout_run["artifacts"],
-            "runtime_report_path": str(runtime_report_path),
-        },
-    }
-
-
-def _run_prompt_sweep_baseline_anchor(
-    *,
-    adapter: StageAdapter,
-    stage_id: str,
-    execution_profile: str,
-    model_cfg: dict[str, Any],
-    template_id: str,
-    final_examples: list[tuple[dict, dict]],
-    output_dir: Path,
-    seed: int,
-) -> dict[str, Any]:
-    _configure_adapter_prompt(adapter, {"template_id": template_id})
-    prompt_samples = _prompt_sweep_prompt_samples(adapter, final_examples)
-    execution_plan, predictor = _autotune_execution_plan(
-        stage_id,
-        execution_profile=execution_profile,
-        model_cfg=model_cfg,
-        prompts=prompt_samples,
-        runtime_contract=_adapter_runtime_contract(adapter),
-    )
-    final_run = _prompt_sweep_split_execution(
-        adapter,
-        predictor,
-        examples=final_examples,
-        split_id="final_test",
-        output_dir=output_dir,
-    )
-    runtime_report = _build_runtime_report(
-        stage_id=stage_id,
-        execution_plan=execution_plan,
-        predictor=predictor,
-        model=model_cfg,
-        output_dir=output_dir,
-    )
-    runtime_report_path = output_dir / "runtime_report.json"
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(runtime_report_path, runtime_report)
-    return {
-        "metrics": final_run["metrics"],
-        "runtime_gpu_hours": final_run["runtime_gpu_hours"],
-        "summary": {
-            "template_id": template_id,
-            "score": _metric_at_path(final_run["metrics"], ("sacrebleu", "score"))
-            if _metric_at_path(final_run["metrics"], ("sacrebleu", "score")) is not None
-            else final_run["metrics"],
-            "artifacts": {
-                **final_run["artifacts"],
-                "runtime_report_path": str(runtime_report_path),
-            },
-            "seed": seed,
-        },
-    }
-
-
-def _run_prompt_sweep_final_candidate(
-    *,
-    adapter: StageAdapter,
-    stage_id: str,
-    execution_profile: str,
-    model_cfg: dict[str, Any],
-    variant: dict[str, Any],
-    decode_config: dict[str, Any],
-    final_examples: list[tuple[dict, dict]],
-    output_dir: Path,
-    seed: int,
-) -> dict[str, Any]:
-    final_output_dir = output_dir / "final-test"
-    _configure_adapter_prompt(adapter, {"template_id": variant["template_id"]})
-    prompt_samples = _prompt_sweep_prompt_samples(adapter, final_examples)
-    execution_plan, predictor = _autotune_execution_plan(
-        stage_id,
-        execution_profile=execution_profile,
-        model_cfg=model_cfg,
-        prompts=prompt_samples,
-        runtime_contract=_adapter_runtime_contract(adapter),
-        decode_config=decode_config,
-    )
-    final_run = _prompt_sweep_split_execution(
-        adapter,
-        predictor,
-        examples=final_examples,
-        split_id="final_test",
-        output_dir=final_output_dir,
-    )
-    runtime_report = _build_runtime_report(
-        stage_id=stage_id,
-        execution_plan=execution_plan,
-        predictor=predictor,
-        model=model_cfg,
-        output_dir=final_output_dir,
-    )
-    runtime_report_path = final_output_dir / "runtime_report.json"
-    final_output_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(runtime_report_path, runtime_report)
-    return {
-        "metrics": final_run["metrics"],
-        "runtime_gpu_hours": final_run["runtime_gpu_hours"],
-        "artifacts": {
-            **final_run["artifacts"],
-            "runtime_report_path": str(runtime_report_path),
-        },
-        "seed": seed,
-    }
-
-
-def _select_best_prompt_variant(
-    executed_results: list[dict[str, Any]],
-    *,
-    metric_path: tuple[str, ...],
-) -> dict[str, Any]:
-    def _sort_key(item: dict[str, Any]) -> tuple[float, float]:
-        primary_score = _metric_at_path(item["result"]["primary_metrics"], metric_path)
-        holdout_score = _metric_at_path(item["result"]["holdout_metrics"], metric_path)
-        return (
-            float(primary_score if primary_score is not None else float("-inf")),
-            float(holdout_score if holdout_score is not None else float("-inf")),
-        )
-
-    return max(executed_results, key=_sort_key)
-
-
-def _prompt_sweep_promotion_rules(config: dict[str, Any]) -> dict[str, Any]:
-    default_rules = {
-        "full_set_gain_threshold": 0.3,
-        "slice_signal_override": {
-            "required_slice_gain": 0.8,
-            "required_slice_count": 2,
-            "max_full_set_regression": -0.2,
-            "eligible_slice_ids": [],
-        },
-    }
-    rules = deepcopy(default_rules)
-    rules.update(deepcopy(config.get("promotion_rules", {})))
-    override = dict(default_rules["slice_signal_override"])
-    override.update(deepcopy(rules.get("slice_signal_override", {})))
-    override["eligible_slice_ids"] = _string_list(override.get("eligible_slice_ids"))
-    rules["slice_signal_override"] = override
-    return rules
-
-
-def _prompt_sweep_slice_override(
-    *,
-    baseline_metrics: dict[str, Any],
-    candidate_metrics: dict[str, Any],
-    metric_path: tuple[str, ...],
-    full_set_gain: float,
-    override_rules: dict[str, Any],
-) -> dict[str, Any]:
-    slice_gains: dict[str, Any] = {}
-    winning_slice_ids: list[str] = []
-    required_gain = float(override_rules.get("required_slice_gain", 0.8))
-    eligible_slice_ids = _string_list(override_rules.get("eligible_slice_ids"))
-    baseline_slices = dict(baseline_metrics.get("diagnostic_slices", {}))
-    candidate_slices = dict(candidate_metrics.get("diagnostic_slices", {}))
-    for slice_id in eligible_slice_ids:
-        baseline_score = _metric_at_path(baseline_slices.get(slice_id), metric_path)
-        candidate_score = _metric_at_path(candidate_slices.get(slice_id), metric_path)
-        if baseline_score is None or candidate_score is None:
-            continue
-        gain = round(candidate_score - baseline_score, 4)
-        slice_gains[slice_id] = {
-            "baseline": baseline_score,
-            "candidate": candidate_score,
-            "gain_vs_baseline": gain,
-            "count": candidate_slices.get(slice_id, {}).get("count"),
-        }
-        if gain >= required_gain:
-            winning_slice_ids.append(slice_id)
-    max_full_set_regression = float(override_rules.get("max_full_set_regression", -0.2))
-    required_count = int(override_rules.get("required_slice_count", 2))
-    return {
-        "passes": full_set_gain >= max_full_set_regression and len(winning_slice_ids) >= required_count,
-        "winning_slice_ids": winning_slice_ids,
-        "slice_gains": slice_gains,
-    }
-
-
-def _prompt_sweep_promotion_decision(
-    *,
-    best_variant: dict[str, Any],
-    best_row: dict[str, Any],
-    best_result: dict[str, Any],
-    final_result: dict[str, Any],
-    reference: dict[str, Any],
-    baseline_anchor: dict[str, Any],
-    baseline_anchor_preflight: dict[str, Any],
-    slice_override: dict[str, Any],
-    promotion_rules: dict[str, Any],
-    metric_path: tuple[str, ...],
-) -> dict[str, Any]:
-    full_set_gain = float(best_row["wmt19_final"]["gain_vs_reference"])
-    threshold = float(promotion_rules.get("full_set_gain_threshold", 0.3))
-    decision = "promote" if full_set_gain >= threshold or slice_override["passes"] else "no-promotion"
-    best_candidate = {
-        "variant_id": best_variant["variant_id"],
-        "primary_score": _metric_at_path(best_result["primary_metrics"], metric_path),
-        "holdout_score": _metric_at_path(best_result["holdout_metrics"], metric_path),
-        "final_score": _metric_at_path(final_result["metrics"], metric_path),
-        "gain_vs_reference": full_set_gain,
-        "reference_label": reference["label"],
-        "slice_override": slice_override,
-        "artifacts": {
-            **best_result["artifacts"],
-            "final_test": final_result["artifacts"],
-        },
-    }
-    if reference["kind"] == "baseline-anchor":
-        best_candidate["gain_vs_baseline_anchor"] = full_set_gain
-    else:
-        best_candidate["gain_vs_locked_baseline"] = full_set_gain
-    return {
-        "version": 2,
-        "stage_id": "prompt-decode",
-        "decision": decision,
-        "reference": {
-            "kind": reference["kind"],
-            "label": reference["label"],
-            "run_id": reference.get("run_id"),
-            "metrics_path": reference.get("metrics_path"),
-            "score": reference.get("score"),
-        },
-        "baseline_anchor": baseline_anchor["summary"],
-        "baseline_anchor_preflight": baseline_anchor_preflight,
-        "best_candidate": best_candidate,
-        "rules": promotion_rules,
-    }
-
-
-def _update_prompt_sweep_crash_notes(
-    path: Path,
-    *,
-    summary: dict[str, Any],
-    scoreboard_path: Path,
-    promotion_decision_path: Path,
-    summary_path: Path,
-    diagnostic_slice_audit_path: Path,
-) -> None:
-    payload = {}
-    if path.exists():
-        loaded = _load_json(path)
-        if isinstance(loaded, dict):
-            payload = loaded
-    payload["prompt_decode_stage"] = {
-        "status": summary["status"],
-        "executed_variant_ids": summary["executed_variant_ids"],
-        "skipped_variant_ids": summary["skipped_variant_ids"],
-        "issues": [],
-        "artifacts": {
-            "scoreboard_path": str(scoreboard_path),
-            "promotion_decision_path": str(promotion_decision_path),
-            "diagnostic_slice_audit_path": str(diagnostic_slice_audit_path),
-            "summary_path": str(summary_path),
-        },
-    }
-    _write_json(path, payload)
+        return False
 
 
 def _build_manifest(
@@ -3544,172 +2013,63 @@ def _assign_proxy_unit(record: dict, allowed_units: list[str]) -> str:
     available = sorted(allowed_units, key=lambda item: abs(ZONE_ORDER.index(item) - preferred_index))
     return available[0]
 
+# ---------------------------------------------------------------------------
+# Kernel function imports (loaded after shared helpers to avoid circular imports)
+# ---------------------------------------------------------------------------
+from deeploop.runtime.kernel_baseline_evaluation import run_baseline_evaluation  # noqa: E402 F401
+from deeploop.runtime.kernel_prompt_decode_sweep import run_prompt_decode_sweep  # noqa: E402 F401
+from deeploop.runtime.kernel_mechanistic_localization import run_mechanistic_localization  # noqa: E402 F401
+from deeploop.runtime.kernel_causal_intervention import run_causal_intervention  # noqa: E402 F401
 
-def _mechanistic_proxy_outputs(records: list[dict], *, allowed_units: list[str], methods: dict) -> tuple[list[dict], list[dict]]:
-    grouped: dict[str, dict] = {
-        unit: {
-            "examples": 0,
-            "failing_examples": 0,
-            "proxy_recovery_score": 0.0,
-            "proxy_collateral_risk": 0.0,
-            "rule_counts": {},
-            "split_counts": {},
-        }
-        for unit in allowed_units
-    }
-    observations: list[dict] = []
-
-    for record in records:
-        candidate_unit = _assign_proxy_unit(record, allowed_units)
-        is_correct = record.get("predicted_label") == record.get("gold_label")
-        chain_len = int(record.get("chain_len", 0) or 0)
-        recovery_weight = 1.0 + (0.2 * min(chain_len, 5)) + (0.3 if record.get("split_family") != "iid" else 0.0)
-        collateral_risk = 0.15 + (0.1 if record.get("lex") == "delex" else 0.0)
-        observation = {
-            **record,
-            "candidate_unit": candidate_unit,
-            "was_correct": is_correct,
-            "recovery_score_proxy": round(recovery_weight if not is_correct else 0.0, 6),
-            "collateral_risk_proxy": round(collateral_risk if is_correct else collateral_risk / 2, 6),
-        }
-        observations.append(observation)
-
-        bucket = grouped[candidate_unit]
-        bucket["examples"] += 1
-        bucket["proxy_collateral_risk"] += observation["collateral_risk_proxy"]
-        rule = str(record.get("rule", "unknown"))
-        split_family = str(record.get("split_family", "unknown"))
-        bucket["rule_counts"][rule] = bucket["rule_counts"].get(rule, 0) + 1
-        bucket["split_counts"][split_family] = bucket["split_counts"].get(split_family, 0) + 1
-        if not is_correct:
-            bucket["failing_examples"] += 1
-            bucket["proxy_recovery_score"] += observation["recovery_score_proxy"]
-
-    enabled_methods = [name for name, enabled in methods.items() if enabled]
-    candidates: list[dict] = []
-    for unit, payload in grouped.items():
-        examples = payload["examples"]
-        normalized_score = payload["proxy_recovery_score"] - (0.5 * payload["proxy_collateral_risk"])
-        dominant_rules = sorted(payload["rule_counts"], key=payload["rule_counts"].get, reverse=True)[:3]
-        dominant_splits = sorted(payload["split_counts"], key=payload["split_counts"].get, reverse=True)[:3]
-        candidates.append(
-            {
-                "unit_id": unit,
-                "examples": examples,
-                "failing_examples": payload["failing_examples"],
-                "error_rate": round(payload["failing_examples"] / examples, 6) if examples else None,
-                "proxy_recovery_score": round(payload["proxy_recovery_score"], 6),
-                "proxy_collateral_risk": round(payload["proxy_collateral_risk"], 6),
-                "normalized_score": round(normalized_score, 6),
-                "dominant_rule_families": dominant_rules,
-                "dominant_split_families": dominant_splits,
-                "methods": enabled_methods,
-            }
-        )
-    candidates.sort(key=lambda item: item["normalized_score"], reverse=True)
-    for rank, candidate in enumerate(candidates, start=1):
-        candidate["rank"] = rank
-    return observations, candidates
+_KERNELS = {
+    "baseline-evaluation": StageKernel(
+        stage_id="baseline-evaluation",
+        runner=lambda config_path, adapter: run_baseline_evaluation(config_path, adapter=adapter),
+        summary="Generic baseline evaluation kernel.",
+    ),
+    "prompt-decode-sweep": StageKernel(
+        stage_id="prompt-decode-sweep",
+        runner=lambda config_path, adapter: run_prompt_decode_sweep(config_path, adapter=adapter),
+        summary="Prompt/decode sweep kernel for benchmark-bound prompt experiments.",
+    ),
+    "mechanistic-localization": StageKernel(
+        stage_id="mechanistic-localization",
+        runner=lambda config_path, adapter: run_mechanistic_localization(config_path, adapter=adapter),
+        summary="Deterministic runnable mechanistic localization proxy kernel.",
+    ),
+    "causal-intervention": StageKernel(
+        stage_id="causal-intervention",
+        runner=lambda config_path, adapter: run_causal_intervention(config_path, adapter=adapter),
+        summary="Deterministic runnable causal intervention proxy kernel.",
+    ),
+}
 
 
-def _select_target_units(target_layers: Any, candidates: list[dict]) -> list[str]:
-    requested_units = _units_from_layer_spec(target_layers)
-    available_units = [candidate["unit_id"] for candidate in candidates if candidate["normalized_score"] >= 0]
-    if not available_units:
-        available_units = [candidate["unit_id"] for candidate in candidates]
-    intersection = [unit for unit in requested_units if unit in available_units]
-    if intersection:
-        return intersection
-    return available_units[:2] if len(available_units) > 1 else available_units
+def get_stage_registry() -> dict[str, StageKernel]:
+    return stage_kernel_registry.get_stage_registry(_KERNELS)
 
 
-def _apply_intervention_proxy(
-    baseline_records: list[dict],
+def run_stage_from_config(
+    stage_id: str,
+    config_path: Path,
     *,
-    candidates: list[dict],
-    targeted_units: list[str],
-    strength: str,
-    side_effect_response: str,
-    metric_fn: Any,
-) -> tuple[list[dict], dict]:
-    candidate_map = {candidate["unit_id"]: candidate for candidate in candidates}
-    allowed_units = targeted_units or [candidate["unit_id"] for candidate in candidates] or list(ZONE_ORDER)
-    strength_factor = _strength_factor(strength)
-
-    max_score = max((max(candidate["normalized_score"], 0.0) for candidate in candidates), default=1.0) or 1.0
-    post_records: list[dict] = []
-    recoveries = 0
-    side_effect_count = 0
-    originally_correct = 0
-
-    for record in baseline_records:
-        post_record = dict(record)
-        candidate_unit = _assign_proxy_unit(record, allowed_units)
-        candidate = candidate_map.get(candidate_unit, {"normalized_score": 0.0, "dominant_split_families": []})
-        score_factor = max(candidate.get("normalized_score", 0.0), 0.0) / max_score
-        targeted = candidate_unit in targeted_units
-        was_correct = record.get("predicted_label") == record.get("gold_label")
-        if was_correct:
-            originally_correct += 1
-
-        effect = "unchanged"
-        if targeted and not was_correct and (strength_factor + score_factor) >= 0.75:
-            post_record["predicted_label"] = post_record["gold_label"]
-            effect = "recovered"
-            recoveries += 1
-        else:
-            dominant_splits = set(candidate.get("dominant_split_families", []))
-            collateral_slice = targeted and was_correct and record.get("split_family") not in dominant_splits
-            if collateral_slice and strength_factor >= 0.8 and "reduce" not in side_effect_response:
-                post_record["predicted_label"] = _flip_label(str(post_record.get("predicted_label", "unparsed")))
-                effect = "collateral"
-                side_effect_count += 1
-            elif collateral_slice:
-                effect = "attenuated"
-
-        post_record["candidate_unit"] = candidate_unit
-        post_record["intervention_applied"] = targeted
-        post_record["intervention_effect"] = effect
-        post_records.append(post_record)
-
-    pre_metrics = metric_fn(baseline_records)
-    post_metrics = metric_fn(post_records)
-    post_correct = sum(1 for record in post_records if record.get("predicted_label") == record.get("gold_label"))
-    pre_correct = sum(1 for record in baseline_records if record.get("predicted_label") == record.get("gold_label"))
-    accuracy_delta = (
-        round(post_metrics["accuracy"] - pre_metrics["accuracy"], 6)
-        if pre_metrics.get("accuracy") is not None and post_metrics.get("accuracy") is not None
-        else None
+    adapter: StageAdapter | None = None,
+    adapter_spec: str | None = None,
+) -> KernelRunResult:
+    return stage_kernel_registry.run_stage_from_config(
+        stage_id,
+        config_path,
+        adapter=adapter,
+        adapter_spec=adapter_spec,
+        kernels=_KERNELS,
+        adapter_loader=load_stage_adapter,
     )
-    side_effect_rate = round(side_effect_count / originally_correct, 6) if originally_correct else None
-
-    metrics = {
-        "pre_metrics": pre_metrics,
-        "post_metrics": post_metrics,
-        "recoveries": recoveries,
-        "side_effect_count": side_effect_count,
-        "side_effect_rate": side_effect_rate,
-        "accuracy_delta": accuracy_delta,
-        "pre_correct": pre_correct,
-        "post_correct": post_correct,
-        "targeted_units": targeted_units,
-    }
-    return post_records, metrics
 
 
-def _strength_factor(strength: str) -> float:
-    lowered = strength.lower()
-    if "large" in lowered or "strong" in lowered:
-        return 0.85
-    if "medium" in lowered or "sweep" in lowered:
-        return 0.65
-    return 0.45
+def load_stage_adapter(adapter_spec: str | None) -> StageAdapter:
+    return stage_kernel_registry.load_stage_adapter(adapter_spec)
 
 
-def _flip_label(label: str) -> str:
-    lowered = label.lower()
-    if lowered == "entailment":
-        return "contradiction"
-    if lowered == "contradiction":
-        return "entailment"
-    return "unparsed"
+def load_stage_registry_contract() -> dict:
+    return stage_kernel_registry.load_stage_registry_contract(load_yaml=_load_yaml)
+

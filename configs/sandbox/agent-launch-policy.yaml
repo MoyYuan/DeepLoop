@@ -1,6 +1,5 @@
 version: 1
 rule_ingestion_order:
-  - ~/.copilot/copilot-instructions.md
   - workspace://AGENTS.md
   - workspace://repos/deeploop/AGENTS.md
   - target repo AGENTS.md

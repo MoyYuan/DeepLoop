@@ -24,6 +24,7 @@ from deeploop.core.structured_io import (
     write_yaml_mapping,
 )
 from deeploop.mission.mission_state import load_mission_state, write_mission_state
+from deeploop.core.shared import dedupe_strings as _dedupe_strings, slugify as _slugify
 from deeploop.mission.orchestrator import initialize_mission
 from deeploop.mission.project_bootstrap import build_mission_config_from_project_root
 from deeploop.runtime.provider_launcher import run_provider_prompt
@@ -289,8 +290,6 @@ def _next_provider_setup_step(provider_family: str, failed_checks: list[dict[str
         for check in failed_checks
         if check.get("kind") in {"required-tool", "command"}
     ]
-    if provider_family == "copilot-cli" and "copilot" in failed_tool_names:
-        return "Install the Copilot CLI and complete its machine authentication on this machine."
     if failed_tool_names:
         tools = ", ".join(dict.fromkeys(name for name in failed_tool_names if name))
         return f"Install the required tool(s) for this provider family: {tools}."
@@ -350,28 +349,6 @@ def check_provider_readiness(
         "failed_checks": failed_checks,
         "manual_notes": manual_notes,
     }
-
-
-def _dedupe_strings(values: list[str]) -> list[str]:
-    deduped: list[str] = []
-    for value in values:
-        text = str(value).strip()
-        if text and text not in deduped:
-            deduped.append(text)
-    return deduped
-
-
-def _slugify(value: str) -> str:
-    parts: list[str] = []
-    previous_dash = False
-    for char in value.lower():
-        if char.isalnum():
-            parts.append(char)
-            previous_dash = False
-        elif parts and not previous_dash:
-            parts.append("-")
-            previous_dash = True
-    return "".join(parts).strip("-") or "gate-2-validation"
 
 
 def _resolved_output_root(raw_root: str | Path | None, contract: dict[str, Any]) -> Path:
@@ -613,87 +590,6 @@ def _inject_recursive_validation_action(
     return action
 
 
-def _run_copilot_lane(
-    lane: dict[str, Any],
-    *,
-    mission_state_path: Path,
-    mission_root: Path,
-    project_root: Path,
-    lane_root: Path,
-    validation_id: str,
-) -> dict[str, Any]:
-    injected_action = _inject_recursive_validation_action(
-        lane,
-        mission_state_path=mission_state_path,
-        mission_root=mission_root,
-        validation_id=validation_id,
-    )
-    loop_name = f"{_slugify(str(lane.get('loop_name_prefix') or 'gate-2-copilot-cli-validation'))}-{_slugify(validation_id)}"
-    config_path = lane_root / "recursive_agent_validation.yaml"
-    command = [
-        sys.executable,
-        str(REPO_ROOT / "scripts" / "runtime" / "invoke_provider_prompt.py"),
-        "--provider-family",
-        str(lane.get("provider_family") or "copilot-cli"),
-        "--prompt-file",
-        "{prompt_path}",
-        "--result-json-path",
-        "{result_json_path}",
-        "--sandbox-root",
-        "{sandbox_root}",
-        "--mission-state-path",
-        "{mission_state_path}",
-        "--target-repo",
-        "{target_repo}",
-        "--allow-all",
-        "--no-ask-user",
-    ]
-    model_alias = str(((lane.get("model_expectation") or {}).get("alias") or "")).strip()
-    if model_alias:
-        command.extend(["--model", model_alias])
-    config_payload = {
-        "mission_state": str(mission_state_path),
-        "loop_name": loop_name,
-        "max_iterations": int(lane.get("max_iterations", 1) or 1),
-        "max_consecutive_failures": 1,
-        "provider_selection": {
-            "contract": str(lane.get("source_lane_contract") or GATE_2_RUNTIME_CONTRACT_PATH),
-            "profile": lane.get("selection_profile"),
-            "mission_default": {
-                "provider_family": lane.get("provider_family"),
-                "backend": lane.get("backend"),
-                "model": {"alias": model_alias or None},
-            },
-        },
-        "agent": {
-            "command": command,
-            "cwd": str(project_root),
-        },
-    }
-    write_yaml_mapping(config_path, config_payload)
-    loop_result = run_recursive_agent_loop(config_path)
-    accepted_loop_statuses = {
-        str(status).strip().lower() for status in lane.get("accepted_loop_statuses") or [] if str(status).strip()
-    }
-    accepted_iteration_statuses = {
-        str(status).strip().lower() for status in lane.get("accepted_iteration_statuses") or [] if str(status).strip()
-    }
-    latest_outcome = loop_result.get("latest_outcome") if isinstance(loop_result.get("latest_outcome"), dict) else {}
-    latest_status = str(latest_outcome.get("status") or "").strip().lower()
-    loop_status = str(loop_result.get("status") or "").strip().lower()
-    passed = bool(
-        str(latest_outcome.get("summary") or "").strip()
-        and int(loop_result.get("iterations_completed", 0) or 0) >= 1
-        and (not accepted_loop_statuses or loop_status in accepted_loop_statuses)
-        and (not accepted_iteration_statuses or latest_status in accepted_iteration_statuses)
-    )
-    return {
-        "surface": str(lane.get("validation_surface") or "recursive-agent-runtime"),
-        "passed": passed,
-        "config_path": config_path,
-        "injected_action": injected_action,
-        "loop_result": loop_result,
-    }
 
 
 def _write_lane_record(
@@ -842,15 +738,6 @@ def validate_real_runtime(
                         mission_state_path=bootstrap["mission_state_path"],
                         mission_root=bootstrap["mission_root"],
                         project_root=bootstrap["project_root"],
-                    )
-                elif str(lane.get("validation_surface")) == "recursive-agent-runtime":
-                    runtime_execution = _run_copilot_lane(
-                        lane,
-                        mission_state_path=bootstrap["mission_state_path"],
-                        mission_root=bootstrap["mission_root"],
-                        project_root=bootstrap["project_root"],
-                        lane_root=lane_root,
-                        validation_id=resolved_validation_id,
                     )
                 else:
                     raise ValueError(f"Unsupported validation surface for lane {lane_id}: {lane.get('validation_surface')}")

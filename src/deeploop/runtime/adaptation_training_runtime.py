@@ -14,6 +14,7 @@ import yaml
 from deeploop.autonomy.gate_taxonomy import build_gate_event, load_gate_policy
 from deeploop.core.ledger import now_utc
 from deeploop.core.paths import REPO_ROOT
+from deeploop.core.shared import build_command as _build_command
 from deeploop.runtime.metric_ratchets import (
     MetricRatchetConfig,
     build_metric_ratchet_decision,
@@ -88,7 +89,8 @@ class AdaptationCommand:
         default_timeout_seconds: int,
     ) -> "AdaptationCommand":
         work_dir = _resolve_path(repo_root, raw.get("work_dir"), default=repo_root)
-        assert work_dir is not None
+        if work_dir is None:
+            raise ValueError("adaptation training command requires a non-null work_dir")
         timeout_seconds = raw.get("timeout_seconds")
         if timeout_seconds is None:
             resolved_timeout = default_timeout_seconds
@@ -134,14 +136,16 @@ class AdaptationTrainingConfig:
         base_dir = resolved_config_path.parent
         resolved_mission_state_path = mission_state_path.expanduser().resolve() if mission_state_path is not None else None
         repo_root = _resolve_path(base_dir, runtime_cfg.get("repo_root"), default=REPO_ROOT.resolve())
-        assert repo_root is not None
+        if repo_root is None:
+            raise ValueError("adaptation training config requires a non-null repo_root")
         output_default = (
             resolved_mission_state_path.parent / "adaptation_training" / resolved_config_path.stem
             if resolved_mission_state_path is not None
             else base_dir / f"{resolved_config_path.stem}_runtime"
         )
         output_root = _resolve_path(base_dir, runtime_cfg.get("output_root"), default=output_default)
-        assert output_root is not None
+        if output_root is None:
+            raise ValueError("adaptation training config requires a non-null output_root")
         branch_id = str(raw.get("branch_id") or resolved_config_path.stem).strip()
         objective = str(raw.get("objective") or "Run a bounded local adaptation branch.").strip()
         training_kind = str(raw.get("training_kind") or "").strip().lower()
@@ -207,12 +211,6 @@ def _report_paths(output_root: Path) -> tuple[Path, Path, Path]:
 
 def _log_path(output_root: Path, step: str) -> Path:
     return output_root / f"{step}.log"
-
-
-def _build_command(command: tuple[str, ...], env_name: str | None) -> list[str]:
-    if env_name is None:
-        return list(command)
-    return ["conda", "run", "-n", env_name, *command]
 
 
 def _environment(config: AdaptationTrainingConfig, *, step: str) -> dict[str, str]:
