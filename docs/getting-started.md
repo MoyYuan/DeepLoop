@@ -77,186 +77,141 @@ onboarding validate today; outside it, expect gaps.
    conda env create -n llm -f environment.llm.yml
    ```
 
-2. Prepare the workspace:
+2. Set up a provider:
+
+   DeepLoop uses OpenAI-compatible API providers. Configure your API key and
+   endpoint:
 
    ```text
-    export DEEPLOOP_WORKSPACE_ROOT="$HOME/Workspaces"  # optional; choose before init/start
-    deeploop setup
-    deeploop preflight
+   export OPENAI_API_KEY="sk-..."
+   export OPENAI_BASE_URL="https://api.deepseek.com"
    ```
 
-    DeepLoop stores mission state, scratch data, starter projects, ledgers, and
-    packages under the resolved workspace root. `deeploop init` and
-    `deeploop start` print that root so case-sensitive path splits are visible.
-    If `DEEPLOOP_WORKSPACE_ROOT` is unset, DeepLoop uses an existing
-    unambiguous `~/Workspaces`, `~/workspace`, or `~/workspaces` directory,
-    then falls back to `~/workspaces`.
+   The default control-plane profile uses `deepseek-chat` via the
+   OpenAI-compatible adapter. See [Provider setup](reference/provider-setup.md)
+   for other options and provider families.
 
-3. If you are in a repo checkout, the contributor validation path is:
+   If you want to verify machine-level readiness before running a mission:
 
    ```text
-   make setup
-   make public-bootstrap-check
+   deeploop provider-ready
    ```
 
-    `make public-bootstrap-check` is the clean-room repo-checkout validation
-    contract used by public CI. It is optional for package-only installs because
-    those installs do not include the repo-local Makefile or bundled examples.
+   This checks that the required environment variables and tooling are in place
+   without launching a mission.
 
-4. Prepare machine-level provider availability with
-    [Provider setup](reference/provider-setup.md).
+3. Run DeepLoop:
 
-    This setup contract is intentionally limited to machine readiness:
+   Start a mission with a single command:
 
-   - which tools must exist on the machine
-   - which env vars/auth prerequisites are expected
-    - which readiness checks should pass before mission execution
+   ```text
+   deeploop start --idea "your research idea"
+   ```
 
-    It does **not** choose the provider or model for a specific mission. That
-    mission/runtime selection contract now lives in
-    [Provider selection](reference/provider-selection.md).
+   This is the primary first-run story. DeepLoop materializes a project under
+   `WORKSPACE_ROOT/projects/`, compiles a mission from your idea, and launches
+   the operator loop.
 
-    The fastest first-run readiness shortcut is:
+   To start from an existing project folder with a specific idea:
 
-    ```text
-    deeploop provider-ready --selection-profile control-plane-copilot-cli
-    ```
+   ```text
+   deeploop start --project-root <project-folder> --idea "your research idea"
+   ```
 
-    This resolves the default first-run selection profile to its underlying
-    provider family, but it still checks setup only.
+   This uses the same front door but bootstraps from your existing facts and
+   docs instead of creating a bundled starter project.
 
-5. Declare mission/runtime provider selection with
-   [Provider selection](reference/provider-selection.md).
+   To control iteration budget and maximum cost:
 
-   This selection contract is intentionally separate from machine setup:
+   ```text
+   deeploop start --idea "your research idea" --max-iterations 50 --max-cost 10.00
+   ```
 
-   - choose provider family per mission, loop, role, or phase
-   - choose backend and model alias/identifier
-    - define allowed fallbacks and override points
-    - keep secrets and credential values outside repo config
+   If you prefer an interactive kickoff that asks for your mission idea and
+   lets you choose a bundled starter:
 
-    `deeploop run` calls the same provider-readiness surface before kickoff. If
-    setup is missing, DeepLoop stops early with the exact missing requirement,
-    one next step, and a resume command instead of making you reconcile both
-    provider docs first.
+   ```text
+   deeploop start
+   ```
 
-6. Run DeepLoop:
+   `deeploop run` is also available for compatibility and advanced use. It
+   performs the same readiness check before kickoff. If setup is missing,
+   DeepLoop stops early with the exact missing requirement, one next step, and
+   a resume command.
 
-    - start from nothing:
+   This is the shortest supported end-to-end path. It keeps running until
+   completion, a true operator boundary, or total-iteration exhaustion. If it
+   pauses, keep the operator loop simple: start with `status`, open `inbox`
+   only when DeepLoop needs you, then `resume`.
 
-      ```text
-      deeploop run --until-complete
-      ```
+4. **Use the operator CLI when a run pauses**
 
-      This is the primary first-run story. DeepLoop starts an interactive
-      kickoff, asks for your mission idea, lets you choose a bundled starter,
-      creates a project under `WORKSPACE_ROOT/projects/`, compiles a mission,
-      and launches it.
+   ```text
+   deeploop status
+   deeploop inbox
+   deeploop resume
+   ```
 
-    - start from your own project folder:
+   Start with `status` for a compact overview of runtime telemetry, inner-loop
+   progress, and current state. Open `inbox` only when DeepLoop pauses for a
+   real decision — it shows actionable handoffs with the exact information needed
+   to respond. Use `logs`, `decisions`, `retry`, `reroute`, or `triage` only
+   when the surfaced handoff says you need more detail or a managed-mode override.
 
-      ```text
-      deeploop run --project-root <project-folder> --until-complete
-      ```
+   If you want repeated polls:
 
-      This uses the same front door, but bootstraps from your existing facts and
-      docs instead of creating a bundled starter project.
+   ```text
+   deeploop watch
+   ```
 
-    - start from the canonical public example if you are in a repo checkout:
+5. **Advanced: explicit mission config and discovery paths**
 
-      ```text
-      cp -R examples/translation-budget-ladder <project-folder>
-      deeploop run --project-root <project-folder> --until-complete
-      ```
+   If your project folder already has explicit mission configs in
+   `<project-folder>/.deeploop/missions/*.yaml`, `deeploop start` detects them
+   automatically. To target a specific config directly:
 
-      `examples/translation-budget-ladder/` is the canonical public example, but
-      direct `examples/...` paths are repo-local. Package installs should use
-      plain `deeploop run` or point `--project-root` at their own folder.
+   ```text
+   deeploop init --config <mission-config.yaml> --force
+   deeploop start --mission-state <mission-state.json>
+   ```
 
-    This is the shortest supported end-to-end path. It keeps running until
-    completion, a true operator boundary, or total-iteration exhaustion. If it
-    pauses, keep the operator loop simple: start with `status`, open `inbox`
-    only when DeepLoop needs you, then `resume`.
+   If the folder is rough but still recognizable, `deeploop init` can still
+   materialize a mission state and keep the original project folder unchanged:
 
-    > **Important:** `deeploop run` automatically detects explicit mission
-    > configs in `<project-folder>/.deeploop/missions/*.yaml`. If one or more
-    > YAML files are found there, `deeploop run` uses the first config instead
-    > of bootstrapping a blank mission. If no explicit config exists, it
-    > bootstraps from the folder's plain facts (e.g. `project-facts.yaml`).
-    >
-    > If you have multiple explicit configs or need to target a specific one,
-    > use `deeploop init --config <mission-config.yaml>` followed by
-    > `deeploop start --mission-state <mission-state.json>` instead of
-    > `deeploop run`.
+   ```text
+   deeploop init --project-root <project-folder> --force
+   ```
 
-     If the folder is rough but still recognizable, `deeploop init` can still
-     materialize a mission state and keep the original project folder unchanged:
+   On rough starts, the generated readiness summary can come back as
+   `ready-with-clarifications` or `ready-with-defaults` so the handoff stays
+   honest about what DeepLoop inferred.
 
-    ```text
-    deeploop init --project-root <project-folder> --force
-    ```
+   If you want the guided discovery flow first:
 
-    On rough starts, the generated readiness summary can come back as
-    `ready-with-clarifications` or `ready-with-defaults` so the handoff stays
-    honest about what DeepLoop inferred. `deeploop init` prints the
-    `<mission-state.json>` path you will use with `deeploop`.
+   ```text
+   deeploop init --discover --project-root <project-folder> --force
+   ```
 
-    If you want the guided discovery/operator flow first, use:
+   Discovery mode is the supported path when you want DeepLoop to ask
+   clarifying questions, keep a checklist of missing information, and compile
+   a reviewed mission config before kickoff.
 
-    ```text
-    deeploop init --discover --project-root <project-folder> --force
-    ```
-
-    Discovery mode is the supported path when you want DeepLoop to ask
-    clarifying questions, keep a checklist of missing information, and compile
-    a reviewed mission config before kickoff.
-
-    For the stricter substrate boundary, `<project-folder>` can now be just plain
-    researcher-provided artifacts such as a `project-facts.yaml`, brief docs,
+   For the stricter substrate boundary, `<project-folder>` can be just plain
+   researcher-provided artifacts such as a `project-facts.yaml`, brief docs,
    benchmark notes, metric notes, and budget facts. It does not need a local
    `.deeploop/` contract for this bootstrap path. See
    [Plain-folder starter](how-to/plain-folder-starter.md) for the canonical
    public example contract.
 
-    If DeepLoop cannot bootstrap the project folder safely yet, it exits with
-    bounded repair guidance instead of mutating the folder. The repair output
-    tells you what is missing, points to the target path, and may generate a
-    starter scaffold to copy into place before rerunning `deeploop init` or
-    `deeploop run`.
+   If DeepLoop cannot bootstrap the project folder safely yet, it exits with
+   bounded repair guidance instead of mutating the folder.
 
-    If you already have an explicit mission config, the config path still works:
+6. **When a decision is needed**
 
-   ```text
-   deeploop init --config <mission-config.yaml> --force
-   ```
-
-7. If you initialized a mission state explicitly, start it with the canonical operator CLI:
+   If `status` shows `operator-action-required`, read the inbox first:
 
    ```text
-   deeploop start --mission-state <mission-state.json>
-   ```
-
-8. Check the operator console first:
-
-   ```text
-   deeploop status --mission-state <mission-state.json>
-   ```
-
-   If you want repeated polls, use:
-
-   ```text
-   deeploop watch --mission-state <mission-state.json>
-   ```
-
-   `status` is the front door after every pause. Use `logs` or `decisions` only
-   when you need more detail than `status`. When measurable adaptation or
-   recovery signals exist, `status` now surfaces the ratchet, latest reroute,
-   and temporary-gap hints directly.
-
-9. If `status` says DeepLoop needs you, inspect the inbox:
-
-   ```text
-   deeploop inbox --mission-state <mission-state.json>
+   deeploop inbox
    ```
 
    In managed mode, run `triage` first when the blocked request exposes
@@ -264,18 +219,29 @@ onboarding validate today; outside it, expect gaps.
    managed mode staged the next bounded recovery step, you can usually review
    that note and go straight to `resume`.
 
-10. When the fix or choice is ready, `resume`. If you changed the path yourself,
-    you can record that first with `retry` or `reroute`:
+   When the fix or choice is ready:
 
-    ```text
-    deeploop retry --mission-state <mission-state.json> --note "<what changed>"
-    deeploop reroute --mission-state <mission-state.json> --note "<new plan>"
-    deeploop resume --mission-state <mission-state.json>
-    ```
+   ```text
+   deeploop resume
+   ```
 
-Use placeholders such as `<project-folder>`, `<mission-config.yaml>`, and
-`<mission-state.json>` in your own setup rather than copying any hardcoded
-personal path from a machine-specific example.
+   If you changed the path yourself, record that first with `retry` or `reroute`:
+
+   ```text
+   deeploop retry --note "<what changed>"
+   deeploop reroute --note "<new plan>"
+   deeploop resume
+   ```
+
+7. **When something goes wrong**
+
+   - If `status` shows `operator-action-required`, read the inbox first.
+   - If `status` shows `needs-investigation`, inspect `logs` and `decisions`
+     before resuming.
+   - If `status` shows `autopilot-ready-to-resume`, the last run ended after a
+     soft-gate recovery path and another bounded `resume` is optional.
+   - In managed mode, check whether `status` or `inbox` says a retry, reroute, or
+     downscope step was already staged for you before you record one manually.
 
 ## What success looks like
 
@@ -295,16 +261,6 @@ personal path from a machine-specific example.
   confirmed answers in mission state for operator review
 - `blocked` with `repair-bootstrap-input` — the folder is missing required
   bootstrap inputs, so DeepLoop stops with repair guidance instead of guessing
-
-## When something goes wrong
-
-- If `status` shows `operator-action-required`, read the inbox first.
-- If `status` shows `needs-investigation`, inspect `status`, `logs`, and
-  `decisions` before resuming.
-- If `status` shows `autopilot-ready-to-resume`, the last run ended after a
-  soft-gate recovery path and another bounded `resume` is optional.
-- In managed mode, check whether `status` or `inbox` says a retry, reroute, or
-  downscope step was already staged for you before you record one manually.
 
 ## Advanced / repo-level fallback surfaces
 

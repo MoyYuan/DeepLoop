@@ -10,7 +10,7 @@ from typing import Any, Callable, Mapping
 import yaml
 
 from deeploop.core.structured_io import write_json_object, write_markdown, write_text
-from deeploop.runtime.openai_compatible_adapter import _invoke_openai_compatible, _extract_first_json_object
+from deeploop.runtime.openai_compatible_adapter import _invoke_openai_compatible
 
 DEFAULT_OUTER_USER_MODEL = "deepseek-chat"
 _PHASE_NAMES = ("opening", "midpoint", "closing")

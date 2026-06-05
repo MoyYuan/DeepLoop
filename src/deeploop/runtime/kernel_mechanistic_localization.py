@@ -6,14 +6,12 @@ Extracted from stage_kernels.py. All shared helpers live in stage_kernels.py.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
+from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
 from deeploop.runtime.stage_kernels import (
-    DEFAULT_OPERATING_MODE,
     UNKNOWN_MISSION_ID,
     KernelRunResult,
     StageAdapter,
-    ZONE_ORDER,
     _adapter_runtime_contract,
     _assign_proxy_unit,
     _autotune_execution_plan,

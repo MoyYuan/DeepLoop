@@ -64,8 +64,29 @@ def resolve_workspace_path(path: str | Path) -> Path:
     return Path(raw_text).expanduser().resolve()
 
 
+def workspace_root_source() -> tuple[str, str | None]:
+    """Return (source, hint) describing how WORKSPACE_ROOT was resolved.
+
+    source is one of ``"env"`` (explicitly set) or ``"default"`` (fallback).
+    hint is a human-readable description of the resolution path, or None.
+    """
+    override = os.environ.get(WORKSPACE_ROOT_ENV_VAR, "").strip()
+    if override:
+        return ("env", f"resolved from {WORKSPACE_ROOT_ENV_VAR}={override}")
+    return (
+        "default",
+        f"defaulting to {WORKSPACE_ROOT} because {WORKSPACE_ROOT_ENV_VAR} is unset "
+        f"and an existing workspace directory was found; set {WORKSPACE_ROOT_ENV_VAR} "
+        f"to choose a different root",
+    )
+
+
 def workspace_root_diagnostics(project_root: str | Path | None = None) -> list[str]:
     diagnostics: list[str] = []
+    source, hint = workspace_root_source()
+    if source == "default":
+        diagnostics.append(hint)
+
     home = Path.home()
     lowercase_root = home / FALLBACK_WORKSPACE_ROOT_NAME
     titlecase_root = home / "Workspaces"
@@ -159,4 +180,5 @@ __all__ = [
     "WORKSPACE_URI_PREFIX",
     "resolve_workspace_path",
     "workspace_root_diagnostics",
+    "workspace_root_source",
 ]

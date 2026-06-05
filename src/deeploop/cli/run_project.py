@@ -10,12 +10,10 @@ from typing import Any
 import yaml
 
 from deeploop.cli.bootstrap_support import check_provider_readiness
-from deeploop.mission.mission_discovery import run_interactive_discovery
 from deeploop.mission.project_bootstrap import render_bootstrap_repair_lines
 from deeploop.mission.project_runner import (
     _find_explicit_mission_configs,
     _jsonify,
-    run_config_until_complete,
     run_project_until_complete,
 )
 
@@ -28,10 +26,11 @@ def _add_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--project-root",
         help=(
-            "Optional path to the plain researcher project folder. If omitted, DeepLoop starts an "
-            "interactive first-run flow and can create a bundled starter project for you."
+            "Optional path to the plain researcher project folder. If omitted, use --idea or supply "
+            "a research idea as the first positional argument."
         ),
     )
+    parser.add_argument("--idea", help="Rough research idea to bootstrap a project from when --project-root is not given.")
     parser.add_argument("--mission-idea", help="Optional rough research goal to seed the interactive no-project flow.")
     parser.add_argument("--mission-id", help="Optional override for the generated mission id.")
     parser.add_argument("--force", action="store_true", help="Replace any existing mission root with the same mission id.")
@@ -318,39 +317,40 @@ def _run_project(args: argparse.Namespace) -> int:
                     max_total_iterations=getattr(args, "max_total_iterations", 256),
                 )
         else:
-            discovery = run_interactive_discovery(
+            # Non-interactive bootstrap from --idea
+            from deeploop.core.paths import PROJECTS_DIR
+            from deeploop.core.shared import slugify as _slugify
+
+            idea = getattr(args, "idea", None)
+            if not idea:
+                print("Usage: deeploop run --idea \"your research idea\" --until-complete", flush=True)
+                print("  or: deeploop run --project-root <path> --until-complete", flush=True)
+                print("  or: deeploop init --discover   (interactive discovery)", flush=True)
+                return 2
+
+            import yaml
+
+            project_root = PROJECTS_DIR / _slugify(idea)[:40]
+            project_root.mkdir(parents=True, exist_ok=True)
+            project_facts_path = project_root / "project-facts.yaml"
+            if not project_facts_path.exists():
+                project_facts = {
+                    "project": {
+                        "name": _slugify(idea)[:40],
+                        "title": idea[:120],
+                        "summary": idea[:500],
+                        "objective": idea[:500],
+                    }
+                }
+                project_facts_path.write_text(yaml.safe_dump(project_facts, sort_keys=False), encoding="utf-8")
+
+            result = run_project_until_complete(
+                project_root,
                 mission_id=getattr(args, "mission_id", None),
-                mission_idea=getattr(args, "mission_idea", None),
+                force=getattr(args, "force", False),
+                chunk_iterations=getattr(args, "chunk_iterations", 8),
+                max_total_iterations=getattr(args, "max_total_iterations", 256),
             )
-            if discovery.get("cancelled") and not discovery.get("config_path"):
-                print("run: startup cancelled before DeepLoop created a mission.", flush=True)
-                return 0
-            if not discovery.get("confirmed"):
-                print(f"run: discovery saved compiled config to {discovery['config_path']}", flush=True)
-                print("run: kickoff cancelled; edit the compiled config and re-run when ready", flush=True)
-                return 0
-            config_path = Path(discovery["config_path"]).expanduser().resolve()
-            config = _load_run_config(config_path)
-            mission = config.get("mission") if isinstance(config.get("mission"), dict) else {}
-            target_repo = Path(str(mission.get("target_repo") or "")).expanduser().resolve()
-            provider_gate = _provider_readiness_result(
-                config_path=config_path,
-                project_root=target_repo,
-                resume_command=_run_resume_command(
-                    args,
-                    project_root=target_repo,
-                    mission_id=str(mission.get("id") or "").strip() or None,
-                ),
-            )
-            if provider_gate is not None:
-                result = provider_gate
-            else:
-                result = run_config_until_complete(
-                    config_path,
-                    force=getattr(args, "force", False),
-                    chunk_iterations=getattr(args, "chunk_iterations", 8),
-                    max_total_iterations=getattr(args, "max_total_iterations", 256),
-                )
     except (FileNotFoundError, ValueError) as exc:
         print(f"run: {exc}", file=sys.stderr, flush=True)
         return 2

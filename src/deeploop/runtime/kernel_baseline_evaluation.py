@@ -6,7 +6,6 @@ Extracted from stage_kernels.py. All shared helpers live in stage_kernels.py.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from deeploop.runtime.stage_kernels import (
     UNKNOWN_MISSION_ID,

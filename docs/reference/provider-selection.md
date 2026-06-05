@@ -33,8 +33,7 @@ the first-class mission/runtime selection set:
 
 | Provider family | Typical selection use | Current public selection status | Notes |
 | --- | --- | --- | --- |
-| Copilot CLI | control-plane / recursive-agent loops | implemented | current recursive-agent example uses the provider launcher with the Copilot CLI adapter; optional explicit model selection is allowed |
-| OpenAI-compatible API providers | API-backed control-plane prompt/result flows | implemented | provider launcher can route structured prompt/result control-plane tasks through an OpenAI-compatible `/v1/chat/completions` endpoint |
+| OpenAI-compatible API providers | API-backed control-plane prompt/result flows (default: deepseek-chat) | implemented | provider launcher can route structured prompt/result control-plane tasks through an OpenAI-compatible `/v1/chat/completions` endpoint; DeepSeek Chat is the default control-plane profile |
 | Anthropic API providers | API-backed mission/runtime selection | contract reserved | selection surface is defined now; public request adapter remains deferred |
 | local-transformers | local execution / replication | implemented | explicit local model choice plus backend-policy-controlled fallback |
 | vllm | local execution / replication | implemented | explicit `vllm` selection remains mission-driven, not automatic |
@@ -76,30 +75,17 @@ The resolution axes are intentionally explicit:
 
 The machine-readable registry defines these public profiles:
 
-### `control-plane-copilot-cli`
+### `deepseek-chat-control-plane`
 
-- provider family: `copilot-cli`
-- backend: `copilot-cli`
+- provider family: `openai-compatible-api`
+- backend: `openai-compatible-api`
 - intended roles: planning/control-plane roles plus recursive-agent loops
-- model selection: optional explicit `model.alias` or `model.identifier`
-- default behavior: use the operator-local Copilot default unless a mission or
-  loop explicitly pins a model
-- fallback posture: no cross-provider fallback by default
-
-### `gate2-coding-agent-copilot-gpt5-mini`
-
-- provider family: `copilot-cli`
-- backend: `copilot-cli`
-- intended role/loop: coding-agent validation through the recursive-agent path
-- model selection: explicit `model.alias: gpt-5-mini`
-- fallback posture: no model or cross-provider fallback; the Gate 2 lane is
-  pinned on purpose
-- notes:
-  - this is the current approved Gate 2 coding-agent runtime lane
-  - machine auth stays in [Provider setup](provider-setup.md); this profile only
-    pins the runtime selection
-  - release proof for this lane must record durable mission/runtime artifacts
-    with the resolved provider family, backend, and model alias
+- model selection: default `model.identifier: deepseek-chat` via the
+  DeepSeek API endpoint
+- default behavior: use `OPENAI_API_KEY` + `OPENAI_BASE_URL` from the
+  operator environment; no additional machine auth required
+- fallback posture: stay on the OpenAI-compatible family; fall back through
+  explicit model ladder only
 
 ### `local-transformers-execution`
 
@@ -123,13 +109,13 @@ The machine-readable registry defines these public profiles:
 
 - provider family: `openai-compatible-api`
 - backend: `openai-compatible-api`
-- status: implemented for control-plane prompt/result flows
+- status: implemented for control-plane prompt/result flows (default profile
+  for v0.2.0+)
 - model selection: explicit model identifier and any non-secret endpoint alias
   must come from mission/operator config
 - notes:
   - the current public adapter covers structured prompt/result flows such as
-    `deeploop analyze`
-  - tool-using recursive-agent execution still remains on `copilot-cli`
+    `deeploop analyze` and recursive-agent execution
   - local versus commercial deployment remains a profile choice inside this
     family, not a new first-class provider family
 
@@ -149,8 +135,7 @@ The machine-readable registry defines these public profiles:
   - this is the current approved Gate 2 local Qwen3.5-9B lane
   - treat local serving as a deployment profile inside the OpenAI-compatible
     family, not as a new public provider family
-  - DeepLoop does not start the host-local server, provision auth, or turn this
-    prompt/result lane into the Copilot-style coding-agent path
+  - DeepLoop does not start the host-local server or provision auth
 
 ### `anthropic-api-control-plane`
 
@@ -208,21 +193,20 @@ express mission/runtime intent separately from machine setup.
 
 The current public runtime can route through
 `scripts/runtime/invoke_provider_prompt.py`, and that provider-neutral entrypoint
-currently delegates `copilot-cli` requests to the Copilot adapter and
-`openai-compatible-api` requests to the OpenAI-compatible control-plane adapter.
-The `provider_selection` block remains the canonical selection contract for that
-loop.
+delegates `openai-compatible-api` requests to the OpenAI-compatible control-plane
+adapter. The `provider_selection` block remains the canonical selection contract
+for that loop.
 
 The shipped example at
-`configs/runtime/recursive-agent-runtime-provider.example.yaml` now pins the
-`gate2-coding-agent-copilot-gpt5-mini` profile so the concrete Gate 2
-coding-agent lane is explicit on this runtime surface.
+`configs/runtime/recursive-agent-runtime-provider.example.yaml` pins the
+`deepseek-chat-control-plane` profile so the concrete control-plane lane is
+explicit on this runtime surface.
 
 ### `configs/sandbox/agent-launch-policy.yaml`
 
 `role_env_map` chooses the Conda/runtime environment for each role. It is not a
 provider selector. A role can stay mapped to `deeploop` or `llm` while provider
-selection independently chooses Copilot CLI, an API family, `local-transformers`,
+selection independently chooses an API family, `local-transformers`,
 or `vllm`.
 
 ### `configs/manifests/run-manifest-template.json`

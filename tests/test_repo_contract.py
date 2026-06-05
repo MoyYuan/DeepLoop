@@ -14,7 +14,6 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from deeploop.core.paths import CHECKPOINT_DIR, DATA_DIR, RUNS_DIR, SCRATCH_DIR
-from deeploop.runtime.stage_kernels import get_stage_registry, load_stage_registry_contract
 
 
 class RepoContractTests(unittest.TestCase):
@@ -126,7 +125,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("gate 2", testing_text)
         self.assertIn("gate 1", testing_text)
         self.assertIn("local qwen", testing_text)
-        self.assertIn("gpt-5 mini", testing_text)
+        self.assertIn("deepseek-chat", testing_text)
         self.assertIn("configs/runtime/gate-2-runtime-lanes.yaml", testing_text)
         self.assertIn("real_runtime_validation.py", testing_text)
         self.assertIn("validation_record.json", testing_text)
@@ -228,7 +227,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("provider-free smoke remains baseline-only release evidence", release_text)
         self.assertIn("gate 1", release_text)
         self.assertIn("openai-compatible lane", release_text)
-        self.assertIn("copilot cli with gpt-5 mini", release_text)
+        self.assertIn("local qwen3.5-9b", release_text)
         self.assertIn("configs/runtime/gate-2-runtime-lanes.yaml", release_text)
         self.assertIn("gate_2_real_runtime_validation.json", release_text)
         self.assertIn("safety boundary", autonomy_text)
@@ -296,6 +295,8 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("build code", multisubstrate_text)
 
     def test_stage_kernel_registry_contract_matches_code(self) -> None:
+        from deeploop.runtime.stage_kernels import get_stage_registry, load_stage_registry_contract  # noqa: E402
+
         contract = load_stage_registry_contract()
         self.assertEqual(
             {entry["id"] for entry in contract["stages"]},
@@ -324,7 +325,7 @@ class RepoContractTests(unittest.TestCase):
         provider_text = provider_doc.read_text(encoding="utf-8").lower()
         self.assertIn("machine-level provider setup", provider_text)
         self.assertIn("mission/runtime provider-model selection", provider_text)
-        self.assertIn("copilot cli", provider_text)
+        self.assertIn("deepseek-chat", provider_text)
         self.assertIn("openai-compatible api providers", provider_text)
         self.assertIn("anthropic api providers", provider_text)
         self.assertIn("local-transformers", provider_text)
@@ -409,7 +410,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("configs/sandbox/agent-launch-policy.yaml", selection_text)
         self.assertIn("configs/manifests/run-manifest-template.json", selection_text)
         self.assertIn("keep secrets out of repo config", selection_text)
-        self.assertIn("copilot cli", selection_text)
+        self.assertIn("deepseek-chat", selection_text)
         self.assertIn("openai-compatible api providers", selection_text)
         self.assertIn("anthropic api providers", selection_text)
         self.assertIn("local-transformers", selection_text)
@@ -483,7 +484,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("reference/provider-selection.md", docs_home_text)
         self.assertIn("reference/provider-selection.md", mkdocs_text)
         self.assertIn("provider_selection", recursive_runtime_text)
-        self.assertIn("gpt-5-mini", recursive_runtime_text)
+        self.assertIn("deepseek-chat-control-plane", recursive_runtime_text)
 
     def test_gate_2_runtime_lane_contract_surfaces_exist(self) -> None:
         gate_doc = REPO_ROOT / "docs" / "release" / "release-maintenance.md"
@@ -582,7 +583,7 @@ class RepoContractTests(unittest.TestCase):
         bootstrap_text = (REPO_ROOT / "docs" / "release" / "portable-bootstrap.md").read_text(encoding="utf-8").lower()
         self.assertTrue(examples_readme.exists(), f"missing examples readme: {examples_readme}")
         self.assertIn("examples/translation-budget-ladder", readme_text)
-        self.assertIn("examples/translation-budget-ladder", getting_started_text)
+        self.assertIn("how-to/plain-folder-starter.md", getting_started_text)
         self.assertIn("how-to/examples.md", getting_started_text)
         self.assertIn("how-to/examples.md", docs_home_text)
         self.assertIn("../how-to/examples.md", bootstrap_text)

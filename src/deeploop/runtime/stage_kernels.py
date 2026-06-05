@@ -4,14 +4,12 @@ import json
 import logging
 import math
 import time
-from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Protocol
 
 import yaml
 
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
 from deeploop.core.paths import REPO_ROOT as DEEPLOOP_REPO_ROOT, RUNS_DIR
 from deeploop.runtime import (
     _stage_kernel_registry as stage_kernel_registry,
@@ -414,58 +412,6 @@ class VllmPredictor:
         if current_peak is None or peak_vram_mb > float(current_peak):
             self.runtime_stats["peak_vram_mb"] = peak_vram_mb
 
-
-_KERNELS = {
-    "baseline-evaluation": StageKernel(
-        stage_id="baseline-evaluation",
-        runner=lambda config_path, adapter: run_baseline_evaluation(config_path, adapter=adapter),
-        summary="Generic baseline evaluation kernel.",
-    ),
-    "prompt-decode-sweep": StageKernel(
-        stage_id="prompt-decode-sweep",
-        runner=lambda config_path, adapter: run_prompt_decode_sweep(config_path, adapter=adapter),
-        summary="Prompt/decode sweep kernel for benchmark-bound prompt experiments.",
-    ),
-    "mechanistic-localization": StageKernel(
-        stage_id="mechanistic-localization",
-        runner=lambda config_path, adapter: run_mechanistic_localization(config_path, adapter=adapter),
-        summary="Deterministic runnable mechanistic localization proxy kernel.",
-    ),
-    "causal-intervention": StageKernel(
-        stage_id="causal-intervention",
-        runner=lambda config_path, adapter: run_causal_intervention(config_path, adapter=adapter),
-        summary="Deterministic runnable causal intervention proxy kernel.",
-    ),
-}
-
-
-def get_stage_registry() -> dict[str, StageKernel]:
-    return stage_kernel_registry.get_stage_registry(_KERNELS)
-
-
-def run_stage_from_config(
-    stage_id: str,
-    config_path: Path,
-    *,
-    adapter: StageAdapter | None = None,
-    adapter_spec: str | None = None,
-) -> KernelRunResult:
-    return stage_kernel_registry.run_stage_from_config(
-        stage_id,
-        config_path,
-        adapter=adapter,
-        adapter_spec=adapter_spec,
-        kernels=_KERNELS,
-        adapter_loader=load_stage_adapter,
-    )
-
-
-def load_stage_adapter(adapter_spec: str | None) -> StageAdapter:
-    return stage_kernel_registry.load_stage_adapter(adapter_spec)
-
-
-def load_stage_registry_contract() -> dict:
-    return stage_kernel_registry.load_stage_registry_contract(load_yaml=_load_yaml)
 
 
 

@@ -63,20 +63,19 @@ The `agent.command` can invoke a provider launcher or another
 provider-compatible command template. DeepLoop does not hardcode a specific
 binary name because the available local launcher can vary across machines and
 installs. The current public provider launcher lives at
-`scripts/runtime/invoke_provider_prompt.py` and currently delegates
-`copilot-cli` requests to the Copilot adapter while the `provider_selection`
-block remains the stable selection record.
+`scripts/runtime/invoke_provider_prompt.py` and delegates OpenAI-compatible API
+requests to the control-plane adapter while the `provider_selection` block
+remains the stable selection record.
 
 For the shipped recursive-agent example, DeepLoop also ships:
 
 - `scripts/runtime/invoke_provider_prompt.py`
 - `configs/runtime/recursive-agent-runtime-provider.example.yaml`
 
-This keeps the outer-loop runtime generic while preserving Copilot CLI as one
-supported provider adapter. The shipped example also makes the current Gate 2
-coding-agent lane explicit by pinning the `gpt-5-mini` alias through the
-`gate2-coding-agent-copilot-gpt5-mini` selection profile while leaving machine
-authentication in the separate provider-setup contract.
+This keeps the outer-loop runtime generic while supporting the default
+OpenAI-compatible provider adapter. The shipped example pins the
+`deepseek-chat-control-plane` selection profile so the default control-plane
+lane is explicit while leaving provider auth in the separate setup contract.
 
 Template placeholders supported in `agent.command`:
 
@@ -227,5 +226,5 @@ public-alpha scope include:
 - multi-agent parallel swarms
 - automatic training-branch scheduling
 - stronger research-memory indexing beyond flat JSONL history
-- additional provider-adapter contracts for machines that do not use the shipped
-  Copilot-backed launcher
+- additional provider-adapter contracts beyond the shipped OpenAI-compatible
+  API adapter

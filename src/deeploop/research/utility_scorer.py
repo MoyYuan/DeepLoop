@@ -751,9 +751,6 @@ def evaluate_utility_score(
     if not branches_dir.is_dir():
         raise FileNotFoundError(f"Branches directory not found: {branches_dir}")
 
-    # Load contract (for future use in configuration)
-    contract = _load_yaml(contract_path)
-
     # Discover branches
     branch_dirs = sorted([d for d in branches_dir.iterdir() if d.is_dir()])
     if not branch_dirs:

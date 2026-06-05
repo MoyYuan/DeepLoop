@@ -7,7 +7,7 @@ Tier 1 (project brief) and a rolling, auto-compressing Tier 2
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
 

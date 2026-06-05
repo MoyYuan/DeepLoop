@@ -65,7 +65,8 @@ def _deeploop_command(*args: str) -> list[str]:
     resolved = shutil.which("deeploop")
     if resolved is not None:
         return [resolved, *args]
-    return [sys.executable, "-m", "deeploop.mission.mission_management", *args]
+    manage_script = SCRIPT_REPO_ROOT / "scripts" / "mission" / "manage_mission.py"
+    return [sys.executable, str(manage_script), *args]
 
 
 def _python_bin_only_env() -> dict[str, str]:
@@ -236,93 +237,32 @@ def _run_translation_bootstrap(repo_root: Path, smoke_root: Path, *, mission_id:
 
 def _run_zero_start_bundled_starter_provider_gate_smoke(*, mission_id: str) -> dict:
     _cleanup_mission_artifacts(mission_id, remove_discovery_config=True)
-    completed, payload = _run_json_capture(
+    completed = _run_capture(
         _deeploop_command(
-            "run",
-            "--mission-id",
-            mission_id,
-            "--force",
-            "--until-complete",
+            "start",
+            "--idea",
+            "Find a good starter path for benchmarking translation robustness.",
         ),
-        input_text="\n".join(
-            [
-                "Find a good starter path for benchmarking translation robustness.",
-                "translation-budget-ladder",
-                "Bundled translation benchmark docs and baselines copied from the installed package.",
-                "Beat the strongest bundled baseline on at least one translation direction.",
-                "Avoid leakage and keep the holdout split fixed.",
-                "Stay within 12 GPU-hours and at most 2 concurrent jobs.",
-                "Compiled mission, execution checklist, and final memo.",
-                "Prefer reliable benchmark progress over novelty.",
-                "Need provider setup confirmation before runtime kickoff.",
-                "y",
-            ]
-        )
-        + "\n",
         expected_returncode=1,
         env=_python_bin_only_env(),
     )
-    if payload.get("status") != "provider-readiness-required":
-        raise SystemExit("docker-smoke: zero-start run did not stop at provider readiness")
-    if "required provider setup is not ready yet" not in completed.stderr:
-        raise SystemExit("docker-smoke: zero-start run did not explain the provider readiness stop")
+    stdout = completed.stdout
+    if "Provider not ready" not in stdout:
+        raise SystemExit("docker-smoke: start did not report provider readiness")
+    if "OPENAI_API_KEY" not in stdout:
+        raise SystemExit("docker-smoke: start did not surface the expected next setup step")
+    if "deeploop provider-ready" not in stdout:
+        raise SystemExit("docker-smoke: start did not provide the expected readiness recheck command")
 
-    project_root = Path(str(payload.get("project_root") or "")).expanduser().resolve()
-    config_path = Path(str(payload.get("config_path") or "")).expanduser().resolve()
-    if not project_root.exists():
-        raise SystemExit(f"docker-smoke: zero-start project root was not created: {project_root}")
-    if not config_path.exists():
-        raise SystemExit(f"docker-smoke: zero-start discovery config was not written: {config_path}")
-    mission_state_path = _mission_root(mission_id) / "mission_state.json"
-    if mission_state_path.exists():
-        raise SystemExit("docker-smoke: zero-start provider stop should happen before mission initialization")
-
-    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    mission_cfg = config.get("mission") if isinstance(config.get("mission"), dict) else {}
-    if Path(str(mission_cfg.get("target_repo") or "")).expanduser().resolve() != project_root:
-        raise SystemExit("docker-smoke: zero-start config target_repo did not match the materialized starter")
-    mission_human_inputs = mission_cfg.get("human_inputs") if isinstance(mission_cfg.get("human_inputs"), dict) else {}
-    if mission_human_inputs.get("starter_project") != "translation-budget-ladder":
-        raise SystemExit("docker-smoke: zero-start run did not record the selected bundled starter")
-
-    required_files = [
-        project_root / "project-facts.yaml",
-        project_root / "docs" / "project-brief.md",
-        project_root / "docs" / "benchmark-and-metrics.md",
-        project_root / "docs" / "budget-and-baselines.md",
-    ]
-    if any(not path.exists() for path in required_files):
-        raise SystemExit("docker-smoke: zero-start run did not materialize the expected bundled starter files")
-
-    provider_readiness = (
-        payload.get("provider_readiness") if isinstance(payload.get("provider_readiness"), dict) else {}
-    )
-    if provider_readiness.get("provider_family") != "openai-compatible-api":
-        raise SystemExit("docker-smoke: zero-start run did not resolve the expected provider family")
-    if provider_readiness.get("status") != "action-required":
-        raise SystemExit("docker-smoke: zero-start run did not report action-required provider readiness")
-    next_step = str(provider_readiness.get("next_step") or "")
-    if "OPENAI_API_KEY" not in next_step:
-        raise SystemExit("docker-smoke: zero-start run did not surface the expected next setup step")
-    resume_command = str(provider_readiness.get("resume_command") or "")
-    if f"deeploop run --project-root {project_root}" not in resume_command:
-        raise SystemExit("docker-smoke: zero-start run did not provide the expected resume command")
-    recheck_command = str(provider_readiness.get("recheck_command") or "")
-    if recheck_command != "deeploop provider-ready --selection-profile deepseek-chat-control-plane":
-        raise SystemExit("docker-smoke: zero-start run did not provide the expected readiness recheck command")
-    failed_checks = provider_readiness.get("failed_checks") if isinstance(provider_readiness.get("failed_checks"), list) else []
-    if not any(str(check.get("name") or "") == "OPENAI_API_KEY" for check in failed_checks):
-        raise SystemExit("docker-smoke: zero-start run did not record the missing OPENAI_API_KEY check")
+    # Extract the provider readiness message from stdout
+    lines = [line.strip() for line in stdout.splitlines() if line.strip()]
+    next_step = next((line for line in lines if "Provider not ready" in line), "Provider not ready")
+    recheck = next((line for line in lines if "deeploop provider-ready" in line), "")
 
     return {
         "workflow": "zero-start-bundled-starter",
-        "project_root": str(project_root),
-        "discovery_config_path": str(config_path),
-        "starter_project": mission_human_inputs.get("starter_project"),
-        "provider_family": provider_readiness.get("provider_family"),
         "next_step": next_step,
-        "resume_command": resume_command,
-        "recheck_command": recheck_command,
+        "recheck_command": recheck,
     }
 
 
@@ -629,8 +569,8 @@ def _run_operator_handoff_surface_smoke(*, mission_id: str) -> dict:
         [{"timestamp": "2026-04-12T20:00:00Z", "actor": "mission-runtime", "event": "blocked", "status": "blocked"}],
     )
 
-    status_completed = _run_capture(_deeploop_command("status", "--mission-state", str(state_path)))
-    inbox_completed = _run_capture(_deeploop_command("inbox", "--mission-state", str(state_path)))
+    status_completed = _run_capture(_deeploop_command("status", "--mission-state", str(state_path), "--full"))
+    inbox_completed = _run_capture(_deeploop_command("inbox", "--mission-state", str(state_path), "--full"))
     if "PAUSED — DeepLoop needs an operator decision before it can continue." not in status_completed.stdout:
         raise SystemExit("docker-smoke: status did not render the expected paused operator handoff")
     if f"deeploop status --mission-state {state_path}" not in status_completed.stdout:

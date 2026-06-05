@@ -97,6 +97,7 @@ class PublicBootstrapTests(unittest.TestCase):
                     sys.executable,
                     "scripts/mission/manage_mission.py",
                     "setup",
+                    "--yes",
                 ],
                 cwd=REPO_ROOT,
                 env=env,
