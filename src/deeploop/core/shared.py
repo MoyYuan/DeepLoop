@@ -113,3 +113,9 @@ def get_dotted(payload: Mapping[str, Any], dotted_path: str) -> Any:
             return None
         current = current[piece]
     return current
+
+
+def safe_get(data: Mapping[str, Any], key: str, default: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return ``data[key]`` if it is a dict, otherwise *default* (or ``{}``)."""
+    v = data.get(key)
+    return v if isinstance(v, dict) else (default if default is not None else {})

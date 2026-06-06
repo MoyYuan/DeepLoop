@@ -49,7 +49,7 @@ def _resume_summary_from_state(mission_state_path: Path) -> dict[str, Any]:
         }
     try:
         mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, FileNotFoundError, OSError):
         return {
             "resumed_existing_mission": False,
             "initial_runtime_status": None,
@@ -75,7 +75,7 @@ def _mission_readiness_result(
         return None
     try:
         mission_state = json.loads(mission_state_path.read_text(encoding="utf-8"))
-    except Exception:
+    except (json.JSONDecodeError, FileNotFoundError, OSError):
         return None
     mission_contract = (
         mission_state.get("mission_contract")

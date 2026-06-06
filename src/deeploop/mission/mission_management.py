@@ -932,7 +932,8 @@ def _snapshot_src_for_mission(mission_id: str, launched_at: str) -> Path | None:
             source = REPO_ROOT / filename
             if source.is_file():
                 shutil.copy2(source, cache_root / filename)
-    except Exception:
+    except Exception as exc:
+        print(f"WARNING: runtime cache snapshot failed, launching against live source: {exc}", file=sys.stderr)
         return None
 
     return cache_src

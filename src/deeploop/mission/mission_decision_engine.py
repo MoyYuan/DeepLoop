@@ -1701,6 +1701,10 @@ class MissionDecisionEngine:
         # so it survives across decide() calls
         if isinstance(mission_state, dict):
             mission_state["experiment_tree"] = self._serialize_tree(tree)
+            mission_state["_tree_search_pending"] = {
+                "node_id": node_id,
+                "operation": operation,
+            }
 
         return self._selected_outcome(
             mission_state,
@@ -1710,6 +1714,52 @@ class MissionDecisionEngine:
             action=action,
             missing_outputs=(),
         )
+
+    @staticmethod
+    def apply_tree_search_result(
+        mission_state: dict[str, Any],
+        executor_payload: Mapping[str, Any] | None,
+    ) -> None:
+        """Update the experiment tree in *mission_state* after executor completion.
+
+        Reads the pending tree-search operation and the executor's result to call
+        the appropriate :class:`ExperimentTree` method (draft / improve / debug),
+        then clears the pending marker.
+        """
+        pending = mission_state.pop("_tree_search_pending", None)
+        if not isinstance(pending, dict):
+            return
+        tree_data = mission_state.get("experiment_tree")
+        if not isinstance(tree_data, dict):
+            return
+        tree = MissionDecisionEngine._deserialize_tree(tree_data)
+
+        experiment = (executor_payload or {}).get("experiment_result") if isinstance(executor_payload, Mapping) else None
+        if not isinstance(experiment, Mapping):
+            experiment = {}
+
+        code = str(experiment.get("code") or "")
+        plan = str(experiment.get("plan") or "")
+        metric = experiment.get("metric")
+        is_buggy = bool(experiment.get("is_buggy", False))
+        node_id = str(pending.get("node_id") or "")
+        operation = str(pending.get("operation") or "")
+
+        if operation == "draft":
+            new_id = tree.draft(code, plan)
+            if new_id in tree.nodes and metric is not None:
+                tree.nodes[new_id].metric = float(metric)
+            if is_buggy and new_id in tree.nodes:
+                tree.nodes[new_id].is_buggy = True
+        elif operation == "improve" and node_id and node_id in tree.nodes:
+            tree.improve(node_id, code, plan, float(metric) if metric is not None else 0.0)
+        elif operation == "debug" and node_id and node_id in tree.nodes:
+            if is_buggy:
+                tree.nodes[node_id].is_buggy = True
+            else:
+                tree.debug(node_id, code, plan)
+
+        mission_state["experiment_tree"] = MissionDecisionEngine._serialize_tree(tree)
 
     def _decision_record(
         self,
@@ -1754,3 +1804,11 @@ def decide_next_mission_action(
     engine: MissionDecisionEngine | None = None,
 ) -> MissionDecisionOutcome:
     return (engine or MissionDecisionEngine()).decide(mission_state, evidence=evidence)
+
+
+def apply_tree_search_result(
+    mission_state: dict[str, Any],
+    executor_payload: Mapping[str, Any] | None,
+) -> None:
+    """Module-level wrapper for :meth:`MissionDecisionEngine.apply_tree_search_result`."""
+    MissionDecisionEngine.apply_tree_search_result(mission_state, executor_payload)

@@ -184,7 +184,15 @@ selection_profiles:
       backend_switch: provider-native
       model_fallback: explicit-model-ladder-only
   anthropic-api-control-plane:
-    status: reserved-runtime-adapter
+    status: implemented
+    intended_roles:
+      - planner
+      - literature-scout
+      - experiment-designer
+      - critic-verifier
+      - report-synthesizer
+    intended_loops:
+      - recursive-agent
     provider_family: anthropic-api
     backend: anthropic-api
     model_selection:

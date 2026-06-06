@@ -111,7 +111,7 @@ provider_families:
   anthropic-api:
     display_name: Anthropic API providers
     public_contract_tier: first-class
-    runtime_integration: deferred
+    runtime_integration: implemented
     required_tools:
       - command: python
         purpose: control-plane entrypoint

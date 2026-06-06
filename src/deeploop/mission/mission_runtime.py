@@ -30,6 +30,7 @@ from deeploop.mission.mission_decision_engine import (
     MissionEvidence,
     MissionExecutorDispatch,
     MissionPlannedAction,
+    apply_tree_search_result,
     decide_next_mission_action,
 )
 from deeploop.mission._runtime_contract import _append_contract_record, _outer_loop_contract
@@ -1957,6 +1958,8 @@ def _handle_dispatch_success(
         stage_runs = updated_state.setdefault("stage_runs", {})
         stage_id = str(result.payload.get("stage_id") or outcome.action.action_id)
         stage_runs[stage_id] = _jsonify(result.payload)
+    if updated_state.get("_tree_search_pending"):
+        apply_tree_search_result(updated_state, result.payload)
     gate_event = result.payload.get("gate_event") if isinstance(result.payload.get("gate_event"), Mapping) else None
     if (
         str(result.status) == "deferred"
