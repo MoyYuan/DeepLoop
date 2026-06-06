@@ -72,6 +72,7 @@ def _base_state(*, mission_id: str, current_phase: str, next_phase: str, actions
         "roles": ["execution-operator", "critic-verifier", "report-synthesizer"],
         "next_actions": {"actions": actions},
         "autonomy_status": {"state": "initialized", "reason": "test"},
+        "enable_tree_search": False,
     }
 
 

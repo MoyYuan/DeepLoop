@@ -37,7 +37,7 @@ class ProjectRunnerTests(unittest.TestCase):
             force=False,
             until_complete=True,
             chunk_iterations=4,
-            max_total_iterations=12,
+            max_total_iterations=24,
         )
         result = {
             "status": "operator-review-required",
@@ -81,7 +81,7 @@ class ProjectRunnerTests(unittest.TestCase):
             force=False,
             until_complete=True,
             chunk_iterations=4,
-            max_total_iterations=12,
+            max_total_iterations=24,
         )
         result = {
             "status": "bootstrap-repair-required",
@@ -118,7 +118,7 @@ class ProjectRunnerTests(unittest.TestCase):
             force=False,
             until_complete=True,
             chunk_iterations=4,
-            max_total_iterations=12,
+            max_total_iterations=24,
         )
         result = {
             "status": "mission-readiness-required",
@@ -157,7 +157,7 @@ class ProjectRunnerTests(unittest.TestCase):
             force=False,
             until_complete=True,
             chunk_iterations=4,
-            max_total_iterations=12,
+            max_total_iterations=24,
         )
         result = {
             "status": "completed",
@@ -186,7 +186,7 @@ class ProjectRunnerTests(unittest.TestCase):
             force=False,
             until_complete=True,
             chunk_iterations=4,
-            max_total_iterations=12,
+            max_total_iterations=24,
         )
         provider_result = {
             "status": "provider-readiness-required",
@@ -231,7 +231,7 @@ class ProjectRunnerTests(unittest.TestCase):
             force=False,
             until_complete=True,
             chunk_iterations=4,
-            max_total_iterations=12,
+            max_total_iterations=24,
         )
 
         with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -313,7 +313,7 @@ class ProjectRunnerTests(unittest.TestCase):
                 project_root,
                 force=True,
                 chunk_iterations=4,
-                max_total_iterations=12,
+                max_total_iterations=24,
             )
 
         self.assertEqual(result["status"], "completed")

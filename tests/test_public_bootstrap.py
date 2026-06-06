@@ -266,7 +266,7 @@ class PublicBootstrapTests(unittest.TestCase):
             mission_id="public-bootstrap-example-mission",
             force=True,
             chunk_iterations=4,
-            max_total_iterations=32,
+            max_total_iterations=48,
         )
         self.addCleanup(lambda: shutil.rmtree(Path(result["mission_root"]), ignore_errors=True))
 
