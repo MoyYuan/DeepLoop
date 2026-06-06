@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` now declares `0.2.0`, so the
-publishable tag and GitHub Release tag must be `v0.2.0`.
+For the next public release, `pyproject.toml` now declares `0.6.0`, so the
+publishable tag and GitHub Release tag must be `v0.6.0`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -234,12 +234,12 @@ Do not widen the public claim beyond what the harness and lane contract prove:
         evidence
       - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.2.0`)
+## GitHub release notes draft (`v0.6.0`)
 
 ```text
-## DeepLoop v0.2.0
+## DeepLoop v0.6.0
 
-This is the first major release of the API-only control plane with DeepSeek
+This release completes a comprehensive codebase simplification, adds tree search, Anthropic API support, a mission dashboard, and consolidates the workspace root to ~/.deeploop.
 integration, 11 features from the autonomous research landscape, and
 comprehensive test coverage (700 tests).
 
