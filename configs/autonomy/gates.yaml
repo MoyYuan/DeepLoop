@@ -102,3 +102,33 @@ budget_controls:
 
 approval_required:
   - preference-optimization
+
+evidence_policy:
+  claim_states:
+    - id: exploratory
+      description: single-run or first-pass observation; not suitable for strong claims
+      promotion_requirements:
+        - completed manifest
+        - critique memo
+    - id: replicated
+      description: supported by at least one follow-up run or replication check
+      promotion_requirements:
+        - at least 2 related manifests
+        - explicit replication note
+        - critic-verifier approval
+    - id: paper-candidate
+      description: evidence package is strong enough to consider for paper-facing reporting
+      promotion_requirements:
+        - replicated evidence
+        - documented caveats
+        - human approval
+    - id: release-candidate
+      description: artifact package is fit for open release review
+      promotion_requirements:
+        - paper-candidate evidence or equivalent rigor
+        - provenance-review record
+        - licensing-review record
+        - release-operator review
+  disallowed_shortcuts:
+    - exploratory_to_paper-candidate_without_replication
+    - exploratory_to_release-candidate
