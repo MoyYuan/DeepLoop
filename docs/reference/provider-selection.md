@@ -48,7 +48,7 @@ the first-class mission/runtime selection set:
 - local backend defaults and ladder input: `configs/runtime/backend-policy.yaml`
 - recursive-loop policy surface: `configs/runtime/recursive-agent-runtime.yaml`
 - recursive-loop example with selection block:
-  `configs/runtime/recursive-agent-runtime-provider.example.yaml`
+  `examples/recursive-agent-runtime-provider.example.yaml`
 - role/env map: `configs/sandbox/agent-launch-policy.yaml`
 - manifest recording surface: `configs/manifests/run-manifest-template.json`
 
@@ -186,7 +186,7 @@ the local fallback ladder between `local-transformers` and `vllm`. It does not
 by itself choose which provider a mission should use.
 
 ### `configs/runtime/recursive-agent-runtime.yaml`
-### `configs/runtime/recursive-agent-runtime-provider.example.yaml`
+### `examples/recursive-agent-runtime-provider.example.yaml`
 
 Recursive-agent loop configs may now carry a `provider_selection` block to
 express mission/runtime intent separately from machine setup.
@@ -198,7 +198,7 @@ adapter. The `provider_selection` block remains the canonical selection contract
 for that loop.
 
 The shipped example at
-`configs/runtime/recursive-agent-runtime-provider.example.yaml` pins the
+`examples/recursive-agent-runtime-provider.example.yaml` pins the
 `deepseek-chat-control-plane` profile so the concrete control-plane lane is
 explicit on this runtime surface.
 
