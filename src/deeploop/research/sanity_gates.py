@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from deeploop.core.config_paths import infer_repo_root_from_configs as _infer_repo_root, resolve_config_path as _resolve_path
-from deeploop.core.dotted import get_dotted as _get_field
+from deeploop.core.shared import get_dotted as _get_field
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import REPO_ROOT, RUNS_DIR
 from deeploop.core.structured_io import (

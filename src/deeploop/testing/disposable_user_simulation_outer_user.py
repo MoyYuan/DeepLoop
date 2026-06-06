@@ -9,7 +9,7 @@ from typing import Any, Callable, Mapping
 
 import yaml
 
-from deeploop.core.structured_io import write_json_object, write_markdown, write_text
+from deeploop.core.structured_io import load_json_object, write_json_object, write_markdown, write_text
 from deeploop.runtime.openai_compatible_adapter import _invoke_openai_compatible
 
 DEFAULT_OUTER_USER_MODEL = "deepseek-chat"
@@ -57,12 +57,6 @@ def load_disposable_user_simulation_inputs(env: Mapping[str, str] | None = None)
         minimum_session_seconds=minimum_session_seconds,
     )
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected JSON object at {path}")
-    return payload
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -220,7 +214,7 @@ def run_disposable_user_simulation(
     clock: Callable[[], float] = time.monotonic,
     sleeper: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
-    contract = _load_json(inputs.contract_path)
+    contract = load_json_object(inputs.contract_path)
     runtime_pins = _load_yaml(inputs.runtime_pins_path)
     _validate_runtime_pins(contract, runtime_pins, model=model)
     prompt_text = inputs.prompt_path.read_text(encoding="utf-8")

@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from deeploop.autonomy.gate_taxonomy import DEFAULT_GATES_PATH, resolve_gate_contract
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE, resolve_operating_mode
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE, resolve_operating_mode
 from deeploop.autonomy.operator_inbox import MISSION_OPERATOR_REQUEST_SCHEMA_PATH, build_operator_inbox_contract
 from deeploop.core.paths import REPO_ROOT
-from deeploop.core.structured_io import load_json_object, load_yaml_mapping
+from deeploop.core.structured_io import load_json_object, load_yaml_mapping, schema_errors
 from deeploop.mission.mission_memory import build_mission_memory_contract
 from deeploop.research.indexed_memory import build_research_memory_contract
 
@@ -18,49 +18,20 @@ MISSION_ACTION_SCHEMA_PATH = REPO_ROOT / "schemas" / "mission-action.schema.json
 MISSION_DECISION_SCHEMA_PATH = REPO_ROOT / "schemas" / "mission-decision.schema.json"
 MISSION_BRANCH_RECORD_SCHEMA_PATH = REPO_ROOT / "schemas" / "mission-branch-record.schema.json"
 
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     return load_yaml_mapping(path)
-
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return load_json_object(path)
-
 
 def load_mission_outer_loop_policy(path: Path = MISSION_OUTER_LOOP_POLICY_PATH) -> dict[str, Any]:
     return _load_yaml(path)
 
-
-def _schema_errors(payload: dict[str, Any], schema_path: Path) -> list[str]:
-    schema = _load_json(schema_path)
-    try:
-        import jsonschema
-    except ImportError:
-        warnings.warn("jsonschema not installed; schema validation is incomplete")
-        errors: list[str] = []
-        for key in schema.get("required", []):
-            if key not in payload:
-                errors.append(f"missing field `{key}`")
-        return errors
-
-    validator = jsonschema.Draft202012Validator(schema)
-    return [
-        error.message
-        for error in sorted(validator.iter_errors(payload), key=lambda item: list(item.path))[:8]
-    ]
-
-
 def validate_mission_action(payload: dict[str, Any]) -> list[str]:
-    return _schema_errors(payload, MISSION_ACTION_SCHEMA_PATH)
-
+    return schema_errors(payload, MISSION_ACTION_SCHEMA_PATH)
 
 def validate_mission_decision(payload: dict[str, Any]) -> list[str]:
-    return _schema_errors(payload, MISSION_DECISION_SCHEMA_PATH)
-
+    return schema_errors(payload, MISSION_DECISION_SCHEMA_PATH)
 
 def validate_mission_branch_record(payload: dict[str, Any]) -> list[str]:
-    return _schema_errors(payload, MISSION_BRANCH_RECORD_SCHEMA_PATH)
-
+    return schema_errors(payload, MISSION_BRANCH_RECORD_SCHEMA_PATH)
 
 def ensure_valid_contract_payload(payload: dict[str, Any], *, kind: str) -> None:
     validators = {
@@ -72,7 +43,6 @@ def ensure_valid_contract_payload(payload: dict[str, Any], *, kind: str) -> None
     errors = validator(payload)
     if errors:
         raise ValueError(f"Invalid {kind}: {'; '.join(errors)}")
-
 
 def enrich_outer_loop_contract(
     contract: dict[str, Any],
@@ -94,7 +64,6 @@ def enrich_outer_loop_contract(
     enriched.setdefault("soft_gate_preferred_actions", list(resolved_gate_contract["soft_gate_preferred_actions"]))
     enriched.setdefault("gate_risk_classes", list(resolved_gate_contract["gate_risk_classes"]))
     return enriched
-
 
 def build_outer_loop_contract(
     mission_root: Path,
@@ -166,7 +135,6 @@ def build_outer_loop_contract(
     }
     return enrich_outer_loop_contract(contract, mode=resolved_mode, gate_contract=resolved_gate_contract)
 
-
 def resolve_phase_contract(
     current_phase: str,
     path: Path = STATE_MACHINE_PATH,
@@ -221,7 +189,6 @@ def resolve_phase_contract(
             "terminal_rules": [str(item) for item in loaded.get("terminal_rules", [])],
         }
     return {}
-
 
 __all__ = [
     "MISSION_ACTION_SCHEMA_PATH",

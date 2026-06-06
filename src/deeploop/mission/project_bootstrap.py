@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 
 from deeploop.core.shared import slugify as _slugify
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE
 from deeploop.project_contract import CONTRACT_OPERATIONAL_FIELDS, discover_project_contract
 
 DEFAULT_BOOTSTRAP_ROLES = [

@@ -33,8 +33,8 @@ It is substrate-aware for the first target, translation pilot, and currently cov
 - standalone runner: `scripts/runtime/run_confound_guard.py`
 - sanity-gate integration: `src/deeploop/research/sanity_gates.py`
 - durable artifacts:
-  - mission-linked: `~/workspaces/runs/deeploop/missions/<mission_id>/confound_guard/`
-  - standalone: `~/workspaces/runs/deeploop/confound_guard/`
+  - mission-linked: `~/.deeploop/runs/deeploop/missions/<mission_id>/confound_guard/`
+  - standalone: `~/.deeploop/runs/deeploop/confound_guard/`
 - ledger integration:
   - `confound-guard` entries capture verdicts and reasons
   - `research-sanity-gate` entries link back to confound artifacts

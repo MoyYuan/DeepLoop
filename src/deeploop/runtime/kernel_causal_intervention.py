@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE
 from deeploop.runtime.stage_kernels import (
     UNKNOWN_MISSION_ID,
     KernelRunResult,

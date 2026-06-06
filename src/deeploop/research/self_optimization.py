@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 import yaml
 
-from deeploop.core.dotted import get_dotted as _get_nested
+from deeploop.core.shared import get_dotted as _get_nested
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import REPO_ROOT, RUNS_DIR
 from deeploop.core.structured_io import load_json as _load_json, load_yaml as _load_yaml

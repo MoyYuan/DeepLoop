@@ -25,7 +25,7 @@ The runtime now maintains:
 
 - an append-only `research_memory_entries.jsonl` event log
 - a materialized `research_memory_index.json` inverted index under
-  `~/workspaces/runs/deeploop/ledger/research_memory/`
+  `~/.deeploop/runs/deeploop/ledger/research_memory/`
 - schema-validated entries with provenance, retrieval terms, promotion status,
   and retention metadata
 

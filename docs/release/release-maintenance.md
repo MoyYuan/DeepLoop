@@ -29,8 +29,8 @@ Mission/package promotion is still separate from repo/public release posture:
 
 ## Current GitHub preflight
 
-For the next public release, `pyproject.toml` now declares `0.1.10`, so the
-publishable tag and GitHub Release tag must be `v0.1.10`.
+For the next public release, `pyproject.toml` now declares `0.2.0`, so the
+publishable tag and GitHub Release tag must be `v0.2.0`.
 
 `publish.yml` only pushes to PyPI after the GitHub Release is published, and it
 aborts if the published release tag and `project.version` diverge.
@@ -234,29 +234,37 @@ Do not widen the public claim beyond what the harness and lane contract prove:
         evidence
       - governance / trust-surface changes
 
-## GitHub release notes draft (`v0.1.10`)
+## GitHub release notes draft (`v0.2.0`)
 
 ```text
-## DeepLoop v0.1.10
+## DeepLoop v0.2.0
 
-This patch release keeps DeepLoop's workspace hygiene and release-smoke
-behavior aligned with the documented workspace contract without widening the
-public-alpha runtime claim.
+This is the first major release of the API-only control plane with DeepSeek
+integration, 11 features from the autonomous research landscape, and
+comprehensive test coverage (700 tests).
 
-- **Install / bootstrap:** the published Docker clean-room smoke keeps its
-  temporary project copies under DeepLoop's scratch area instead of reusing the
-  older top-level `docker-validation` workspace root.
-- **Runtime / operator:** no wider autonomy claim is added; this patch is about
-  workspace hygiene and cleanup behavior, not a new runtime capability.
-- **Package / release review:** maintainers now have a documented
-  `make clean-workspace-temp` helper for known DeepLoop-created temporary
-  workspace leftovers.
-- **Proof / CI:** regression coverage now locks the release-smoke scratch root
-  under `scratch/deeploop/release-validation/docker-smoke`, and the normal
-  release Gate 1 checks still keep Docker/bootstrap/docs integrity honest.
+- **Install / bootstrap:** copilot-cli dependency removed; control plane is
+  API-only (openai-compatible-api). Default provider is DeepSeek via the
+  `deepseek-chat-control-plane` selection profile. Version now single-sourced
+  from pyproject.toml with CI consistency check.
+- **Runtime / operator:** 11 new features including zero-cost GPU monitoring,
+  two-tier bounded memory, tree search experiments, tiered LLM usage, agent
+  dialogue protocol, composable stop conditions, report synthesis (LaTeX/PDF),
+  DAG experiment lineage, circuit breaker, dry-run validation, and subagent
+  fan-out. Shared utilities consolidated into canonical `core/shared.py`.
+  Stage kernels split into per-kernel files. Mission runtime dispatch
+  factored into handler functions.
+- **Package / release review:** canonical mission and artifact package
+  contracts in place. Release automation handoff surface defined under the
+  platform expansion contract.
+- **Proof / CI:** ruff linting enforced (`make lint`). 700 tests (unit,
+  integration, acceptance) with 0 failures. Docker release validation
+  passes with API-only smoke tests. New test tiers: acceptance (real
+  DeepSeek API), integration (API contract + GPU monitor).
 - **Governance / trust surface:** DeepLoop still ships as a bounded-support
-  public alpha for the documented Linux path; this release tightens local
-  hygiene rather than widening autonomy scope.
+  public alpha for the documented Linux path; this release widens the
+  autonomy scope with deterministic routing and metric-ratchet evidence
+  while keeping explicit operator boundaries.
 ```
 
 ## Non-goals

@@ -155,6 +155,26 @@ def write_yaml_mapping(path: Path, payload: dict[str, Any]) -> None:
     write_text(path, yaml.safe_dump(payload, sort_keys=False))
 
 
+def schema_errors(payload: dict[str, Any], schema_path: Path) -> list[str]:
+    """Validate *payload* against the JSON Schema at *schema_path*.
+
+    Returns a list of error messages (empty when valid).  Falls back to
+    checking only required keys when ``jsonschema`` is not installed.
+    """
+    schema = load_json_object(schema_path)
+    try:
+        import jsonschema
+    except ImportError:
+        import warnings
+        warnings.warn("jsonschema not installed; schema validation is incomplete")
+        return [f"missing field `{key}`" for key in schema.get("required", []) if key not in payload]
+    validator = jsonschema.Draft202012Validator(schema)
+    return [
+        error.message
+        for error in sorted(validator.iter_errors(payload), key=lambda item: list(item.path))[:8]
+    ]
+
+
 __all__ = [
     "load_json",
     "load_json_object",
@@ -164,6 +184,7 @@ __all__ = [
     "load_yaml",
     "load_yaml_mapping",
     "json_safe_value",
+    "schema_errors",
     "write_json_object",
     "write_markdown",
     "write_text",

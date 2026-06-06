@@ -19,21 +19,9 @@ def _resolve_repo_root() -> Path:
 REPO_ROOT = _resolve_repo_root()
 WORKSPACE_ROOT_ENV_VAR = "DEEPLOOP_WORKSPACE_ROOT"
 RUNS_ROOT_ENV_VAR = "DEEPLOOP_RUNS_ROOT"
-FALLBACK_WORKSPACE_ROOT_NAME = "workspaces"
-COMMON_WORKSPACE_ROOT_NAMES = ("Workspaces", "workspace", FALLBACK_WORKSPACE_ROOT_NAME)
 WORKSPACE_URI_PREFIX = "workspace://"
 
-
-def _default_workspace_root() -> Path:
-    home = Path.home()
-    for name in COMMON_WORKSPACE_ROOT_NAMES:
-        candidate = home / name
-        if candidate.exists():
-            return candidate
-    return home / FALLBACK_WORKSPACE_ROOT_NAME
-
-
-DEFAULT_WORKSPACE_ROOT = _default_workspace_root()
+DEFAULT_WORKSPACE_ROOT = Path.home() / ".deeploop"
 
 
 def _resolve_workspace_root() -> Path:
@@ -75,8 +63,7 @@ def workspace_root_source() -> tuple[str, str | None]:
         return ("env", f"resolved from {WORKSPACE_ROOT_ENV_VAR}={override}")
     return (
         "default",
-        f"defaulting to {WORKSPACE_ROOT} because {WORKSPACE_ROOT_ENV_VAR} is unset "
-        f"and an existing workspace directory was found; set {WORKSPACE_ROOT_ENV_VAR} "
+        f"defaulting to {WORKSPACE_ROOT}; set {WORKSPACE_ROOT_ENV_VAR} "
         f"to choose a different root",
     )
 
@@ -86,15 +73,6 @@ def workspace_root_diagnostics(project_root: str | Path | None = None) -> list[s
     source, hint = workspace_root_source()
     if source == "default":
         diagnostics.append(hint)
-
-    home = Path.home()
-    lowercase_root = home / FALLBACK_WORKSPACE_ROOT_NAME
-    titlecase_root = home / "Workspaces"
-    if lowercase_root.exists() and titlecase_root.exists() and lowercase_root.resolve() != titlecase_root.resolve():
-        diagnostics.append(
-            f"Both `{titlecase_root}` and `{lowercase_root}` exist on this case-sensitive filesystem. "
-            f"DeepLoop is using `{WORKSPACE_ROOT}`; set {WORKSPACE_ROOT_ENV_VAR} before init/start to choose a different root."
-        )
 
     if project_root is not None:
         resolved_project_root = Path(project_root).expanduser().resolve()

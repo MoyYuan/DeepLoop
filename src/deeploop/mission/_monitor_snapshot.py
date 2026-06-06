@@ -4,7 +4,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
 
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE
+from deeploop.core.shared import normalize_strings as _normalize_strings
 from deeploop.autonomy.operator_inbox import latest_operator_request, load_current_operator_request
 from deeploop.mission._autonomy_gap_telemetry import build_autonomy_gap_telemetry
 from deeploop.mission._operator_surface import mode_summary as _mode_summary, operator_console_snapshot as _operator_console_snapshot
@@ -22,7 +23,6 @@ from deeploop.mission._monitor_classification import (
     _maybe_load_json,
     _maybe_load_jsonl,
     _maybe_path,
-    _normalize_strings,
     _progress_root,
     _promotion_snapshot,
     _runtime_snapshot,

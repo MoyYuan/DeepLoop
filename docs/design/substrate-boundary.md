@@ -62,7 +62,7 @@ orchestration or build logic.
 
 Generated artifacts must live in DeepLoop-controlled workspace roots such as:
 
-- `~/workspaces/runs/deeploop/`
+- `~/.deeploop/runs/deeploop/`
 - `~/workspaces/runs/<substrate>/`
 - `~/workspaces/scratch/<project>/`
 

@@ -5,8 +5,40 @@ from typing import Any, Mapping
 
 import yaml
 
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE, resolve_operating_mode
 from deeploop.core.paths import REPO_ROOT
+from deeploop.core.shared import normalize_strings as _normalize_strings
+
+DEFAULT_OPERATING_MODE = "sandboxed-yolo"
+CANONICAL_OPERATING_MODES = frozenset({"human-directed", "sandboxed-yolo", "managed"})
+AUTONOMOUS_OPERATING_MODES = frozenset({"sandboxed-yolo", "managed"})
+
+
+def _normalized_mode_name(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return text
+
+
+def resolve_operating_mode(
+    mode: str | None,
+    *,
+    default: str = DEFAULT_OPERATING_MODE,
+) -> str:
+    requested = _normalized_mode_name(mode)
+    if not requested or requested == "default":
+        requested = _normalized_mode_name(default) or DEFAULT_OPERATING_MODE
+    if requested not in CANONICAL_OPERATING_MODES:
+        supported = ", ".join(sorted(CANONICAL_OPERATING_MODES))
+        raise ValueError(f"Unsupported operating mode `{requested}`. Supported modes: {supported}.")
+    return requested
+
+
+def is_autonomous_operating_mode(
+    mode: str | None,
+    *,
+    default: str = DEFAULT_OPERATING_MODE,
+) -> bool:
+    canonical = resolve_operating_mode(mode, default=default)
+    return canonical in AUTONOMOUS_OPERATING_MODES
 
 DEFAULT_GATES_PATH = REPO_ROOT / "configs" / "autonomy" / "gates.yaml"
 _DEFAULT_SOFT_ACTIONS = ("retry", "reroute", "downscope")
@@ -19,19 +51,6 @@ def _load_yaml(path: Path) -> dict[str, Any]:
         raise ValueError(f"Expected mapping in {path}")
     return loaded
 
-
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, (str, Path)):
-        text = str(raw).strip()
-        return [text] if text else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
 
 
 def _normalized_mapping(raw: Any) -> dict[str, Any]:
@@ -304,9 +323,14 @@ def build_gate_event(
 
 
 __all__ = [
+    "AUTONOMOUS_OPERATING_MODES",
+    "CANONICAL_OPERATING_MODES",
     "DEFAULT_GATES_PATH",
+    "DEFAULT_OPERATING_MODE",
     "build_gate_event",
+    "is_autonomous_operating_mode",
     "load_gate_policy",
     "normalize_gate_policy",
     "resolve_gate_contract",
+    "resolve_operating_mode",
 ]

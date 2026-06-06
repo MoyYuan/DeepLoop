@@ -19,44 +19,25 @@ from deeploop.platform.contracts import sync_platform_expansion_bundle
 
 DEFAULT_RUNTIME_DIR_NAME = "mission_outer_runtime"
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return load_json_object(path)
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return load_jsonl_objects(path, missing_ok=True)
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_object(path, payload)
-
-
 def _write_markdown(path: Path, lines: list[str]) -> None:
     write_markdown(path, lines)
-
 
 def _runtime_root(mission_state_path: Path, runtime_root: Path | None) -> Path:
     if runtime_root is not None:
         return runtime_root.expanduser().resolve()
     return mission_state_path.parent / "runtime" / DEFAULT_RUNTIME_DIR_NAME
 
-
 def _runtime_state_path(runtime_root: Path) -> Path:
     return runtime_root / _RUNTIME_STATE_FILE
-
 
 def _runtime_history_path(runtime_root: Path) -> Path:
     return runtime_root / _RUNTIME_HISTORY_FILE
 
-
 def _runtime_summary_json_path(runtime_root: Path) -> Path:
     return runtime_root / _RUNTIME_SUMMARY_JSON_FILE
 
-
 def _runtime_summary_md_path(runtime_root: Path) -> Path:
     return runtime_root / _RUNTIME_SUMMARY_MD_FILE
-
 
 def _default_runtime_state(
     mission_id: str,
@@ -85,7 +66,6 @@ def _default_runtime_state(
         "summary_markdown_path": str(_runtime_summary_md_path(runtime_root)),
     }
 
-
 def _load_runtime_state(
     mission_id: str,
     *,
@@ -95,7 +75,7 @@ def _load_runtime_state(
 ) -> dict[str, Any]:
     state_path = _runtime_state_path(runtime_root)
     if state_path.exists():
-        state = _load_json(state_path)
+        state = load_json_object(state_path)
         state["max_iterations"] = int(max_iterations)
         state["updated_at"] = now_utc()
         return state
@@ -106,20 +86,18 @@ def _load_runtime_state(
         max_iterations=max_iterations,
     )
 
-
 def _record_history(runtime_root: Path, payload: dict[str, Any]) -> None:
     append_jsonl(_runtime_history_path(runtime_root), payload)
 
-
 def _runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict[str, Any]) -> dict[str, Any]:
-    history = _load_jsonl(_runtime_history_path(Path(runtime_state["runtime_root"])))
+    history = load_jsonl_objects(_runtime_history_path(Path(runtime_state["runtime_root"], missing_ok=True)))
     outer_loop = mission_state.get("outer_loop") if isinstance(mission_state.get("outer_loop"), dict) else {}
     memory_path = (
         Path(outer_loop["mission_memory_path"]).expanduser().resolve()
         if isinstance(outer_loop.get("mission_memory_path"), str)
         else None
     )
-    memory_snapshot = _load_json(memory_path) if memory_path is not None and memory_path.exists() else {}
+    memory_snapshot = load_json_object(memory_path) if memory_path is not None and memory_path.exists() else {}
     current_operator_request_path = (
         Path(outer_loop["current_operator_request_path"]).expanduser().resolve()
         if isinstance(outer_loop.get("current_operator_request_path"), str)
@@ -165,11 +143,10 @@ def _runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict[str, 
         "latest_history": history[-1:] if history else [],
     }
 
-
 def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict[str, Any]) -> None:
     runtime_root = Path(runtime_state["runtime_root"])
     summary = _runtime_summary(runtime_state, mission_state=mission_state)
-    _write_json(_runtime_summary_json_path(runtime_root), summary)
+    write_json_object(_runtime_summary_json_path(runtime_root), summary)
     autonomy = mission_state.get("autonomy_status", {}) if isinstance(mission_state.get("autonomy_status"), dict) else {}
     autonomy_gap_telemetry = summary.get("autonomy_gap_telemetry", {})
     telemetry_counts = autonomy_gap_telemetry.get("counts", {}) if isinstance(autonomy_gap_telemetry, Mapping) else {}
@@ -264,7 +241,6 @@ def _write_runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict
         lines.append(f"- terminal_reason: {runtime_state['terminal_reason']}")
     _write_markdown(_runtime_summary_md_path(runtime_root), lines)
 
-
 def _write_state(
     mission_state_path: Path,
     mission_state: dict[str, Any],
@@ -335,10 +311,9 @@ def _write_state(
         "updated_at": runtime_state["updated_at"],
     }
     write_mission_state(mission_state_path, mission_state)
-    _write_json(_runtime_state_path(Path(runtime_state["runtime_root"])), runtime_state)
+    write_json_object(_runtime_state_path(Path(runtime_state["runtime_root"])), runtime_state)
     _write_runtime_summary(runtime_state, mission_state=mission_state)
     sync_platform_expansion_bundle(mission_state_path, mission_state=mission_state)
-
 
 def _transition_ledger_paths(mission_state_path: Path, runtime_root: Path, contract: dict[str, Any]) -> list[str]:
     return [
@@ -354,7 +329,6 @@ def _transition_ledger_paths(mission_state_path: Path, runtime_root: Path, contr
         str(contract["operator_request_log_path"]),
         str(contract["current_operator_request_path"]),
     ]
-
 
 def _record_ledger(
     mission_state_path: Path,

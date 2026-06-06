@@ -13,11 +13,9 @@ from deeploop.core.structured_io import (
 
 DEFAULT_PLATFORM_EXPANSION_CONTRACT_PATH = REPO_ROOT / "configs" / "platform" / "expansion.yaml"
 
-
 class _TemplateMap(dict[str, str]):
     def __missing__(self, key: str) -> str:
         return "{" + key + "}"
-
 
 def _resolve_templates(value: object, context: dict[str, str]) -> object:
     if isinstance(value, str):
@@ -28,10 +26,8 @@ def _resolve_templates(value: object, context: dict[str, str]) -> object:
         return {str(key): _resolve_templates(item, context) for key, item in value.items()}
     return value
 
-
 def load_platform_expansion_contract(path: Path = DEFAULT_PLATFORM_EXPANSION_CONTRACT_PATH) -> dict[str, object]:
     return _load_yaml(path)
-
 
 def _seed_surface_output(path: Path, *, surface_id: str, mission_id: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -54,12 +50,6 @@ def _seed_surface_output(path: Path, *, surface_id: str, mission_id: str) -> Non
         return
     path.write_text("", encoding="utf-8")
 
-
-def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(dict(payload), indent=2) + "\n", encoding="utf-8")
-
-
 def _write_jsonl(path: Path, payloads: list[Mapping[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -67,26 +57,10 @@ def _write_jsonl(path: Path, payloads: list[Mapping[str, Any]]) -> None:
         encoding="utf-8",
     )
 
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    payloads: list[dict[str, Any]] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        loaded = json.loads(line)
-        if isinstance(loaded, dict):
-            payloads.append(loaded)
-    return payloads
-
-
 def _resolve_path(raw: Any) -> Path | None:
     if not isinstance(raw, str) or not raw.strip():
         return None
     return Path(raw).expanduser().resolve()
-
 
 def _surface_paths(surface: Mapping[str, Any], *, suffix: str) -> list[Path]:
     paths: list[Path] = []
@@ -96,20 +70,17 @@ def _surface_paths(surface: Mapping[str, Any], *, suffix: str) -> list[Path]:
             paths.append(resolved)
     return paths
 
-
 def _load_optional_json(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists():
         return {}
     loaded = _load_json(path)
     return loaded if isinstance(loaded, dict) else {}
 
-
 def _relative_to_mission(path: Path, mission_root: Path) -> str:
     try:
         return path.resolve().relative_to(mission_root.resolve()).as_posix()
     except ValueError:
         return path.resolve().as_posix()
-
 
 def _summarize_release_notes(package: Mapping[str, Any], review: Mapping[str, Any]) -> list[str]:
     lines: list[str] = []
@@ -129,7 +100,6 @@ def _summarize_release_notes(package: Mapping[str, Any], review: Mapping[str, An
             if len(lines) >= 6:
                 break
     return lines
-
 
 def materialize_platform_expansion_bundle(
     *,
@@ -209,7 +179,6 @@ def materialize_platform_expansion_bundle(
         "surfaces": surfaces,
         "shared_contracts": shared_contracts,
     }
-
 
 def sync_platform_expansion_bundle(
     mission_state_path: Path,
@@ -333,7 +302,7 @@ def sync_platform_expansion_bundle(
                 "last_effective_priority": scheduler.get("last_effective_priority"),
                 "active_operator_request_id": scheduler.get("active_operator_request_id"),
             }
-            _write_json(queue_path, queue_payload)
+            write_json_object(queue_path, queue_payload)
             _write_jsonl(dispatch_path, [dict(event) for event in dispatch_events])
             if scheduler.get("scheduler_status"):
                 status = str(scheduler.get("scheduler_status"))
@@ -390,7 +359,7 @@ def sync_platform_expansion_bundle(
                     },
                 ],
             }
-            _write_json(catalog_path, source_catalog)
+            write_json_object(catalog_path, source_catalog)
             ingest_jobs = [
                 {
                     "job_id": f"{manifest_payload['mission_id']}-{job['source_id']}",
@@ -457,7 +426,7 @@ def sync_platform_expansion_bundle(
                 "scheduler_status": scheduler.get("scheduler_status"),
                 "indexed_memory_status": updated_surfaces.get("indexed_memory", {}).get("status"),
             }
-            _write_json(request_path, request_payload)
+            write_json_object(request_path, request_payload)
             note_lines = [
                 "# Release notes draft",
                 "",
@@ -505,7 +474,7 @@ def sync_platform_expansion_bundle(
             "synced_at": synced_at,
             "integration_state": integration_state,
         }
-        _write_json(handoff_path, handoff_payload)
+        write_json_object(handoff_path, handoff_payload)
         updated_surfaces[surface_id] = {
             "status": status,
             "description": description,
@@ -527,7 +496,7 @@ def sync_platform_expansion_bundle(
         "release_review_path": str(resolved_release_review_path) if resolved_release_review_path else None,
         "updated_at": synced_at,
     }
-    _write_json(manifest_path, manifest_payload)
+    write_json_object(manifest_path, manifest_payload)
 
     if isinstance(mission_state, dict):
         mission_state["platform_expansion"] = {
@@ -545,5 +514,5 @@ def sync_platform_expansion_bundle(
         "shared_contracts": dict(manifest_payload["shared_contracts"]),
         "surfaces": updated_surfaces,
     }
-    _write_json(resolved_state_path, persisted_state)
+    write_json_object(resolved_state_path, persisted_state)
     return persisted_state["platform_expansion"]

@@ -3,9 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from deeploop.core.shared import dedupe_strings as _dedupe_strings
+from deeploop.core.structured_io import load_yaml_mapping
 
 _RECOMMENDED_CONTRACT_FILES = (
     ("project.yaml", "project metadata and default DeepLoop artifact wiring"),
@@ -27,18 +26,6 @@ CONTRACT_OPERATIONAL_FIELDS = (
 )
 _PLAIN_OPERATIONAL_TOP_LEVEL_FIELDS = {"project", "artifacts", *CONTRACT_OPERATIONAL_FIELDS}
 
-
-def _load_yaml_mapping(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if loaded is None:
-        return {}
-    if not isinstance(loaded, dict):
-        raise ValueError(f"Expected mapping in project contract file {path}")
-    return loaded
-
-
 def _normalize_paths(values: Any, *, base_dir: Path) -> list[str]:
     if not isinstance(values, list):
         return []
@@ -55,11 +42,9 @@ def _normalize_paths(values: Any, *, base_dir: Path) -> list[str]:
         normalized.append(str(path))
     return normalized
 
-
 def _infer_format(path: Path) -> str | None:
     suffix = path.suffix.lower().lstrip(".")
     return suffix or None
-
 
 def normalize_data_artifacts(values: Any, *, base_dir: Path) -> list[dict[str, Any]]:
     if not isinstance(values, list):
@@ -95,7 +80,6 @@ def normalize_data_artifacts(values: Any, *, base_dir: Path) -> list[dict[str, A
         normalized.append(record)
     return normalized
 
-
 def _extract_contract_requirement_value(payload: dict[str, Any], project: dict[str, Any], field: str) -> Any:
     if field in payload:
         return payload[field]
@@ -106,7 +90,6 @@ def _extract_contract_requirement_value(payload: dict[str, Any], project: dict[s
         return human_inputs[field]
     return None
 
-
 def _plain_contract_requirements(payload: dict[str, Any], project: dict[str, Any]) -> dict[str, Any]:
     requirements: dict[str, Any] = {}
     for field in CONTRACT_OPERATIONAL_FIELDS:
@@ -114,7 +97,6 @@ def _plain_contract_requirements(payload: dict[str, Any], project: dict[str, Any
         if value is not None:
             requirements[field] = value
     return requirements
-
 
 def _contract_coverage(requirements: dict[str, Any], unoperationalized_fields: list[str]) -> list[dict[str, Any]]:
     coverage = [
@@ -139,7 +121,6 @@ def _contract_coverage(requirements: dict[str, Any], unoperationalized_fields: l
     )
     return coverage
 
-
 def _default_plain_artifacts(repo_root: Path) -> dict[str, list[str]]:
     docs: list[str] = []
     configs: list[str] = []
@@ -161,7 +142,6 @@ def _default_plain_artifacts(repo_root: Path) -> dict[str, list[str]]:
         "configs": _dedupe_strings(configs),
     }
 
-
 def _config_extension_warnings(config_paths: list[str], *, source: str) -> list[str]:
     warnings: list[str] = []
     for raw_path in config_paths:
@@ -173,7 +153,6 @@ def _config_extension_warnings(config_paths: list[str], *, source: str) -> list[
                 f"declare it under artifacts.{suggestion} instead."
             )
     return warnings
-
 
 def _resolve_provider_value(value: Any, *, base_dir: Path, key: str | None = None) -> Any:
     if isinstance(value, dict):
@@ -197,7 +176,6 @@ def _resolve_provider_value(value: Any, *, base_dir: Path, key: str | None = Non
         path = path.resolve()
     return str(path)
 
-
 def _resolve_provider_pythonpath(values: Any, *, base_dir: Path, runtime_providers_path: str) -> list[str]:
     if values is None:
         return []
@@ -218,7 +196,6 @@ def _resolve_provider_pythonpath(values: Any, *, base_dir: Path, runtime_provide
         resolved.append(str(path))
     return resolved
 
-
 def discover_project_contract(target_repo: Path) -> dict[str, Any]:
     repo_root = target_repo.expanduser().resolve()
     contract_root = repo_root / ".deeploop"
@@ -229,7 +206,7 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
     repo_agents = repo_root / "AGENTS.md"
     repo_copilot = repo_root / ".github" / "copilot-instructions.md"
 
-    project_payload = _load_yaml_mapping(project_path)
+    project_payload = load_yaml_mapping(project_path)
     artifacts_payload = project_payload.get("artifacts") if isinstance(project_payload.get("artifacts"), dict) else {}
     docs = _normalize_paths(artifacts_payload.get("docs"), base_dir=repo_root)
     configs = _normalize_paths(artifacts_payload.get("configs"), base_dir=repo_root)
@@ -258,7 +235,7 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
     ]
     plain_facts_path = next((repo_root / name for name, _ in _PLAIN_PROJECT_FACT_FILES if (repo_root / name).exists()), None)
     if not contract_root.exists() and plain_facts_path is not None:
-        plain_payload = _load_yaml_mapping(plain_facts_path)
+        plain_payload = load_yaml_mapping(plain_facts_path)
         plain_project = plain_payload.get("project") if isinstance(plain_payload.get("project"), dict) else {}
         plain_artifacts_payload = plain_payload.get("artifacts") if isinstance(plain_payload.get("artifacts"), dict) else {}
         contract_requirements = _plain_contract_requirements(plain_payload, plain_project)
@@ -332,13 +309,12 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
         "warnings": warnings,
     }
 
-
 def resolve_runtime_provider(contract: dict[str, Any], provider_id: str) -> dict[str, Any] | None:
     runtime_providers_path = contract.get("runtime_providers_path")
     contract_root = contract.get("contract_root")
     if not runtime_providers_path or not contract_root:
         return None
-    providers_payload = _load_yaml_mapping(Path(str(runtime_providers_path)))
+    providers_payload = load_yaml_mapping(Path(str(runtime_providers_path)))
     providers = providers_payload.get("providers")
     if providers is None:
         return None
@@ -367,7 +343,6 @@ def resolve_runtime_provider(contract: dict[str, Any], provider_id: str) -> dict
         "pythonpath": pythonpath,
         "params": resolved_params if isinstance(resolved_params, dict) else {},
     }
-
 
 def project_contract_input_artifacts(contract: dict[str, Any]) -> list[str]:
     artifact_payload = contract.get("artifacts") if isinstance(contract.get("artifacts"), dict) else {}

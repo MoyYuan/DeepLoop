@@ -53,31 +53,16 @@ _RUN_MISSION_SCRIPT = REPO_ROOT / "scripts" / "mission" / "run_mission.py"
 _MANAGE_MISSION_SCRIPT = REPO_ROOT / "scripts" / "mission" / "manage_mission.py"
 _INVOKE_PROVIDER_PROMPT_SCRIPT = REPO_ROOT / "scripts" / "runtime" / "invoke_provider_prompt.py"
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return load_json_object(path)
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return load_jsonl_objects(path, missing_ok=True)
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_object(path, payload)
-
-
 def _resolve_existing_path(raw: str) -> Path:
     path = Path(raw).expanduser().resolve()
     if not path.exists():
         raise FileNotFoundError(f"Path does not exist: {path}")
     return path
 
-
 def _resolve_optional_path(raw: str | None) -> Path | None:
     if raw is None:
         return None
     return Path(raw).expanduser().resolve()
-
 
 def _pid_is_running(pid: Any) -> bool:
     if not isinstance(pid, int) or pid <= 0:
@@ -90,12 +75,10 @@ def _pid_is_running(pid: Any) -> bool:
         return True
     return True
 
-
 def _load_launch_metadata(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
-    return _load_json(path)
-
+    return load_json_object(path)
 
 def _default_launch_paths(
     mission_state_path: Path,
@@ -115,7 +98,6 @@ def _default_launch_paths(
     resolved_log_path = log_path or (launch_root / "launch.log")
     return launch_root, resolved_metadata_path, resolved_log_path
 
-
 def _management_command(subcommand: str, mission_state_path: Path, *extra: str) -> list[str]:
     return [
         sys.executable,
@@ -125,7 +107,6 @@ def _management_command(subcommand: str, mission_state_path: Path, *extra: str) 
         str(mission_state_path),
         *extra,
     ]
-
 
 def _management_command_text(subcommand: str, mission_state_path: Path, *extra: str) -> str:
     return shlex.join(
@@ -137,7 +118,6 @@ def _management_command_text(subcommand: str, mission_state_path: Path, *extra: 
             *extra,
         ]
     )
-
 
 def _start_launch(
     *,
@@ -237,10 +217,9 @@ def _start_launch(
         "stop_command": _management_command("stop", mission_state_path),
         "resume_command": _management_command("resume", mission_state_path),
     }
-    _write_json(metadata_path, payload)
+    write_json_object(metadata_path, payload)
     payload["launch_metadata_path"] = str(metadata_path)
     return payload
-
 
 def _render_launch_summary(payload: dict[str, Any], *, launch_reason: str) -> str:
     mission_state_path = payload["mission_state_path"]
@@ -306,7 +285,6 @@ def _render_launch_summary(payload: dict[str, Any], *, launch_reason: str) -> st
     )
     return "\n".join(lines) + "\n"
 
-
 def _render_command_entries(*, heading: str, commands: list[dict[str, Any]]) -> list[str]:
     lines = [heading, ""]
     for index, entry in enumerate(commands, start=1):
@@ -314,7 +292,6 @@ def _render_command_entries(*, heading: str, commands: list[dict[str, Any]]) -> 
         if entry.get("description"):
             lines.append(f"   - {entry.get('description')}")
     return lines
-
 
 def _render_exact_next_commands(console: dict[str, Any]) -> list[str]:
     commands = console.get("next_commands")
@@ -336,7 +313,6 @@ def _render_exact_next_commands(console: dict[str, Any]) -> list[str]:
             return _render_command_entries(heading="## Commands", commands=normalized)
     lines.append("No management commands are surfaced right now.")
     return lines
-
 
 def _render_console_overview(console: dict[str, Any], *, heading: str) -> list[str]:
     lines = [
@@ -375,7 +351,6 @@ def _render_console_overview(console: dict[str, Any], *, heading: str) -> list[s
             lines.append(f"- operator_feedback_note: {operator_response.get('note')}")
     return lines
 
-
 def _resume_context(snapshot: dict[str, Any]) -> dict[str, Any] | None:
     inbox = snapshot.get("operator_inbox", {}) if isinstance(snapshot.get("operator_inbox"), dict) else {}
     current_request = inbox.get("current_request") if isinstance(inbox.get("current_request"), dict) else None
@@ -397,7 +372,6 @@ def _resume_context(snapshot: dict[str, Any]) -> dict[str, Any] | None:
         "operator_response": operator_response,
     }
 
-
 def _record_operator_feedback(snapshot: dict[str, Any], *, action: str, note: str | None) -> dict[str, Any]:
     inbox = snapshot.get("operator_inbox", {}) if isinstance(snapshot.get("operator_inbox"), dict) else {}
     current_request = inbox.get("current_request") if isinstance(inbox.get("current_request"), dict) else None
@@ -416,7 +390,7 @@ def _record_operator_feedback(snapshot: dict[str, Any], *, action: str, note: st
         "note": note,
         "command": command,
     }
-    _write_json(current_request_path, updated_request)
+    write_json_object(current_request_path, updated_request)
     append_jsonl(
         ledger_path,
         make_ledger_entry(
@@ -434,7 +408,6 @@ def _record_operator_feedback(snapshot: dict[str, Any], *, action: str, note: st
         ),
     )
     return updated_request
-
 
 def _render_operator_feedback_summary(
     snapshot: dict[str, Any],
@@ -479,7 +452,6 @@ def _render_operator_feedback_summary(
     )
     return "\n".join(lines) + "\n"
 
-
 def _render_log_view(snapshot: dict[str, Any]) -> str:
     artifacts = snapshot.get("artifacts", {})
     launch = snapshot.get("launch")
@@ -508,7 +480,6 @@ def _render_log_view(snapshot: dict[str, Any]) -> str:
     else:
         lines.append("No detached mission log lines are available yet.")
     return "\n".join(lines) + "\n"
-
 
 def _render_decisions(entries: list[dict[str, Any]], *, decision_log_path: Path) -> str:
     lines = ["# DeepLoop mission decisions", "", f"- decision_log_path: `{decision_log_path}`", ""]
@@ -541,7 +512,6 @@ def _render_decisions(entries: list[dict[str, Any]], *, decision_log_path: Path)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
-
 def _mode_summary(mode: str) -> str:
     normalized = str(mode or "").strip()
     if normalized == "sandboxed-yolo":
@@ -552,10 +522,8 @@ def _mode_summary(mode: str) -> str:
         return "human-directed control; the operator stays in the loop step by step."
     return "autonomy posture unavailable."
 
-
 def _triage_command_text(mission_state_path: Path, *extra: str) -> str:
     return _management_command_text("triage", mission_state_path, *extra)
-
 
 def _triage_request_details(request: dict[str, Any], snapshot: dict[str, Any]) -> tuple[Path, list[dict[str, Any]]] | None:
     context = request.get("context") if isinstance(request.get("context"), dict) else {}
@@ -580,7 +548,6 @@ def _triage_request_details(request: dict[str, Any], snapshot: dict[str, Any]) -
         return None
     return mission_state_path.resolve(), blocked_entries
 
-
 def _build_triage_prompt(
     *,
     snapshot: dict[str, Any],
@@ -595,7 +562,7 @@ def _build_triage_prompt(
     blocker = request.get("blocker") if isinstance(request.get("blocker"), dict) else {}
     recommendation = request.get("recommendation") if isinstance(request.get("recommendation"), dict) else {}
     ledger_path = Path(snapshot["artifacts"]["ledger_path"]).expanduser().resolve()
-    recent_ledger = _load_jsonl(ledger_path)[-6:]
+    recent_ledger = load_jsonl_objects(ledger_path, missing_ok=True)[-6:]
 
     lines = [
         "# DeepLoop bounded operator triage",
@@ -673,7 +640,6 @@ def _build_triage_prompt(
     )
     return "\n".join(lines) + "\n"
 
-
 def _normalized_triage_result(payload: dict[str, Any]) -> dict[str, Any]:
     status_aliases = {"complete": "completed", "completed": "completed", "blocked": "blocked", "failed": "failed"}
     status = status_aliases.get(str(payload.get("status") or "").strip().lower(), "")
@@ -694,7 +660,6 @@ def _normalized_triage_result(payload: dict[str, Any]) -> dict[str, Any]:
         "evidence_paths": [str(item) for item in evidence_paths if str(item).strip()],
         "notes": [str(item) for item in notes if str(item).strip()],
     }
-
 
 def _render_triage_summary(summary: dict[str, Any]) -> str:
     result = summary.get("result") if isinstance(summary.get("result"), dict) else {}
@@ -724,7 +689,6 @@ def _render_triage_summary(summary: dict[str, Any]) -> str:
         lines.append(f"- notes: {'; '.join(str(item) for item in notes[:4])}")
     return "\n".join(lines) + "\n"
 
-
 def _watch_signature(snapshot: dict[str, Any]) -> tuple[str, ...]:
     mission = snapshot.get("mission") if isinstance(snapshot.get("mission"), dict) else {}
     console = snapshot.get("operator_console") if isinstance(snapshot.get("operator_console"), dict) else {}
@@ -738,7 +702,6 @@ def _watch_signature(snapshot: dict[str, Any]) -> tuple[str, ...]:
         str(console.get("focus_action_id") or ""),
         str(console.get("focus_executor_id") or ""),
     )
-
 
 def _watch_event(
     snapshot: dict[str, Any],
@@ -776,7 +739,6 @@ def _watch_event(
     }
     return event, signature
 
-
 def _render_watch_event(event: dict[str, Any]) -> str:
     level = "ALARM" if event.get("alert_level") == "alarm" else "INFO"
     lines = [
@@ -792,7 +754,6 @@ def _render_watch_event(event: dict[str, Any]) -> str:
     if event.get("focus_executor_id"):
         lines.append(f"- focus_executor: `{event.get('focus_executor_id')}`")
     return "\n".join(lines) + "\n"
-
 
 def _render_request_details(request: dict[str, Any], *, heading: str, snapshot: dict[str, Any] | None = None) -> list[str]:
     blocker = request.get("blocker", {}) if isinstance(request.get("blocker"), dict) else {}
@@ -861,7 +822,6 @@ def _render_request_details(request: dict[str, Any], *, heading: str, snapshot: 
             )
     return lines
 
-
 def _render_inbox(snapshot: dict[str, Any]) -> str:
     inbox = snapshot.get("operator_inbox", {}) if isinstance(snapshot.get("operator_inbox"), dict) else {}
     console = snapshot.get("operator_console", {}) if isinstance(snapshot.get("operator_console"), dict) else {}
@@ -894,7 +854,6 @@ def _render_inbox(snapshot: dict[str, Any]) -> str:
     lines.extend(_render_exact_next_commands(console))
     return "\n".join(lines) + "\n"
 
-
 def _resolve_snapshot(args: argparse.Namespace, *, log_tail_lines: int, ledger_tail: int = 0) -> dict[str, Any]:
     launch_metadata_path = _resolve_optional_path(getattr(args, "launch_metadata", None))
     mission_state_path = _resolve_existing_path(args.mission_state)
@@ -905,11 +864,9 @@ def _resolve_snapshot(args: argparse.Namespace, *, log_tail_lines: int, ledger_t
         ledger_tail=ledger_tail,
     )
 
-
 _RUNTIME_CACHE_ROOT = Path.home() / ".deeploop" / "runtime_cache"
 _RUNTIME_CACHE_TOP_LEVEL_DIRS = ("configs", "schemas", "scripts")
 _RUNTIME_CACHE_TOP_LEVEL_FILES = ("AGENTS.md",)
-
 
 def _is_editable_install() -> bool:
     """Return True if the deeploop package is installed in editable mode."""
@@ -930,7 +887,6 @@ def _is_editable_install() -> bool:
         return False
 
     return bool((direct_url.get("dir_info") or {}).get("editable"))
-
 
 def _snapshot_src_for_mission(mission_id: str, launched_at: str) -> Path | None:
     """Snapshot the editable runtime into ~/.deeploop/runtime_cache/<mission_id>/<ts>/.
@@ -981,7 +937,6 @@ def _snapshot_src_for_mission(mission_id: str, launched_at: str) -> Path | None:
 
     return cache_src
 
-
 def _check_editable_install_and_warn() -> None:
     """Warn to stderr if deeploop is editable-installed and the working tree is dirty.
 
@@ -1016,7 +971,6 @@ def _check_editable_install_and_warn() -> None:
         "    pip install git+https://github.com/tnetal/DeepLoop.git\n",
         file=sys.stderr,
     )
-
 
 def _handle_start(args: argparse.Namespace) -> int:
     _check_editable_install_and_warn()
@@ -1110,7 +1064,6 @@ def _handle_start(args: argparse.Namespace) -> int:
         print(_render_launch_summary(payload, launch_reason=args.command), end="")
     return 0
 
-
 def _handle_status(args: argparse.Namespace) -> int:
     snapshot = _resolve_snapshot(args, log_tail_lines=args.log_tail, ledger_tail=args.ledger_tail)
     if args.json:
@@ -1120,7 +1073,6 @@ def _handle_status(args: argparse.Namespace) -> int:
     else:
         print(_compact_status_line(snapshot))
     return 0
-
 
 def _handle_logs(args: argparse.Namespace) -> int:
     snapshot = _resolve_snapshot(args, log_tail_lines=args.lines)
@@ -1135,17 +1087,15 @@ def _handle_logs(args: argparse.Namespace) -> int:
         print(_render_log_view(snapshot), end="")
     return 0
 
-
 def _handle_decisions(args: argparse.Namespace) -> int:
     snapshot = _resolve_snapshot(args, log_tail_lines=0)
     decision_log_path = Path(snapshot["artifacts"]["decision_log_path"]).expanduser().resolve()
-    entries = _load_jsonl(decision_log_path)[-max(args.limit, 0) :]
+    entries = load_jsonl_objects(decision_log_path, missing_ok=True)[-max(args.limit, 0) :]
     if args.json:
         print(json.dumps(entries, indent=2))
     else:
         print(_render_decisions(entries, decision_log_path=decision_log_path), end="")
     return 0
-
 
 def _handle_inbox(args: argparse.Namespace) -> int:
     snapshot = _resolve_snapshot(args, log_tail_lines=0)
@@ -1157,7 +1107,6 @@ def _handle_inbox(args: argparse.Namespace) -> int:
     else:
         print(_render_actionable_inbox(snapshot))
     return 0
-
 
 def _handle_triage(args: argparse.Namespace) -> int:
     snapshot = _resolve_snapshot(args, log_tail_lines=0, ledger_tail=6)
@@ -1227,7 +1176,7 @@ def _handle_triage(args: argparse.Namespace) -> int:
         )
     if not result_json_path.exists():
         raise RuntimeError(f"Bounded triage did not produce `{result_json_path}`. Inspect `{log_path}`.")
-    triage_result = _normalized_triage_result(_load_json(result_json_path))
+    triage_result = _normalized_triage_result(load_json_object(result_json_path))
     summary = {
         "schema_version": 1,
         "request_id": request_id,
@@ -1242,7 +1191,7 @@ def _handle_triage(args: argparse.Namespace) -> int:
         "result": triage_result,
         "returncode": completed.returncode,
     }
-    _write_json(report_json_path, summary)
+    write_json_object(report_json_path, summary)
     ledger_path = Path(snapshot["artifacts"]["ledger_path"]).expanduser().resolve()
     append_jsonl(
         ledger_path,
@@ -1264,7 +1213,6 @@ def _handle_triage(args: argparse.Namespace) -> int:
     else:
         print(_render_triage_summary(summary), end="")
     return 0 if completed.returncode == 0 else 1
-
 
 def _handle_watch(args: argparse.Namespace) -> int:
     poll_limit = int(args.polls) if args.polls is not None else None
@@ -1293,7 +1241,6 @@ def _handle_watch(args: argparse.Namespace) -> int:
         return 130
     return 0
 
-
 def _handle_stop(args: argparse.Namespace) -> int:
     snapshot = _resolve_snapshot(args, log_tail_lines=0)
     metadata_path = Path(snapshot["artifacts"]["launch_metadata_path"]).expanduser().resolve()
@@ -1321,7 +1268,7 @@ def _handle_stop(args: argparse.Namespace) -> int:
 
     metadata["stop_requested_at"] = now_utc()
     metadata["stop_signal"] = signal.Signals(selected_signal).name
-    _write_json(metadata_path, metadata)
+    write_json_object(metadata_path, metadata)
     print(
         "\n".join(
             [
@@ -1334,7 +1281,6 @@ def _handle_stop(args: argparse.Namespace) -> int:
         )
     )
     return 0
-
 
 def _handle_operator_feedback(args: argparse.Namespace) -> int:
     snapshot = _resolve_snapshot(args, log_tail_lines=0, ledger_tail=3)
@@ -1354,38 +1300,29 @@ def _handle_operator_feedback(args: argparse.Namespace) -> int:
         )
     return 0
 
-
 def _handle_run(args: argparse.Namespace) -> int:
     return _run_project(args)
-
 
 def _handle_init(args: argparse.Namespace) -> int:
     return _init_mission(args)
 
-
 def _handle_setup(args: argparse.Namespace) -> int:
     return _setup_workspace(args)
-
 
 def _handle_preflight(args: argparse.Namespace) -> int:
     return _preflight(args)
 
-
 def _handle_provider_ready(args: argparse.Namespace) -> int:
     return _provider_ready(args)
-
 
 def _handle_package(args: argparse.Namespace) -> int:
     return _package_mission(args)
 
-
 def _handle_export(args: argparse.Namespace) -> int:
     return _export_mission(args)
 
-
 def _handle_analyze(args: argparse.Namespace) -> int:
     return _analyze(args)
-
 
 def _handle_analyze_budget(args: argparse.Namespace) -> int:
     mission_state_path = Path(args.mission_state).expanduser().resolve() if args.mission_state else None
@@ -1411,7 +1348,6 @@ def _handle_analyze_budget(args: argparse.Namespace) -> int:
         lines.append(f"- WARNING: {warning}")
     print("\n".join(lines))
     return 1 if report["status"] == "over-budget" else 0
-
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -1690,7 +1626,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -1699,6 +1634,5 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (FileExistsError, FileNotFoundError, RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
-
 
 __all__ = ["build_parser", "main"]

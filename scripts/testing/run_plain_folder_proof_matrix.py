@@ -16,6 +16,7 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from deeploop.core.shared import normalize_strings as _normalize_strings
 from deeploop.core.structured_io import write_json_object, write_markdown
 from deeploop.testing.plain_folder_proof_matrix import (
     DEFAULT_CAMPAIGNS_ROOT,
@@ -62,19 +63,6 @@ def _materialize_case_project(case: PlainFolderProofCase, case_root: Path) -> Pa
 def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
-
-def _normalize_strings(raw: object) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        value = raw.strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
 
 
 def _threshold_enabled(case: PlainFolderProofCase, name: str, *, default: bool = True) -> bool:

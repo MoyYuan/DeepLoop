@@ -3,24 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from deeploop.core.shared import normalize_strings as _normalize_strings
 from deeploop.core.structured_io import load_jsonl_objects
 
 _EVALUATED_STATUSES = {"completed", "evaluated", "recorded", "succeeded", "success", "passed"}
 _SKIPPED_STATUSES = {"skipped", "blocked", "failed"}
 
-
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, (str, Path)):
-        value = str(raw).strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple | set):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
 
 
 def _bool(value: Any) -> bool:

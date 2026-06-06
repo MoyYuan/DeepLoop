@@ -19,7 +19,7 @@ from deeploop.core.bounded_memory import BoundedMemory
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import WORKSPACE_URI_PREFIX, resolve_workspace_path
 from deeploop.core.paths import REPO_ROOT as DEEPLOOP_REPO_ROOT
-from deeploop.core.shared import build_command as _build_command, dedupe_strings as _dedupe_strings, is_relative_to as _is_relative_to
+from deeploop.core.shared import build_command as _build_command, dedupe_strings as _dedupe_strings, deep_merge, is_relative_to as _is_relative_to
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object, write_markdown
 from deeploop.mission.mission_state import load_mission_state, write_mission_state
 from deeploop.runtime._prompt_renderer import (
@@ -33,35 +33,14 @@ from deeploop.runtime.sandbox import build_sandbox_spec
 DEFAULT_POLICY_PATH = DEEPLOOP_REPO_ROOT / "configs" / "runtime" / "recursive-agent-runtime.yaml"
 ROLE_ALIASES = {"executor": "execution-operator"}
 
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Expected mapping in {path}")
     return loaded
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return load_json_object(path)
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return load_jsonl_objects(path, missing_ok=True)
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_object(path, payload)
-
-
 def _write_markdown(path: Path, lines: list[str]) -> None:
     write_markdown(path, lines)
-
-
-def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload) + "\n")
-
 
 def _normalize_list(raw: Any) -> list[str]:
     if raw is None:
@@ -71,7 +50,6 @@ def _normalize_list(raw: Any) -> list[str]:
     if isinstance(raw, list):
         return [str(item) for item in raw]
     raise ValueError(f"Expected list-like value, got {type(raw).__name__}")
-
 
 def _boundary_watch_roots(mission_state: Mapping[str, Any] | None, target_repo: Path) -> list[Path]:
     artifacts = mission_state.get("artifacts") if isinstance(mission_state, Mapping) else None
@@ -102,7 +80,6 @@ def _boundary_watch_roots(mission_state: Mapping[str, Any] | None, target_repo: 
         deduped.append(root)
     return deduped
 
-
 def _snapshot_boundary_root_files(root: Path) -> dict[str, bytes]:
     if not root.exists():
         return {}
@@ -113,7 +90,6 @@ def _snapshot_boundary_root_files(root: Path) -> dict[str, bytes]:
         snapshot[path.relative_to(root).as_posix()] = path.read_bytes()
     return snapshot
 
-
 def _prune_empty_dirs(root: Path) -> None:
     for path in sorted((candidate for candidate in root.rglob("*") if candidate.is_dir()), reverse=True):
         try:
@@ -122,7 +98,6 @@ def _prune_empty_dirs(root: Path) -> None:
             path.rmdir()
         except (FileNotFoundError, OSError):
             continue
-
 
 def _restore_boundary_root_files(root: Path, snapshot: Mapping[str, bytes]) -> list[str]:
     if not root.exists():
@@ -152,10 +127,8 @@ def _restore_boundary_root_files(root: Path, snapshot: Mapping[str, bytes]) -> l
     _prune_empty_dirs(root)
     return restored
 
-
 def _is_list_like(raw: Any) -> bool:
     return raw is None or isinstance(raw, (str, Path, list))
-
 
 def _resolved_env_name(raw: Any) -> str | None:
     if raw is None:
@@ -163,13 +136,11 @@ def _resolved_env_name(raw: Any) -> str | None:
     text = str(raw).strip()
     return text or None
 
-
 def _optional_string(raw: Any) -> str | None:
     if raw is None:
         return None
     text = str(raw).strip()
     return text or None
-
 
 def _normalize_action(
     raw: dict[str, Any],
@@ -197,7 +168,6 @@ def _normalize_action(
         "mission_action_index": mission_action_index,
     }
 
-
 def _select_next_action(actions: list[Any], cursor: int) -> tuple[int, dict[str, Any] | None]:
     index = max(cursor, 0)
     while index < len(actions):
@@ -211,11 +181,9 @@ def _select_next_action(actions: list[Any], cursor: int) -> tuple[int, dict[str,
         return index, candidate
     return index, None
 
-
 def _loop_action_id(loop_name: str, iteration_number: int, role: str) -> str:
     safe_role = role.replace(" ", "-")
     return f"{loop_name}-iter-{iteration_number:02d}-{safe_role}"
-
 
 def _canonical_role(role: str, mission_state: dict[str, Any] | None) -> str:
     roles = mission_state.get("roles") if isinstance(mission_state, dict) else None
@@ -227,11 +195,9 @@ def _canonical_role(role: str, mission_state: dict[str, Any] | None) -> str:
         return alias
     return role
 
-
 def _declared_roles(mission_state: dict[str, Any] | None) -> set[str]:
     roles = mission_state.get("roles") if isinstance(mission_state, dict) else None
     return {str(item) for item in roles} if isinstance(roles, list) else set()
-
 
 def _canonical_role_for_phase(
     role: str | None,
@@ -248,22 +214,19 @@ def _canonical_role_for_phase(
         return default_role
     return canonical
 
-
 def _canonicalize_action_role(action: dict[str, Any], mission_state: dict[str, Any] | None) -> dict[str, Any]:
     role = _optional_string(action.get("role"))
     if role is not None:
         action["role"] = _canonical_role(role, mission_state)
     return action
 
-
 def _latest_matching_record(path: Path | None, field: str, value: str | None) -> dict[str, Any] | None:
     if path is None or value is None or not path.exists():
         return None
-    for record in reversed(_load_jsonl(path)):
+    for record in reversed(load_jsonl_objects(path, missing_ok=True)):
         if str(record.get(field) or "") == value:
             return record
     return None
-
 
 def _normalize_continuation(payload: dict[str, Any]) -> dict[str, Any] | None:
     raw = payload.get("continuation")
@@ -302,7 +265,6 @@ def _normalize_continuation(payload: dict[str, Any]) -> dict[str, Any] | None:
         }
     return None
 
-
 def _continuation_matches_action(continuation: dict[str, Any], candidate: dict[str, Any]) -> bool:
     for key in ("role", "task", "phase", "kind", "branch_id"):
         continuation_value = _optional_string(continuation.get(key))
@@ -310,7 +272,6 @@ def _continuation_matches_action(continuation: dict[str, Any], candidate: dict[s
         if continuation_value is not None and continuation_value != candidate_value:
             return False
     return True
-
 
 def _sanitize_continuation(
     continuation: dict[str, Any] | None,
@@ -355,14 +316,12 @@ def _sanitize_continuation(
     sanitized["decision_id"] = None
     return sanitized
 
-
 def _default_action_result_status(iteration_status: str) -> str:
     if iteration_status in {"continue", "complete"}:
         return "completed"
     if iteration_status == "blocked":
         return "blocked"
     return "in_progress"
-
 
 def _canonical_iteration_status(raw: Any) -> str | None:
     value = _optional_string(raw)
@@ -384,7 +343,6 @@ def _canonical_iteration_status(raw: Any) -> str | None:
     }
     return aliases.get(value, value)
 
-
 def _canonical_action_result_status(raw: Any, *, iteration_status: str) -> str:
     value = _optional_string(raw)
     if value is None:
@@ -405,7 +363,6 @@ def _canonical_action_result_status(raw: Any, *, iteration_status: str) -> str:
         return "completed"
     return aliases.get(value, value)
 
-
 def _normalize_phase_control(payload: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     raw = payload.get("phase_control") if isinstance(payload.get("phase_control"), dict) else {}
     normalized = {
@@ -417,7 +374,6 @@ def _normalize_phase_control(payload: dict[str, Any], action: dict[str, Any]) ->
         "summary": _optional_string(raw.get("summary")),
     }
     return {key: value for key, value in normalized.items() if value is not None}
-
 
 def _normalize_action_result(payload: dict[str, Any], action: dict[str, Any]) -> dict[str, Any]:
     raw = payload.get("action_result") if isinstance(payload.get("action_result"), dict) else {}
@@ -436,7 +392,6 @@ def _normalize_action_result(payload: dict[str, Any], action: dict[str, Any]) ->
         "notes": _normalize_list(raw.get("notes")),
     }
     return normalized
-
 
 def _canonicalize_continuation(
     continuation: dict[str, Any] | None,
@@ -464,7 +419,6 @@ def _canonicalize_continuation(
     )
     return normalized
 
-
 def _canonicalize_action_result(
     action_result: dict[str, Any],
     *,
@@ -477,7 +431,6 @@ def _canonicalize_action_result(
         if _optional_string(normalized.get("kind")) is None:
             normalized["kind"] = default_kind_for_phase(phase)
     return normalized
-
 
 def _normalized_result_outcome(
     payload: dict[str, Any],
@@ -510,7 +463,6 @@ def _normalized_result_outcome(
         "mission_state_updates": payload.get("mission_state_updates", {}),
         "warnings": _dedupe_strings(_normalize_list(payload.get("warnings"))),
     }
-
 
 def _degraded_result_outcome(
     payload: dict[str, Any],
@@ -549,13 +501,11 @@ def _degraded_result_outcome(
         degraded_payload["continuation"] = continuation
     return _normalized_result_outcome(degraded_payload, action, mission_state=mission_state)
 
-
 def _resolved_artifact_path(raw_path: str, *, mission_root: Path) -> Path:
     path = Path(raw_path).expanduser()
     if not path.is_absolute():
         path = mission_root / path
     return path.resolve()
-
 
 def _allowed_artifact_roots(
     *,
@@ -572,7 +522,6 @@ def _allowed_artifact_roots(
             root = mission_root / root
         roots.append(root.resolve())
     return roots
-
 
 def _validate_artifact_scope(
     outcome: dict[str, Any],
@@ -631,7 +580,6 @@ def _validate_artifact_scope(
             sanitized["continuation"] = sanitized_continuation
     return sanitized
 
-
 def _should_yield_to_outer_runtime(
     outcome: dict[str, Any] | None,
     *,
@@ -652,7 +600,6 @@ def _should_yield_to_outer_runtime(
     decision_type = (_optional_string(phase_control.get("decision_type")) or "").lower()
     branch_status = (_optional_string(phase_control.get("branch_status")) or "").lower()
     return decision_type in {"hold", "stay-in-critique"} or branch_status == "critique-parked"
-
 
 def _should_yield_before_execution(
     outcome: dict[str, Any] | None,
@@ -675,7 +622,6 @@ def _should_yield_before_execution(
     continuation_role = _optional_string(continuation.get("role"))
     return continuation_role in {None, "execution-operator"} or continuation_role in ROLE_ALIASES
 
-
 def _should_warn_iteration_budget_nearly_exhausted(
     *,
     iteration_number: int,
@@ -685,7 +631,6 @@ def _should_warn_iteration_budget_nearly_exhausted(
     if max_iterations <= 0 or remaining_iterations <= 0:
         return False
     return (iteration_number / max_iterations) >= _BUDGET_WARN_THRESHOLD
-
 
 def _execution_handoff_budget_warning(*, remaining_iterations: int, max_iterations: int) -> str:
     if remaining_iterations <= 0:
@@ -700,7 +645,6 @@ def _execution_handoff_budget_warning(*, remaining_iterations: int, max_iteratio
         "yielding to the outer loop before starting execution."
     )
 
-
 def _effective_outcome(outcome: dict[str, Any] | None, loop_status: str) -> dict[str, Any] | None:
     if outcome is None:
         return None
@@ -711,39 +655,32 @@ def _effective_outcome(outcome: dict[str, Any] | None, loop_status: str) -> dict
     effective["action_result"] = action_result
     return effective
 
-
-def _deep_merge(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
     merged = dict(base)
     for key, value in updates.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge(dict(merged[key]), value)
+            merged[key] = deep_merge(dict(merged[key]), value)
         else:
             merged[key] = value
     return merged
 
-
 def _runtime_root(mission_state_path: Path, artifact_dir_name: str, loop_name: str) -> Path:
     return mission_state_path.parent / "runtime" / artifact_dir_name / loop_name
-
 
 def _memory_path(runtime_root: Path) -> Path:
     return runtime_root / "loop_memory.jsonl"
 
-
 def _state_path(runtime_root: Path) -> Path:
     return runtime_root / "agent_loop_state.json"
-
 
 def _recent_entries(records: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     if limit <= 0:
         return []
     return records[-limit:]
 
-
 def _loop_state(runtime_root: Path, mission_id: str, loop_name: str) -> dict[str, Any]:
     state_path = _state_path(runtime_root)
     if state_path.exists():
-        return _load_json(state_path)
+        return load_json_object(state_path)
     return {
         "schema_version": 1,
         "mission_id": mission_id,
@@ -760,11 +697,9 @@ def _loop_state(runtime_root: Path, mission_id: str, loop_name: str) -> dict[str
         "updated_at": now_utc(),
     }
 
-
 def _save_loop_state(runtime_root: Path, state: dict[str, Any]) -> None:
     state["updated_at"] = now_utc()
-    _write_json(_state_path(runtime_root), state)
-
+    write_json_object(_state_path(runtime_root), state)
 
 def _replace_markdown_field(lines: list[str], field: str, value: str) -> list[str]:
     prefix = f"- {field}:"
@@ -776,7 +711,6 @@ def _replace_markdown_field(lines: list[str], field: str, value: str) -> list[st
     updated.append(f"{prefix} {value}")
     return updated
 
-
 def _sync_outer_runtime_summary_from_recursive_agent(mission_state: Mapping[str, Any]) -> None:
     mission_runtime = mission_state.get("mission_runtime")
     agent_driver = mission_state.get("agent_driver")
@@ -787,7 +721,7 @@ def _sync_outer_runtime_summary_from_recursive_agent(mission_state: Mapping[str,
     if raw_summary_json_path:
         summary_json_path = Path(str(raw_summary_json_path)).expanduser()
         try:
-            summary = _load_json(summary_json_path) if summary_json_path.exists() else {}
+            summary = load_json_object(summary_json_path) if summary_json_path.exists() else {}
             summary["mission"] = {
                 "mission_id": mission_state.get("mission_id"),
                 "current_phase": mission_state.get("current_phase"),
@@ -798,7 +732,7 @@ def _sync_outer_runtime_summary_from_recursive_agent(mission_state: Mapping[str,
             summary["recursive_agent"] = dict(agent_driver)
             summary["summary_source"] = "mission_state"
             summary["summary_synchronized_at"] = synchronized_at
-            _write_json(summary_json_path, summary)
+            write_json_object(summary_json_path, summary)
         except (OSError, ValueError):
             pass
 
@@ -836,7 +770,6 @@ def _sync_outer_runtime_summary_from_recursive_agent(mission_state: Mapping[str,
         _write_markdown(summary_markdown_path, lines)
     except OSError:
         pass
-
 
 def _validate_result(payload: dict[str, Any]) -> list[str]:
     errors: list[str] = []
@@ -908,7 +841,6 @@ def _validate_result(payload: dict[str, Any]) -> list[str]:
                     errors.append(f"result.phase_control.{key} must be a string when present")
     return errors
 
-
 def _update_mission_action_state(
     mission_state: dict[str, Any],
     *,
@@ -952,7 +884,6 @@ def _update_mission_action_state(
         actions[index] = updated
         return
 
-
 def _resolve_transitioned_current_phase(
     *,
     mission_state: dict[str, Any],
@@ -971,7 +902,6 @@ def _resolve_transitioned_current_phase(
         if action_kind == "phase-transition" and action_phase == current_phase:
             return next_phase
     return current_phase
-
 
 def _timeout_seconds_for_action(
     *,
@@ -993,11 +923,9 @@ def _timeout_seconds_for_action(
             return max(int(execution_timeout), 1)
     return max(base_timeout, 1)
 
-
 def _append_unique(values: list[str], item: str | None) -> None:
     if item and item not in values:
         values.append(item)
-
 
 def _merge_phase_outputs(mission_state: dict[str, Any], *, phase: str, outputs: list[str]) -> None:
     if not phase or not outputs:
@@ -1011,7 +939,6 @@ def _merge_phase_outputs(mission_state: dict[str, Any], *, phase: str, outputs: 
             existing.append(output)
     phase_outputs[phase] = existing
     mission_state["phase_outputs_by_phase"] = phase_outputs
-
 
 def _outputs_for_transitioned_action(
     *,
@@ -1035,7 +962,6 @@ def _outputs_for_transitioned_action(
         return _normalize_list(resolve_phase_contract_for_state(action_phase, mission_state=mission_state).get("outputs"))
     return []
 
-
 def _apply_result_to_mission(
     mission_state_path: Path,
     mission_state: dict[str, Any],
@@ -1050,7 +976,7 @@ def _apply_result_to_mission(
     effective_outcome = _effective_outcome(latest_outcome, status)
     previous_phase = _optional_string(mission_state.get("current_phase"))
     if effective_outcome is not None and isinstance(effective_outcome.get("mission_state_updates"), dict):
-        mission_state = _deep_merge(mission_state, effective_outcome["mission_state_updates"])
+        mission_state = deep_merge(mission_state, effective_outcome["mission_state_updates"])
     phase_control = effective_outcome.get("phase_control", {}) if effective_outcome is not None else {}
     continuation = effective_outcome.get("continuation") if effective_outcome is not None else None
     completed_phases = _normalize_list(mission_state.get("completed_phases"))
@@ -1139,7 +1065,6 @@ def _apply_result_to_mission(
     _sync_outer_runtime_summary_from_recursive_agent(mission_state)
     return mission_state
 
-
 def _write_findings(mission_root: Path, iteration_number: int, role: str, findings: list[str]) -> Path | None:
     if not findings:
         return None
@@ -1150,7 +1075,6 @@ def _write_findings(mission_root: Path, iteration_number: int, role: str, findin
     lines.extend(f"- {item}" for item in findings)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
-
 
 def _update_patterns_file(
     runtime_root: Path,
@@ -1236,7 +1160,6 @@ def _update_patterns_file(
 
     _write_file(patterns_path, pattern_findings, "Pattern", 10)
     _write_file(progress_path, progress_findings, "Progress", 30)
-
 
 def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     config = _load_yaml(Path(config_path).resolve())
@@ -1405,8 +1328,8 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         summary_json_path = iteration_root / "summary.json"
         summary_markdown_path = iteration_root / "summary.md"
 
-        recent_ledger = _recent_entries(_load_jsonl(ledger_path), recent_ledger_limit)
-        recent_memory = _recent_entries(_load_jsonl(_memory_path(runtime_root)), recent_memory_limit)
+        recent_ledger = _recent_entries(load_jsonl_objects(ledger_path, missing_ok=True), recent_ledger_limit)
+        recent_memory = _recent_entries(load_jsonl_objects(_memory_path(runtime_root, missing_ok=True)), recent_memory_limit)
         outer_loop = mission_state.get("outer_loop", {}) if isinstance(mission_state.get("outer_loop"), dict) else {}
         decision_log_path = Path(outer_loop["decision_log_path"]) if isinstance(outer_loop.get("decision_log_path"), str) else None
         branch_log_path = Path(outer_loop["branch_log_path"]) if isinstance(outer_loop.get("branch_log_path"), str) else None
@@ -1545,7 +1468,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         result_errors: list[str] = []
         if result_json_path.exists():
             try:
-                result_payload = _load_json(result_json_path)
+                result_payload = load_json_object(result_json_path)
                 result_errors = _validate_result(result_payload)
             except (json.JSONDecodeError, ValueError) as exc:
                 result_errors = [f"invalid result json: {type(exc).__name__}: {exc}"]
@@ -1601,7 +1524,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
 
         persisted_result = normalized_outcome if normalized_outcome is not None else result_payload
         if persisted_result is not None:
-            _write_json(result_json_path, persisted_result)
+            write_json_object(result_json_path, persisted_result)
 
         summary = {
             "schema_version": 1,
@@ -1626,7 +1549,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             "normalized_result": normalized_outcome,
             "result_errors": result_errors,
         }
-        _write_json(summary_json_path, summary)
+        write_json_object(summary_json_path, summary)
         _write_markdown(summary_markdown_path, _iteration_summary_markdown(summary))
 
         findings_path = _write_findings(
@@ -1656,7 +1579,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             "produced_artifacts": normalized_outcome.get("produced_artifacts", []) if normalized_outcome is not None else [],
             "findings_path": str(findings_path) if findings_path is not None else None,
         }
-        _append_jsonl(_memory_path(runtime_root), memory_entry)
+        append_jsonl(_memory_path(runtime_root), memory_entry)
 
         # ── Record iteration outcome in BoundedMemory and persist ──
         if bm is not None:
@@ -1887,7 +1810,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
     }
     report_json_path = runtime_root / "loop_report.json"
     report_markdown_path = runtime_root / "loop_report.md"
-    _write_json(report_json_path, report)
+    write_json_object(report_json_path, report)
     _write_markdown(report_markdown_path, _loop_report_markdown(report))
     append_jsonl(
         ledger_path,
@@ -1916,9 +1839,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         "latest_outcome": _effective_outcome(latest_outcome, status),
     }
 
-
 _BUDGET_WARN_THRESHOLD = 0.80
-
 
 def analyze_budget(
     *,
@@ -1979,7 +1900,7 @@ def analyze_budget(
             runtime_root = _runtime_root(resolved_ms, artifact_dir_name, loop_name)
             state_path = _state_path(runtime_root)
             if state_path.exists():
-                loop_state = _load_json(state_path)
+                loop_state = load_json_object(state_path)
                 iterations_completed = int(loop_state.get("iterations_completed", 0))
 
     iterations_remaining = max(0, max_iterations - iterations_completed)
@@ -2013,7 +1934,6 @@ def analyze_budget(
         "status": status,
         "warnings": warnings,
     }
-
 
 def run_parallel_subagents(
     tasks: list[dict[str, Any]],

@@ -16,7 +16,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from deeploop.autonomy.gate_taxonomy import DEFAULT_GATES_PATH, resolve_gate_contract
 from deeploop.autonomy.mission_autonomy import build_outer_loop_contract
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE
 from deeploop.autonomy.operator_inbox import build_operator_inbox_contract
 from deeploop.artifacts.artifact_packager import package_mission_artifacts
 from deeploop.artifacts.release_automation import build_release_candidate_review
@@ -51,7 +51,6 @@ REMOVED_SHIMS = [
     "mission_package.py",
     "mission_runtime.py",
     "novelty_refresh.py",
-    "operating_modes.py",
     "operator_inbox.py",
     "orchestrator.py",
     "paths.py",

@@ -47,7 +47,7 @@ The optimization strategy includes:
 - **Module**: `src/deeploop/research/self_optimization.py`
 - **Runner**: `scripts/mission/run_self_optimization.py`
 - **Durable artifacts**:
-  - Mission-linked: `~/workspaces/runs/deeploop/self_optimization/<mission_id>/`
+  - Mission-linked: `~/.deeploop/runs/deeploop/self_optimization/<mission_id>/`
   - JSON report: `self_optimization_report_{timestamp}.json`
   - Recommendations: `optimization_recommendations_{timestamp}.yaml`
 - **Ledger integration**:

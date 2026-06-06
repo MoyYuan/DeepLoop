@@ -10,7 +10,8 @@ from typing import Any, Mapping
 
 import yaml
 
-from deeploop.core.structured_io import json_safe_value, load_jsonl_objects, write_json_object
+from deeploop.core.structured_io import json_safe_value, load_jsonl_objects, schema_errors, write_json_object
+from deeploop.core.shared import normalize_strings as _normalize_strings
 from deeploop.core.ledger import append_jsonl, now_utc
 from deeploop.core.paths import REPO_ROOT, RESEARCH_MEMORY_DIR
 
@@ -20,7 +21,6 @@ DEFAULT_RESEARCH_MEMORY_EVENTS_FILE = "research_memory_entries.jsonl"
 DEFAULT_RESEARCH_MEMORY_INDEX_FILE = "research_memory_index.json"
 _MAX_REASONABLE_INDEX_BYTES = 64 * 1024 * 1024
 _MAX_INDEX_TO_EVENTS_RATIO = 8
-
 
 def _recover_last_json_object(raw: str) -> dict[str, Any] | None:
     decoder = JSONDecoder()
@@ -39,7 +39,6 @@ def _recover_last_json_object(raw: str) -> dict[str, Any] | None:
             recovered = loaded
     return recovered
 
-
 def _load_json(path: Path, *, repair: bool = False) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -53,14 +52,9 @@ def _load_json(path: Path, *, repair: bool = False) -> dict[str, Any]:
         if recovered is None:
             raise
         if repair:
-            _write_json(path, recovered)
+            write_json_object(path, recovered)
         loaded = recovered
     return loaded if isinstance(loaded, dict) else {}
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_object(path, payload)
-
 
 def _rebuild_index_from_entries(contract: Mapping[str, Any]) -> dict[str, Any]:
     registry = load_research_memory_registry(Path(contract["research_memory_registry_path"]))
@@ -86,29 +80,12 @@ def _rebuild_index_from_entries(contract: Mapping[str, Any]) -> dict[str, Any]:
         }
     return index
 
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     return loaded if isinstance(loaded, dict) else {}
 
-
 def _jsonify(value: Any) -> Any:
     return json_safe_value(value, stringify_keys=True)
-
-
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, (str, Path)):
-        value = str(raw).strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple | set):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
-
 
 def _tokenize(raw: Any) -> list[str]:
     if raw is None:
@@ -127,10 +104,8 @@ def _tokenize(raw: Any) -> list[str]:
     text = str(raw).lower()
     return [token for token in re.findall(r"[a-z0-9][a-z0-9_\-]{1,63}", text) if len(token) >= 3]
 
-
 def _entry_key(entity_type: str, entity_id: str) -> str:
     return f"{entity_type}:{entity_id}"
-
 
 def _compact_summary(entry: Mapping[str, Any]) -> str:
     summary = str(entry.get("summary") or "").strip()
@@ -143,15 +118,12 @@ def _compact_summary(entry: Mapping[str, Any]) -> str:
             return value
     return str(entry.get("entity_id") or "").strip()
 
-
 def _active_entry_limit(registry: Mapping[str, Any]) -> int:
     retention = registry.get("retention_policy") if isinstance(registry.get("retention_policy"), Mapping) else {}
     return max(1, int(retention.get("default_active_entries_per_mission_entity_type", 8) or 8))
 
-
 def load_research_memory_registry(path: Path = RESEARCH_MEMORY_REGISTRY_PATH) -> dict[str, Any]:
     return _load_yaml(path)
-
 
 def build_research_memory_contract(*, memory_root: Path | None = None) -> dict[str, str]:
     root = (memory_root or RESEARCH_MEMORY_DIR).expanduser().resolve()
@@ -162,7 +134,6 @@ def build_research_memory_contract(*, memory_root: Path | None = None) -> dict[s
         "research_memory_events_path": str(root / DEFAULT_RESEARCH_MEMORY_EVENTS_FILE),
         "research_memory_index_path": str(root / DEFAULT_RESEARCH_MEMORY_INDEX_FILE),
     }
-
 
 def _empty_index(contract: Mapping[str, Any]) -> dict[str, Any]:
     return {
@@ -184,7 +155,6 @@ def _empty_index(contract: Mapping[str, Any]) -> dict[str, Any]:
             "terms": 0,
         },
     }
-
 
 def ensure_research_memory_contract(
     *,
@@ -223,9 +193,8 @@ def ensure_research_memory_contract(
     events_path.parent.mkdir(parents=True, exist_ok=True)
     events_path.touch(exist_ok=True)
     if not index_path.exists():
-        _write_json(index_path, _empty_index(resolved))
+        write_json_object(index_path, _empty_index(resolved))
     return resolved
-
 
 def load_research_memory_index(*, contract: Mapping[str, Any] | None = None, memory_root: Path | None = None) -> dict[str, Any]:
     resolved = ensure_research_memory_contract(contract=dict(contract or {}), memory_root=memory_root)
@@ -239,13 +208,13 @@ def load_research_memory_index(*, contract: Mapping[str, Any] | None = None, mem
         and index_path.stat().st_size > events_path.stat().st_size * _MAX_INDEX_TO_EVENTS_RATIO
     ):
         index = _rebuild_index_from_entries(resolved)
-        _write_json(index_path, index)
+        write_json_object(index_path, index)
     else:
         try:
             index = _load_json(index_path, repair=True)
         except JSONDecodeError:
             index = _rebuild_index_from_entries(resolved)
-            _write_json(index_path, index)
+            write_json_object(index_path, index)
     if not index:
         index = _empty_index(resolved)
     if not isinstance(index.get("active_entries"), list):
@@ -253,26 +222,6 @@ def load_research_memory_index(*, contract: Mapping[str, Any] | None = None, mem
     if not isinstance(index.get("archived_entries"), list):
         index["archived_entries"] = []
     return index
-
-
-def _schema_errors(payload: Mapping[str, Any], schema_path: Path) -> list[str]:
-    schema = _load_json(schema_path)
-    try:
-        import jsonschema
-    except ImportError:
-        warnings.warn("jsonschema not installed; schema validation is incomplete")
-        errors: list[str] = []
-        for key in schema.get("required", []):
-            if key not in payload:
-                errors.append(f"missing field `{key}`")
-        return errors
-
-    validator = jsonschema.Draft202012Validator(schema)
-    return [
-        error.message
-        for error in sorted(validator.iter_errors(dict(payload)), key=lambda item: list(item.path))[:8]
-    ]
-
 
 def _registry_errors(entry: Mapping[str, Any], registry: Mapping[str, Any]) -> list[str]:
     entity_type = str(entry.get("entity_type") or "").strip()
@@ -292,13 +241,11 @@ def _registry_errors(entry: Mapping[str, Any], registry: Mapping[str, Any]) -> l
             errors.append(f"missing required field `{field}` for `{entity_type}`")
     return errors
 
-
 def validate_research_memory_entry(entry: Mapping[str, Any], *, registry: Mapping[str, Any] | None = None) -> list[str]:
     registry = registry or load_research_memory_registry()
-    errors = _schema_errors(entry, RESEARCH_MEMORY_ENTRY_SCHEMA_PATH)
+    errors = schema_errors(entry, RESEARCH_MEMORY_ENTRY_SCHEMA_PATH)
     errors.extend(_registry_errors(entry, registry))
     return errors
-
 
 def _retention_metadata(entry: Mapping[str, Any], *, registry: Mapping[str, Any]) -> dict[str, Any]:
     retention = registry.get("retention_policy") if isinstance(registry.get("retention_policy"), Mapping) else {}
@@ -331,7 +278,6 @@ def _retention_metadata(entry: Mapping[str, Any], *, registry: Mapping[str, Any]
         "archive_reason": None,
     }
 
-
 def _entry_fingerprint(entry: Mapping[str, Any]) -> str:
     comparable = {
         key: value
@@ -339,7 +285,6 @@ def _entry_fingerprint(entry: Mapping[str, Any]) -> str:
         if key not in {"updated_at", "created_at", "fingerprint"}
     }
     return sha1(json.dumps(comparable, sort_keys=True).encode("utf-8")).hexdigest()
-
 
 def _normalize_entry(entry: Mapping[str, Any], *, registry: Mapping[str, Any]) -> dict[str, Any]:
     normalized = _jsonify(dict(entry))
@@ -402,7 +347,6 @@ def _normalize_entry(entry: Mapping[str, Any], *, registry: Mapping[str, Any]) -
     normalized["retention"] = _retention_metadata(normalized, registry=registry)
     normalized["fingerprint"] = _entry_fingerprint(normalized)
     return normalized
-
 
 def _rebuild_indexes(index: dict[str, Any], *, registry: Mapping[str, Any]) -> dict[str, Any]:
     active_entries = [
@@ -496,7 +440,6 @@ def _rebuild_indexes(index: dict[str, Any], *, registry: Mapping[str, Any]) -> d
     )
     return index
 
-
 def record_research_memory_entry(
     entry: Mapping[str, Any],
     *,
@@ -526,10 +469,9 @@ def record_research_memory_entry(
     active[key] = normalized
     index["active_entries"] = list(active.values())
     rebuilt = _rebuild_indexes(index, registry=registry)
-    _write_json(index_path, rebuilt)
+    write_json_object(index_path, rebuilt)
     append_jsonl(Path(resolved["research_memory_events_path"]), normalized)
     return normalized
-
 
 def retrieve_research_memory(
     *,
@@ -590,7 +532,6 @@ def retrieve_research_memory(
     matches.sort(key=lambda item: (float(item.get("score") or 0.0), str(item.get("updated_at") or "")), reverse=True)
     resolved_limit = max(1, int(limit or 5))
     return matches[:resolved_limit]
-
 
 __all__ = [
     "DEFAULT_RESEARCH_MEMORY_EVENTS_FILE",

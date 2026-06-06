@@ -23,7 +23,6 @@ _SCHEDULER_HISTORY_FILE = "scheduler_history.jsonl"
 _SCHEDULER_SUMMARY_JSON_FILE = "summary.json"
 _SCHEDULER_SUMMARY_MD_FILE = "summary.md"
 
-
 @dataclass(frozen=True)
 class MissionSchedulerBudgetPolicy:
     max_total_iterations: int = 12
@@ -52,7 +51,6 @@ class MissionSchedulerBudgetPolicy:
             "max_consecutive_slices": self.max_consecutive_slices,
         }
 
-
 @dataclass(frozen=True)
 class MissionSchedulerFairnessPolicy:
     starvation_window: int = 2
@@ -71,7 +69,6 @@ class MissionSchedulerFairnessPolicy:
             "starvation_window": self.starvation_window,
             "aging_weight": self.aging_weight,
         }
-
 
 @dataclass(frozen=True)
 class MissionSchedulerPreemptionPolicy:
@@ -98,7 +95,6 @@ class MissionSchedulerPreemptionPolicy:
             "preempt_for_safety": self.preempt_for_safety,
         }
 
-
 @dataclass(frozen=True)
 class MissionSchedulerCompositionPolicy:
     open_request_policy: str = "pause-lower-priority"
@@ -121,7 +117,6 @@ class MissionSchedulerCompositionPolicy:
             "open_request_policy": self.open_request_policy,
             "safety_block_policy": self.safety_block_policy,
         }
-
 
 @dataclass(frozen=True)
 class MissionSchedulerPolicy:
@@ -161,7 +156,6 @@ class MissionSchedulerPolicy:
             "preemption": self.preemption.to_payload(),
             "composition": self.composition.to_payload(),
         }
-
 
 @dataclass(frozen=True)
 class MissionSchedulerMission:
@@ -207,7 +201,6 @@ class MissionSchedulerMission:
             "fair_share_weight": self.fair_share_weight,
             "mission_budget_iterations": self.mission_budget_iterations,
         }
-
 
 @dataclass(frozen=True)
 class MissionSchedulerConfig:
@@ -281,7 +274,6 @@ class MissionSchedulerConfig:
             "missions": [mission.to_payload() for mission in self.missions],
         }
 
-
 @dataclass
 class _MissionView:
     spec: MissionSchedulerMission
@@ -297,7 +289,6 @@ class _MissionView:
     suppression_reason: str | None = None
     preemption_reason: str | None = None
 
-
 def _merge_mappings(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
     merged: dict[str, Any] = dict(base)
     for key, value in override.items():
@@ -307,53 +298,36 @@ def _merge_mappings(base: Mapping[str, Any], override: Mapping[str, Any]) -> dic
             merged[key] = value
     return merged
 
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Expected mapping in {path}")
     return loaded
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return load_json_object(path)
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_object(path, payload)
-
-
 def _write_markdown(path: Path, lines: list[str]) -> None:
     write_markdown(path, lines)
-
 
 def _history_path(scheduler_root: Path) -> Path:
     return scheduler_root / _SCHEDULER_HISTORY_FILE
 
-
 def _state_path(scheduler_root: Path) -> Path:
     return scheduler_root / _SCHEDULER_STATE_FILE
-
 
 def _summary_json_path(scheduler_root: Path) -> Path:
     return scheduler_root / _SCHEDULER_SUMMARY_JSON_FILE
 
-
 def _summary_markdown_path(scheduler_root: Path) -> Path:
     return scheduler_root / _SCHEDULER_SUMMARY_MD_FILE
-
 
 def load_mission_scheduler_config(config_path: Path) -> MissionSchedulerConfig:
     resolved = config_path.expanduser().resolve()
     return MissionSchedulerConfig.from_mapping(_load_yaml(resolved), base_dir=resolved.parent, config_path=resolved)
 
-
 def _load_existing_scheduler_state(config: MissionSchedulerConfig) -> dict[str, Any] | None:
     path = _state_path(config.scheduler_root)
     if not path.exists():
         return None
-    return _load_json(path)
-
+    return load_json_object(path)
 
 def _default_scheduler_state(config: MissionSchedulerConfig) -> dict[str, Any]:
     started_at = now_utc()
@@ -394,7 +368,6 @@ def _default_scheduler_state(config: MissionSchedulerConfig) -> dict[str, Any]:
         "composition": {},
     }
 
-
 def _reconcile_scheduler_state(config: MissionSchedulerConfig, existing: dict[str, Any] | None) -> dict[str, Any]:
     state = existing or _default_scheduler_state(config)
     state["scheduler_id"] = config.scheduler_id
@@ -419,7 +392,6 @@ def _reconcile_scheduler_state(config: MissionSchedulerConfig, existing: dict[st
         }
     return state
 
-
 def _load_operator_request(mission_state_path: Path, mission_state: Mapping[str, Any]) -> dict[str, Any] | None:
     operator_inbox = mission_state.get("operator_inbox") if isinstance(mission_state.get("operator_inbox"), Mapping) else {}
     outer_loop = mission_state.get("outer_loop") if isinstance(mission_state.get("outer_loop"), Mapping) else {}
@@ -433,7 +405,6 @@ def _load_operator_request(mission_state_path: Path, mission_state: Mapping[str,
     request = load_current_operator_request(path)
     return request if isinstance(request, dict) and request else None
 
-
 def _runtime_iterations(mission_state_path: Path, mission_state: Mapping[str, Any]) -> int:
     runtime = mission_state.get("mission_runtime") if isinstance(mission_state.get("mission_runtime"), Mapping) else {}
     iterations = runtime.get("iterations_completed")
@@ -444,15 +415,14 @@ def _runtime_iterations(mission_state_path: Path, mission_state: Mapping[str, An
         path = Path(raw_state_path).expanduser().resolve()
         if path.exists():
             try:
-                loaded = _load_json(path)
+                loaded = load_json_object(path)
             except (json.JSONDecodeError, ValueError):
                 return 0
             return int(loaded.get("iterations_completed", 0) or 0)
     default_state_path = mission_state_path.parent / "runtime" / "mission_outer_runtime" / "runtime_state.json"
     if default_state_path.exists():
-        return int(_load_json(default_state_path).get("iterations_completed", 0) or 0)
+        return int(load_json_object(default_state_path).get("iterations_completed", 0) or 0)
     return 0
-
 
 def _safety_blocked(mission_state: Mapping[str, Any], open_request: Mapping[str, Any] | None) -> bool:
     if open_request is not None:
@@ -462,7 +432,6 @@ def _safety_blocked(mission_state: Mapping[str, Any], open_request: Mapping[str,
     status = str(mission_state.get("status") or "")
     return status == "failed"
 
-
 def _remaining_budget(record: Mapping[str, Any], spec: MissionSchedulerMission) -> int | None:
     budget = spec.mission_budget_iterations
     if budget is None:
@@ -470,11 +439,9 @@ def _remaining_budget(record: Mapping[str, Any], spec: MissionSchedulerMission) 
     consumed = int(record.get("iterations_consumed", 0) or 0)
     return max(int(budget) - consumed, 0)
 
-
 def _effective_priority(*, spec: MissionSchedulerMission, wait_cycles: int, policy: MissionSchedulerPolicy) -> float:
     aging_bonus = float(wait_cycles) * policy.fairness.aging_weight * spec.fair_share_weight
     return float(spec.priority) * policy.base_priority_weight + aging_bonus
-
 
 def _compose_views(config: MissionSchedulerConfig, state: dict[str, Any]) -> tuple[list[_MissionView], dict[str, Any]]:
     views: list[_MissionView] = []
@@ -545,7 +512,6 @@ def _compose_views(config: MissionSchedulerConfig, state: dict[str, Any]) -> tup
             view.suppression_reason = "blocked"
     return views, composition
 
-
 def _select_view(
     config: MissionSchedulerConfig,
     state: dict[str, Any],
@@ -596,10 +562,8 @@ def _select_view(
                 chosen.preemption_reason = "higher-priority-ready"
     return chosen
 
-
 def _append_history(scheduler_root: Path, payload: dict[str, Any]) -> None:
     append_jsonl(_history_path(scheduler_root), payload)
-
 
 def _write_scheduler_surface(config: MissionSchedulerConfig, state: dict[str, Any], views: list[_MissionView]) -> None:
     summary_json_path = _summary_json_path(config.scheduler_root)
@@ -631,7 +595,6 @@ def _write_scheduler_surface(config: MissionSchedulerConfig, state: dict[str, An
         write_mission_state(spec.mission_state_path, mission_state)
         sync_platform_expansion_bundle(spec.mission_state_path, mission_state=mission_state)
 
-
 def _scheduler_summary(config: MissionSchedulerConfig, state: dict[str, Any]) -> dict[str, Any]:
     mission_snapshots = [build_mission_snapshot(spec.mission_state_path, log_tail_lines=0, ledger_tail=0) for spec in config.missions]
     recent_history = []
@@ -648,7 +611,6 @@ def _scheduler_summary(config: MissionSchedulerConfig, state: dict[str, Any]) ->
         "mission_snapshots": mission_snapshots,
         "recent_history": recent_history,
     }
-
 
 def render_mission_scheduler_summary(summary: dict[str, Any]) -> str:
     policy = summary.get("policy", {}) if isinstance(summary.get("policy"), Mapping) else {}
@@ -705,13 +667,11 @@ def render_mission_scheduler_summary(summary: dict[str, Any]) -> str:
         lines.append("- No preemption events recorded.")
     return "\n".join(lines) + "\n"
 
-
 def _write_summary(config: MissionSchedulerConfig, state: dict[str, Any]) -> dict[str, Any]:
     summary = _scheduler_summary(config, state)
-    _write_json(_summary_json_path(config.scheduler_root), summary)
+    write_json_object(_summary_json_path(config.scheduler_root), summary)
     _write_markdown(_summary_markdown_path(config.scheduler_root), render_mission_scheduler_summary(summary).splitlines())
     return summary
-
 
 def _record_scheduler_ledger(config: MissionSchedulerConfig, state: dict[str, Any], *, summary: str, status: str) -> None:
     ledger_path = config.scheduler_root / "ledger.jsonl"
@@ -735,7 +695,6 @@ def _record_scheduler_ledger(config: MissionSchedulerConfig, state: dict[str, An
             },
         ),
     )
-
 
 def run_mission_scheduler(
     config_or_path: MissionSchedulerConfig | Path,
@@ -782,7 +741,7 @@ def run_mission_scheduler(
         before_iterations = _runtime_iterations(chosen.spec.mission_state_path, chosen.mission_state)
         max_iterations = before_iterations + config.policy.budget.slice_iterations
         result = runner(chosen.spec.mission_state_path, max_iterations=max_iterations)
-        refreshed_state = _load_json(chosen.spec.mission_state_path)
+        refreshed_state = load_json_object(chosen.spec.mission_state_path)
         after_iterations = _runtime_iterations(chosen.spec.mission_state_path, refreshed_state)
         consumed = max(after_iterations - before_iterations, 0)
         if consumed <= 0 and str(result.get("status") or "") not in _TERMINAL_MISSION_STATUSES:
@@ -824,7 +783,7 @@ def run_mission_scheduler(
                 "preemption_reason": chosen.preemption_reason,
             },
         )
-        _write_json(_state_path(config.scheduler_root), state)
+        write_json_object(_state_path(config.scheduler_root), state)
         post_views, post_composition = _compose_views(config, state)
         state["composition"] = dict(post_composition)
         _write_scheduler_surface(config, state, post_views)
@@ -840,7 +799,7 @@ def run_mission_scheduler(
     views, composition = _compose_views(config, state)
     state["composition"] = dict(composition)
     state["updated_at"] = now_utc()
-    _write_json(_state_path(config.scheduler_root), state)
+    write_json_object(_state_path(config.scheduler_root), state)
     _write_scheduler_surface(config, state, views)
     summary = _write_summary(config, state)
     _record_scheduler_ledger(
@@ -863,7 +822,6 @@ def run_mission_scheduler(
         "preemptions": summary.get("preemptions"),
         "composition": summary.get("composition"),
     }
-
 
 __all__ = [
     "DEFAULT_SCHEDULER_POLICY_PATH",

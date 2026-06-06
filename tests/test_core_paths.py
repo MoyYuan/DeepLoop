@@ -20,25 +20,26 @@ class CorePathsTests(unittest.TestCase):
     def tearDown(self) -> None:
         importlib.reload(core_paths)
 
-    def test_workspace_root_defaults_to_documented_home_workspaces(self) -> None:
+    def test_workspace_root_defaults_to_dot_deeploop(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("pathlib.Path.home", return_value=Path(tmpdir)):
                 with patch.dict(os.environ, {}, clear=True):
                     module = importlib.reload(core_paths)
 
-        self.assertEqual(module.DEFAULT_WORKSPACE_ROOT, Path(tmpdir) / "workspaces")
+        self.assertEqual(module.DEFAULT_WORKSPACE_ROOT, Path(tmpdir) / ".deeploop")
         self.assertEqual(module.WORKSPACE_ROOT, module.DEFAULT_WORKSPACE_ROOT)
 
-    def test_workspace_root_prefers_existing_cased_workspace_when_unambiguous(self) -> None:
+    def test_workspace_root_defaults_to_dot_deeploop_regardless_of_existing_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             (home / "Workspaces").mkdir()
+            (home / "workspaces").mkdir()
             with patch("pathlib.Path.home", return_value=home):
                 with patch.dict(os.environ, {}, clear=True):
                     module = importlib.reload(core_paths)
 
-        self.assertEqual(module.DEFAULT_WORKSPACE_ROOT, home / "Workspaces")
-        self.assertEqual(module.WORKSPACE_ROOT, home / "Workspaces")
+        self.assertEqual(module.DEFAULT_WORKSPACE_ROOT, home / ".deeploop")
+        self.assertEqual(module.WORKSPACE_ROOT, home / ".deeploop")
 
     def test_workspace_root_can_be_overridden_via_environment(self) -> None:
         override_root = REPO_ROOT / "reports" / "test-fixtures" / "workspace-root"
@@ -87,7 +88,7 @@ class CorePathsTests(unittest.TestCase):
         self.assertEqual(module.PACKAGES_DIR, runs_root.resolve() / "packages")
         self.assertEqual(module.RESEARCH_MEMORY_DIR, runs_root.resolve() / "ledger" / "research_memory")
 
-    def test_workspace_root_diagnostics_warns_for_case_split(self) -> None:
+    def test_workspace_root_diagnostics_reports_default_without_case_warning(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             (home / "Workspaces").mkdir()
@@ -99,5 +100,6 @@ class CorePathsTests(unittest.TestCase):
                     diagnostics = module.workspace_root_diagnostics(project_root)
 
         joined = "\n".join(diagnostics)
-        self.assertIn("Both", joined)
-        self.assertNotIn("outside DeepLoop workspace root", joined)
+        self.assertIn("defaulting to", joined)
+        self.assertIn(".deeploop", joined)
+        self.assertIn("outside DeepLoop workspace root", joined)

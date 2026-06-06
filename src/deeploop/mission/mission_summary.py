@@ -4,26 +4,13 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from deeploop.core.structured_io import write_markdown
+from deeploop.core.shared import normalize_strings as _normalize_strings
 from deeploop.mission.project_bootstrap import render_mission_contract_summary_lines
 
 
 def _string_value(value: object) -> str:
     return str(value).strip() if value is not None else ""
 
-
-def _normalize_strings(raw: object) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        value = raw.strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    value = str(raw).strip()
-    return [value] if value else []
 
 
 def _mapping(value: object) -> Mapping[str, Any]:
