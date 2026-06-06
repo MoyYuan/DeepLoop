@@ -206,7 +206,7 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
     repo_agents = repo_root / "AGENTS.md"
     repo_copilot = repo_root / ".github" / "copilot-instructions.md"
 
-    project_payload = load_yaml_mapping(project_path)
+    project_payload = load_yaml_mapping(project_path) if project_path.exists() else {}
     artifacts_payload = project_payload.get("artifacts") if isinstance(project_payload.get("artifacts"), dict) else {}
     docs = _normalize_paths(artifacts_payload.get("docs"), base_dir=repo_root)
     configs = _normalize_paths(artifacts_payload.get("configs"), base_dir=repo_root)
@@ -234,7 +234,7 @@ def discover_project_contract(target_repo: Path) -> dict[str, Any]:
         if path.exists()
     ]
     plain_facts_path = next((repo_root / name for name, _ in _PLAIN_PROJECT_FACT_FILES if (repo_root / name).exists()), None)
-    if not contract_root.exists() and plain_facts_path is not None:
+    if not contract_root.exists() and plain_facts_path is not None and plain_facts_path.exists():
         plain_payload = load_yaml_mapping(plain_facts_path)
         plain_project = plain_payload.get("project") if isinstance(plain_payload.get("project"), dict) else {}
         plain_artifacts_payload = plain_payload.get("artifacts") if isinstance(plain_payload.get("artifacts"), dict) else {}
