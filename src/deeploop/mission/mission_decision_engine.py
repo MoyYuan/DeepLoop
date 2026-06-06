@@ -399,7 +399,7 @@ class MissionDecisionEngine:
         tree_phases = {"experiment-design", "execution"}
         tree_enabled = mission_state.get("enable_tree_search") is not False and (
             isinstance(mission_state.get("experiment_tree"), dict)
-            or self._resolve_recursive_config_path(mission_state) is not None
+            or bool(self._resolve_recursive_config_path(mission_state))
         )
         if current_phase in tree_phases and tree_enabled:
             outcome = self._tree_search_decision(mission_state, mission_id, current_phase)
@@ -1608,7 +1608,7 @@ class MissionDecisionEngine:
                 profiles = sorted(fallback.glob("*.yaml"))
                 if profiles:
                     return str(profiles[0])
-        return ""
+        return None
 
     def _tree_search_decision(
         self,
