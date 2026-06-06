@@ -8,12 +8,7 @@ from typing import Any
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.shared import get_dotted as _get_nested
 from deeploop.core.paths import MISSIONS_DIR, RUNS_DIR
-from deeploop.core.structured_io import (
-    load_json_object as _load_json,
-    load_jsonl as _load_jsonl,
-    load_structured_mapping as _load_structured_file,
-    load_yaml_mapping as _load_yaml,
-)
+from deeploop.core.structured_io import load_json_object, load_jsonl_objects, load_yaml_mapping
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONTRACT_PATH = REPO_ROOT / "configs" / "autonomy" / "statistical-rigor.yaml"
@@ -583,7 +578,7 @@ def evaluate_statistical_rigor(
     output_root: Path | None = None,
     artifact_name: str | None = None,
 ) -> dict[str, Any]:
-    contract = _load_yaml(contract_path)
+    contract = load_yaml_mapping(contract_path)
     uncertainty_cfg = contract.get("uncertainty", {})
     bundle = _resolve_target_bundle(target_path, contract)
     manifest = bundle["manifest"]
@@ -594,7 +589,7 @@ def evaluate_statistical_rigor(
             if inferred.exists():
                 mission_state_path = inferred
 
-    predictions = _load_jsonl(bundle["predictions_path"]) if bundle["predictions_path"] else []
+    predictions = load_jsonl_objects(bundle["predictions_path"]) if bundle["predictions_path"] else []
     predictions_primary = _summary_from_predictions(predictions, source="predictions.jsonl", uncertainty_cfg=uncertainty_cfg)
     direct_primary = predictions_primary or _summary_from_metrics(
         bundle["metrics"],
@@ -698,7 +693,7 @@ def evaluate_statistical_rigor(
         _write_markdown_report(co_located_md_path, report)
 
     if mission_state_path is not None and mission_state_path.exists():
-        mission_state = _load_json(mission_state_path)
+        mission_state = load_json_object(mission_state_path)
         related_paths = [path for path in [report_json_path, report_markdown_path, co_located_json_path, co_located_md_path, bundle["manifest_path"]] if path is not None]
         append_jsonl(
             mission_state_path.parent / "ledger.jsonl",

@@ -1329,7 +1329,7 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
         summary_markdown_path = iteration_root / "summary.md"
 
         recent_ledger = _recent_entries(load_jsonl_objects(ledger_path, missing_ok=True), recent_ledger_limit)
-        recent_memory = _recent_entries(load_jsonl_objects(_memory_path(runtime_root, missing_ok=True)), recent_memory_limit)
+        recent_memory = _recent_entries(load_jsonl_objects(_memory_path(runtime_root), missing_ok=True), recent_memory_limit)
         outer_loop = mission_state.get("outer_loop", {}) if isinstance(mission_state.get("outer_loop"), dict) else {}
         decision_log_path = Path(outer_loop["decision_log_path"]) if isinstance(outer_loop.get("decision_log_path"), str) else None
         branch_log_path = Path(outer_loop["branch_log_path"]) if isinstance(outer_loop.get("branch_log_path"), str) else None

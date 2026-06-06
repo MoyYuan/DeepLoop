@@ -12,6 +12,7 @@ import yaml
 from deeploop.core.ledger import append_jsonl, make_ledger_entry
 from deeploop.core.paths import REPO_ROOT
 from deeploop.runtime.stage_kernels import StageAdapter, load_stage_adapter, run_stage_from_config
+from deeploop.core.structured_io import write_json_object
 
 logger = logging.getLogger(__name__)
 

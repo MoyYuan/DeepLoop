@@ -90,7 +90,7 @@ def _record_history(runtime_root: Path, payload: dict[str, Any]) -> None:
     append_jsonl(_runtime_history_path(runtime_root), payload)
 
 def _runtime_summary(runtime_state: dict[str, Any], *, mission_state: dict[str, Any]) -> dict[str, Any]:
-    history = load_jsonl_objects(_runtime_history_path(Path(runtime_state["runtime_root"], missing_ok=True)))
+    history = load_jsonl_objects(_runtime_history_path(Path(runtime_state["runtime_root"])), missing_ok=True)
     outer_loop = mission_state.get("outer_loop") if isinstance(mission_state.get("outer_loop"), dict) else {}
     memory_path = (
         Path(outer_loop["mission_memory_path"]).expanduser().resolve()

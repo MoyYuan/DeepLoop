@@ -8,7 +8,7 @@ from typing import Any, Mapping
 from deeploop.core.ledger import append_jsonl, now_utc
 from deeploop.core.paths import REPO_ROOT
 from deeploop.core.shared import resolved_contract_path
-from deeploop.core.structured_io import schema_errors
+from deeploop.core.structured_io import load_json_object, load_jsonl_objects, schema_errors, write_json_object
 
 DEFAULT_OPERATOR_REQUEST_LOG_FILE = "mission_operator_requests.jsonl"
 DEFAULT_CURRENT_OPERATOR_REQUEST_FILE = "current_operator_request.json"

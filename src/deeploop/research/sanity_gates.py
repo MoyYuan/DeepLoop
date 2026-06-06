@@ -9,11 +9,7 @@ from deeploop.core.config_paths import infer_repo_root_from_configs as _infer_re
 from deeploop.core.shared import get_dotted as _get_field
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import REPO_ROOT, RUNS_DIR
-from deeploop.core.structured_io import (
-    load_json_object as _load_json,
-    load_structured_mapping as _load_structured,
-    load_yaml_mapping as _load_yaml,
-)
+from deeploop.core.structured_io import load_json_object, load_yaml_mapping
 from deeploop.research.confound_guard import DEFAULT_CONTRACT_PATH as DEFAULT_CONFOUND_CONTRACT_PATH, evaluate_confound_guard
 
 DEFAULT_CONTRACT_PATH = REPO_ROOT / "configs" / "autonomy" / "research-sanity-gates.yaml"
@@ -191,7 +187,7 @@ def _validate_report(report: dict) -> None:
         import jsonschema
     except ImportError:
         return
-    schema = _load_json(REPORT_SCHEMA_PATH)
+    schema = load_json_object(REPORT_SCHEMA_PATH)
     jsonschema.validate(report, schema)
 
 
@@ -219,7 +215,7 @@ def evaluate_research_sanity(
     config = None
     config_kind = "unknown"
     repo_root = repo_root or _infer_repo_root(config_path)
-    contract = _load_yaml(contract_path)
+    contract = load_yaml_mapping(contract_path)
 
     if not config_path.exists():
         checks.append(
@@ -293,9 +289,9 @@ def evaluate_research_sanity(
             parse_as = reference.get("parse_as")
             try:
                 if parse_as == "json":
-                    parsed_content = _load_json(resolved_path)
+                    parsed_content = load_json_object(resolved_path)
                 elif parse_as == "yaml":
-                    parsed_content = _load_yaml(resolved_path)
+                    parsed_content = load_yaml_mapping(resolved_path)
                 checks.append(
                     _new_check(
                         f"reference:{field}",
@@ -328,7 +324,7 @@ def evaluate_research_sanity(
         if dataset_probe_error is not None:
             checks.append(dataset_probe_error)
         elif dataset_probe is not None:
-            promotion_manifest = _load_json(dataset_probe["promotion_manifest_path"])
+            promotion_manifest = load_json_object(dataset_probe["promotion_manifest_path"])
             selection = dataset_probe["selection"]
             selected_entries = _select_promotion_entries(
                 promotion_manifest,
@@ -490,9 +486,9 @@ def evaluate_research_sanity(
             else:
                 details["contract_exists"] = True
                 if contract_file.suffix.lower() in {".yaml", ".yml"}:
-                    details["contract"] = _load_yaml(contract_file)
+                    details["contract"] = load_yaml_mapping(contract_file)
                 elif contract_file.suffix.lower() == ".json":
-                    details["contract"] = _load_json(contract_file)
+                    details["contract"] = load_json_object(contract_file)
 
         if evaluation_missing:
             checks.append(
@@ -654,7 +650,7 @@ def evaluate_research_sanity(
         },
     }
     if mission_state_path is not None and mission_state_path.exists():
-        mission_state = _load_json(mission_state_path)
+        mission_state = load_json_object(mission_state_path)
         report["mission_id"] = mission_state.get("mission_id")
 
     _validate_report(report)
