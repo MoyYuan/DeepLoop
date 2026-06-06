@@ -1,0 +1,52 @@
+version: 1
+queue_name: translation-long-run-baselines
+mission_state: workspace://runs/deeploop/missions/translation-long-run-mission/mission_state.json
+runtime_policy: workspace://repos/deeploop/configs/runtime/self-healing-runtime.yaml
+rerun_existing: false
+max_jobs: 3
+entries:
+  - id: qwen35-2b-base-phase1
+    env_name: llm
+    repo: workspace://repos/translation-pilot
+    stage_id: baseline-evaluation
+    adapter: translation_pilot.runtime_adapter:build_stage_adapter
+    pythonpath:
+      - workspace://repos/translation-pilot/src
+    command:
+      - python
+      - scripts/eval/run_baseline.py
+      - --config
+      - configs/eval/qwen35-2b-base-phase1.yaml
+    repair:
+      reroute_env_name: llm
+    expected_manifest: workspace://runs/translation-pilot/qwen35-2b-base-phase1/run_manifest.json
+  - id: qwen35-4b-phase1
+    env_name: llm
+    repo: workspace://repos/translation-pilot
+    stage_id: baseline-evaluation
+    adapter: translation_pilot.runtime_adapter:build_stage_adapter
+    pythonpath:
+      - workspace://repos/translation-pilot/src
+    command:
+      - python
+      - scripts/eval/run_baseline.py
+      - --config
+      - configs/eval/qwen35-4b-phase1.yaml
+    repair:
+      reroute_env_name: llm
+    expected_manifest: workspace://runs/translation-pilot/qwen35-4b-phase1/run_manifest.json
+  - id: gemma4-e4b-it-phase1
+    env_name: llm
+    repo: workspace://repos/translation-pilot
+    stage_id: baseline-evaluation
+    adapter: translation_pilot.runtime_adapter:build_stage_adapter
+    pythonpath:
+      - workspace://repos/translation-pilot/src
+    command:
+      - python
+      - scripts/eval/run_baseline.py
+      - --config
+      - configs/eval/gemma4-e4b-it-phase1.yaml
+    repair:
+      reroute_env_name: llm
+    expected_manifest: workspace://runs/translation-pilot/gemma4-e4b-it-phase1/run_manifest.json

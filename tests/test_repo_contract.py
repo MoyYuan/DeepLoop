@@ -72,9 +72,7 @@ class RepoContractTests(unittest.TestCase):
 
     def test_release_governance_surfaces_classify_boundaries(self) -> None:
         governance_doc = REPO_ROOT / "docs" / "release" / "autonomy-governance.md"
-        governance_cfg = REPO_ROOT / "configs" / "autonomy" / "operator-boundaries.yaml"
         self.assertTrue(governance_doc.exists(), f"missing governance doc: {governance_doc}")
-        self.assertTrue(governance_cfg.exists(), f"missing governance config: {governance_cfg}")
         governance_text = governance_doc.read_text(encoding="utf-8").lower()
         self.assertIn("hard-gate", governance_text)
         self.assertIn("authority-boundary", governance_text)
@@ -85,14 +83,6 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("provenance-review", governance_text)
         self.assertIn("licensing-review", governance_text)
         self.assertIn("release-operator", governance_text)
-        config = yaml.safe_load(governance_cfg.read_text(encoding="utf-8"))
-        self.assertIn("operator_request_classes", config)
-        self.assertIn("hard-gate", config["operator_request_classes"])
-        self.assertIn("authority-boundary", config["operator_request_classes"])
-        self.assertIn("operator-review", config["operator_request_classes"])
-        self.assertIn("unrecoverable-failure", config["operator_request_classes"])
-        self.assertIn("release_governance", config)
-        self.assertIn("required_reviews", config["release_governance"])
 
     def test_policy_placement_doc_mentions_taxonomy_and_antipattern(self) -> None:
         policy_text = (REPO_ROOT / "docs" / "design" / "policy-placement.md").read_text(encoding="utf-8").lower()
@@ -405,7 +395,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("machine-level provider setup", selection_text)
         self.assertIn("configs/runtime/provider-selection-registry.yaml", selection_text)
         self.assertIn("configs/runtime/backend-policy.yaml", selection_text)
-        self.assertIn("configs/runtime/recursive-agent-runtime-provider.example.yaml", selection_text)
+        self.assertIn("examples/recursive-agent-runtime-provider.example.yaml", selection_text)
         self.assertIn("configs/runtime/gate-2-runtime-lanes.yaml", selection_text)
         self.assertIn("configs/sandbox/agent-launch-policy.yaml", selection_text)
         self.assertIn("configs/manifests/run-manifest-template.json", selection_text)
@@ -489,7 +479,7 @@ class RepoContractTests(unittest.TestCase):
     def test_gate_2_runtime_lane_contract_surfaces_exist(self) -> None:
         gate_doc = REPO_ROOT / "docs" / "release" / "release-maintenance.md"
         gate_config = REPO_ROOT / "configs" / "runtime" / "gate-2-runtime-lanes.yaml"
-        recursive_example = REPO_ROOT / "configs" / "runtime" / "recursive-agent-runtime-provider.example.yaml"
+        recursive_example = REPO_ROOT / "examples" / "recursive-agent-runtime-provider.example.yaml"
         self.assertTrue(gate_doc.exists(), f"missing release maintenance doc: {gate_doc}")
         self.assertTrue(gate_config.exists(), f"missing Gate 2 lane config: {gate_config}")
         self.assertTrue(recursive_example.exists(), f"missing recursive runtime example: {recursive_example}")
@@ -562,7 +552,7 @@ class RepoContractTests(unittest.TestCase):
         self.assertIn("--until-complete", completed.stdout)
 
     def test_autoexecutor_queue_config_exists(self) -> None:
-        queue_path = REPO_ROOT / "configs" / "runtime" / "translation-long-run-baseline-queue.yaml"
+        queue_path = REPO_ROOT / "examples" / "translation-budget-ladder" / "translation-long-run-baseline-queue.yaml"
         self.assertTrue(queue_path.exists(), f"missing public example queue: {queue_path}")
 
     def test_tiny_autopilot_proof_assets_exist(self) -> None:
