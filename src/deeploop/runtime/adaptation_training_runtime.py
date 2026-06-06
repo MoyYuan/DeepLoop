@@ -15,6 +15,7 @@ from deeploop.autonomy.gate_taxonomy import build_gate_event, load_gate_policy
 from deeploop.core.ledger import now_utc
 from deeploop.core.paths import REPO_ROOT
 from deeploop.core.shared import build_command as _build_command
+from deeploop.core.structured_io import load_json_object, write_json_object
 from deeploop.runtime.metric_ratchets import (
     MetricRatchetConfig,
     build_metric_ratchet_decision,

@@ -15,11 +15,7 @@ from deeploop.artifacts.release_automation import (
     materialize_release_candidate_review,
 )
 from deeploop.core.shared import is_relative_to as _is_relative_to
-from deeploop.core.structured_io import (
-    load_json_object as _load_json,
-    load_jsonl_objects as _load_jsonl,
-    load_yaml_mapping as _load_yaml,
-)
+from deeploop.core.structured_io import load_json_object, load_jsonl_objects, load_yaml_mapping
 from deeploop.mission.mission_acceptance import evaluate_mission_acceptance
 from deeploop.core.paths import REPO_ROOT, RUNS_DIR, WORKSPACE_ROOT, resolve_workspace_path
 
@@ -484,7 +480,7 @@ def _extract_text_bullets(path: Path, *, limit: int = 4) -> list[str]:
 
 
 def load_package_contract(path: Path = PACKAGE_CONTRACT_PATH) -> dict[str, Any]:
-    return _load_yaml(path)
+    return load_yaml_mapping(path)
 
 
 def validate_package_manifest(package: dict[str, Any], schema_path: Path = PACKAGE_SCHEMA_PATH) -> list[str]:
@@ -494,7 +490,7 @@ def validate_package_manifest(package: dict[str, Any], schema_path: Path = PACKA
         return []
 
     try:
-        jsonschema.validate(package, _load_json(schema_path))
+        jsonschema.validate(package, load_json_object(schema_path))
     except Exception as exc:  # pragma: no cover - jsonschema type depends on install
         return [str(exc)]
     return []
@@ -528,7 +524,7 @@ def _resolve_manifest_paths(search_roots: list[Path], mission_id: str, patterns:
                 if not path.is_file():
                     continue
                 try:
-                    manifest = _load_json(path)
+                    manifest = load_json_object(path)
                 except Exception:
                     continue
                 if manifest.get("mission_id") == mission_id:
@@ -587,7 +583,7 @@ def _bundle_related_paths(manifest_path: Path, manifest: dict[str, Any], contrac
     ]
     for critique_json in critique_json_candidates:
         try:
-            report = _load_json(critique_json)
+            report = load_json_object(critique_json)
         except Exception:
             continue
         artifacts_payload = report.get("artifacts", {})
@@ -618,7 +614,7 @@ def _collect_global_reports(
                 metadata: dict[str, Any] = {}
                 if path.suffix.lower() == ".json":
                     try:
-                        payload = _load_json(path)
+                        payload = load_json_object(path)
                     except Exception:
                         continue
                     mission_id = payload.get("mission_id")
@@ -820,7 +816,7 @@ def _metric_fragments(path: Path, *, limit: int = 3) -> list[str]:
     if path.suffix.lower() != ".json":
         return []
     try:
-        payload = _load_json(path)
+        payload = load_json_object(path)
     except Exception:
         return []
     if not isinstance(payload, dict):
@@ -894,12 +890,12 @@ def package_mission_artifacts(
 ) -> dict[str, Any]:
     mission_state_path = mission_state_path.expanduser().resolve()
     contract_path = contract_path.expanduser().resolve()
-    mission_state = _load_json(mission_state_path)
+    mission_state = load_json_object(mission_state_path)
     mission_root = mission_state_path.parent
     mission_id = str(mission_state["mission_id"])
     target_repo = _safe_resolve(mission_state["target_repo"])
     contract = load_package_contract(contract_path)
-    evidence_policy = _load_yaml(EVIDENCE_POLICY_PATH)
+    evidence_policy = load_yaml_mapping(EVIDENCE_POLICY_PATH)
 
     resolved_output_root = _safe_resolve(output_root or contract.get("output_root", RUNS_DIR / "packages"))
     _validate_output_root(resolved_output_root, mission_state)
@@ -1090,12 +1086,12 @@ def package_mission_artifacts(
                 target_repo=target_repo,
             )
             if memory_path.exists() and memory_path.is_file():
-                for entry in _load_jsonl(memory_path):
+                for entry in load_jsonl_objects(memory_path, missing_ok=True):
                     if isinstance(entry, dict):
                         register_outputs_from_mapping(entry, declared_by="agent_driver.memory", source_path=memory_path, phase=str(entry.get("phase") or "") or None)
     experiments_path = mission_root / "mission_experiments.jsonl"
     if experiments_path.exists():
-        for entry in _load_jsonl(experiments_path):
+        for entry in load_jsonl_objects(experiments_path, missing_ok=True):
             if isinstance(entry, dict):
                 register_outputs_from_mapping(entry, declared_by="mission_experiments", source_path=experiments_path, phase=str(entry.get("phase") or "") or None)
 
@@ -1112,7 +1108,7 @@ def package_mission_artifacts(
 
     run_bundles: list[dict[str, Any]] = []
     for manifest_path in manifest_paths:
-        manifest = _load_json(manifest_path)
+        manifest = load_json_object(manifest_path)
         manifest_artifact_id = register_artifact(
             manifest_path,
             category="manifests",
@@ -1143,7 +1139,7 @@ def package_mission_artifacts(
             critique_metadata: dict[str, Any] = {}
             if critique_path.suffix.lower() == ".json":
                 try:
-                    report = _load_json(critique_path)
+                    report = load_json_object(critique_path)
                 except Exception:
                     report = {}
                 if isinstance(report.get("promotion_guidance"), dict):
@@ -1188,7 +1184,7 @@ def package_mission_artifacts(
     ledger_entries: list[dict[str, Any]] = []
     if ledger_path.exists():
         ledger_artifact_id = register_artifact(ledger_path, category="ledgers")
-        ledger_entries = _load_jsonl(ledger_path)
+        ledger_entries = load_jsonl_objects(ledger_path, missing_ok=True)
         for entry in ledger_entries:
             related_paths = entry.get("related_paths", [])
             for raw_path in related_paths:
@@ -1462,7 +1458,7 @@ def package_mission_artifacts(
         )
     mission_memory_path = mission_root / "mission_memory.json"
     if mission_memory_path.exists():
-        mission_memory = _load_json(mission_memory_path)
+        mission_memory = load_json_object(mission_memory_path)
         retrieved_research = (
             mission_memory.get("retrieved_research_context")
             if isinstance(mission_memory.get("retrieved_research_context"), dict)

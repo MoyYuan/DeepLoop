@@ -6,10 +6,7 @@ from typing import Any
 
 from deeploop.core.ledger import now_utc
 from deeploop.core.paths import REPO_ROOT
-from deeploop.core.structured_io import (
-    load_json_object as _load_json,
-    load_yaml_mapping as _load_yaml,
-)
+from deeploop.core.structured_io import load_json_object, load_yaml_mapping
 
 RELEASE_POLICY_PATH = REPO_ROOT / "configs" / "runtime" / "release-candidate-policy.yaml"
 EVIDENCE_POLICY_PATH = REPO_ROOT / "configs" / "autonomy" / "evidence-policy.yaml"
@@ -26,15 +23,15 @@ CLAIM_ORDER = {
 
 
 def load_release_candidate_policy(path: Path = RELEASE_POLICY_PATH) -> dict[str, Any]:
-    return _load_yaml(path)
+    return load_yaml_mapping(path)
 
 
 def load_evidence_policy(path: Path = EVIDENCE_POLICY_PATH) -> dict[str, Any]:
-    return _load_yaml(path)
+    return load_yaml_mapping(path)
 
 
 def load_gate_2_runtime_contract(path: Path = GATE_2_RUNTIME_CONTRACT_PATH) -> dict[str, Any]:
-    return _load_yaml(path)
+    return load_yaml_mapping(path)
 
 
 def load_release_candidate_reviews(path: Path | None) -> dict[str, Any]:
@@ -42,9 +39,9 @@ def load_release_candidate_reviews(path: Path | None) -> dict[str, Any]:
         return {"reviews": []}
     resolved = path.expanduser().resolve()
     if resolved.suffix.lower() in {".yaml", ".yml"}:
-        payload = _load_yaml(resolved)
+        payload = load_yaml_mapping(resolved)
     else:
-        payload = _load_json(resolved)
+        payload = load_json_object(resolved)
     if not isinstance(payload, dict):
         raise ValueError(f"Release reviews must be a mapping: {resolved}")
     if "reviews" not in payload and isinstance(payload.get("approvals"), list):
@@ -67,7 +64,7 @@ def validate_release_candidate_review(
         return []
 
     try:
-        jsonschema.validate(review, _load_json(schema_path))
+        jsonschema.validate(review, load_json_object(schema_path))
     except Exception as exc:  # pragma: no cover
         return [str(exc)]
     return []

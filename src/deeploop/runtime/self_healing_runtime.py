@@ -17,6 +17,7 @@ from deeploop.core.paths import REPO_ROOT as DEEPLOOP_REPO_ROOT
 from deeploop.core.shared import build_command as _build_command, is_relative_to as _is_relative_to
 from deeploop.research.sanity_gates import evaluate_research_sanity, extract_proposal_config_path
 from deeploop.research.self_correction import assess_manifest_for_self_correction
+from deeploop.core.structured_io import load_json_object, write_json_object
 
 DEFAULT_POLICY_PATH = DEEPLOOP_REPO_ROOT / "configs" / "runtime" / "self-healing-runtime.yaml"
 RUN_MANIFEST_SCHEMA_PATH = DEEPLOOP_REPO_ROOT / "schemas" / "run-manifest.schema.json"

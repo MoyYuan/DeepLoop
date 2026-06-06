@@ -14,15 +14,7 @@ from deeploop.artifacts.release_automation import GATE_2_RUNTIME_CONTRACT_PATH, 
 from deeploop.cli.analyze import _build_analyze_prompt, _render_analyze_result
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import REPO_ROOT, resolve_workspace_path
-from deeploop.core.structured_io import (
-    json_safe_value,
-    load_json_object,
-    load_yaml_mapping,
-    write_json_object,
-    write_markdown,
-    write_text,
-    write_yaml_mapping,
-)
+from deeploop.core.structured_io import load_json_object, load_yaml_mapping, write_json_object
 from deeploop.mission.mission_state import load_mission_state, write_mission_state
 from deeploop.core.shared import dedupe_strings as _dedupe_strings, slugify as _slugify
 from deeploop.mission.orchestrator import initialize_mission

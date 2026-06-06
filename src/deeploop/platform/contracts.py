@@ -6,10 +6,7 @@ from typing import Any, Mapping
 
 from deeploop.core.ledger import now_utc
 from deeploop.core.paths import REPO_ROOT
-from deeploop.core.structured_io import (
-    load_json_object as _load_json,
-    load_yaml_mapping as _load_yaml,
-)
+from deeploop.core.structured_io import load_json_object, load_yaml_mapping, write_json_object
 
 DEFAULT_PLATFORM_EXPANSION_CONTRACT_PATH = REPO_ROOT / "configs" / "platform" / "expansion.yaml"
 
@@ -27,7 +24,7 @@ def _resolve_templates(value: object, context: dict[str, str]) -> object:
     return value
 
 def load_platform_expansion_contract(path: Path = DEFAULT_PLATFORM_EXPANSION_CONTRACT_PATH) -> dict[str, object]:
-    return _load_yaml(path)
+    return load_yaml_mapping(path)
 
 def _seed_surface_output(path: Path, *, surface_id: str, mission_id: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,7 +70,7 @@ def _surface_paths(surface: Mapping[str, Any], *, suffix: str) -> list[Path]:
 def _load_optional_json(path: Path | None) -> dict[str, Any]:
     if path is None or not path.exists():
         return {}
-    loaded = _load_json(path)
+    loaded = load_json_object(path)
     return loaded if isinstance(loaded, dict) else {}
 
 def _relative_to_mission(path: Path, mission_root: Path) -> str:
