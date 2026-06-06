@@ -9,7 +9,7 @@ from deeploop.core.paths import REPO_ROOT
 from deeploop.core.structured_io import load_json_object, load_yaml_mapping
 
 RELEASE_POLICY_PATH = REPO_ROOT / "configs" / "runtime" / "release-candidate-policy.yaml"
-EVIDENCE_POLICY_PATH = REPO_ROOT / "configs" / "autonomy" / "evidence-policy.yaml"
+EVIDENCE_POLICY_PATH = REPO_ROOT / "configs" / "autonomy" / "gates.yaml"
 GATE_2_RUNTIME_CONTRACT_PATH = REPO_ROOT / "configs" / "runtime" / "gate-2-runtime-lanes.yaml"
 RELEASE_REVIEW_SCHEMA_PATH = REPO_ROOT / "schemas" / "release-candidate-review.schema.json"
 
@@ -27,7 +27,9 @@ def load_release_candidate_policy(path: Path = RELEASE_POLICY_PATH) -> dict[str,
 
 
 def load_evidence_policy(path: Path = EVIDENCE_POLICY_PATH) -> dict[str, Any]:
-    return load_yaml_mapping(path)
+    gates = load_yaml_mapping(path)
+    policy = gates.get("evidence_policy")
+    return policy if isinstance(policy, dict) else {}
 
 
 def load_gate_2_runtime_contract(path: Path = GATE_2_RUNTIME_CONTRACT_PATH) -> dict[str, Any]:

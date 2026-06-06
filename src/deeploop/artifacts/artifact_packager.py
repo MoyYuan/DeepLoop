@@ -21,7 +21,7 @@ from deeploop.core.paths import REPO_ROOT, RUNS_DIR, WORKSPACE_ROOT, resolve_wor
 
 PACKAGE_CONTRACT_PATH = REPO_ROOT / "configs" / "runtime" / "artifact-package-contract.yaml"
 PACKAGE_SCHEMA_PATH = REPO_ROOT / "schemas" / "mission-artifact-package.schema.json"
-EVIDENCE_POLICY_PATH = REPO_ROOT / "configs" / "autonomy" / "evidence-policy.yaml"
+EVIDENCE_POLICY_PATH = REPO_ROOT / "configs" / "autonomy" / "gates.yaml"
 
 CLAIM_ORDER = {
     "not-ready": -1,
@@ -895,7 +895,7 @@ def package_mission_artifacts(
     mission_id = str(mission_state["mission_id"])
     target_repo = _safe_resolve(mission_state["target_repo"])
     contract = load_package_contract(contract_path)
-    evidence_policy = load_yaml_mapping(EVIDENCE_POLICY_PATH)
+    evidence_policy = load_yaml_mapping(EVIDENCE_POLICY_PATH).get("evidence_policy", {})
 
     resolved_output_root = _safe_resolve(output_root or contract.get("output_root", RUNS_DIR / "packages"))
     _validate_output_root(resolved_output_root, mission_state)

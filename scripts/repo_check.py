@@ -18,7 +18,6 @@ REQUIRED_PATHS = [
     REPO_ROOT / "configs" / "autonomy" / "gates.yaml",
     REPO_ROOT / "configs" / "autonomy" / "mission-outer-loop.yaml",
     REPO_ROOT / "configs" / "autonomy" / "research-sanity-gates.yaml",
-    REPO_ROOT / "configs" / "autonomy" / "evidence-policy.yaml",
     REPO_ROOT / "configs" / "autonomy" / "state-machine.yaml",
     REPO_ROOT / "configs" / "execution-profiles" / "inference-families.yaml",
     REPO_ROOT / "configs" / "execution-profiles" / "training-presets.yaml",
