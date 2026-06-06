@@ -103,6 +103,8 @@ def clear_current_operator_request(current_path: Path) -> None:
     write_json_object(current_path, {})
 
 def load_current_operator_request(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
     loaded = load_json_object(path)
     return loaded if isinstance(loaded.get("request_id"), str) and loaded.get("request_id") else None
 
