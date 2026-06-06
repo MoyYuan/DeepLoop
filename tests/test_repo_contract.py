@@ -367,7 +367,7 @@ class RepoContractTests(unittest.TestCase):
             "single-gpu-8b-9b-fp16",
             " ".join(local_qwen_setup["fallback_guidance"]),
         )
-        self.assertEqual(config["provider_families"]["anthropic-api"]["runtime_integration"], "deferred")
+        self.assertEqual(config["provider_families"]["anthropic-api"]["runtime_integration"], "implemented")
         self.assertIn(
             "HUGGING_FACE_HUB_TOKEN",
             config["provider_families"]["local-transformers"]["expected_env_vars"]["optional"],
@@ -451,7 +451,7 @@ class RepoContractTests(unittest.TestCase):
         )
         self.assertEqual(
             config["selection_profiles"]["anthropic-api-control-plane"]["status"],
-            "reserved-runtime-adapter",
+            "implemented",
         )
         self.assertEqual(
             config["related_runtime_surfaces"]["provider_setup_registry"],

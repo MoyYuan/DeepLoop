@@ -12,7 +12,6 @@ from deeploop.mission.starter_projects import resolve_starter_source
 
 DEFAULT_MATRIX_PATH = REPO_ROOT / "configs" / "testing" / "disposable-user-simulation-matrix.yaml"
 
-
 @dataclass(frozen=True)
 class DisposableDockerSpec:
     dockerfile: Path
@@ -21,13 +20,11 @@ class DisposableDockerSpec:
     workspace_root: PurePosixPath
     artifacts_root: PurePosixPath
 
-
 @dataclass(frozen=True)
 class ExternalSimulatorSpec:
     boundary: str
     required_model_alias: str
     notes: tuple[str, ...]
-
 
 @dataclass(frozen=True)
 class DeepLoopControlPlaneSpec:
@@ -35,7 +32,6 @@ class DeepLoopControlPlaneSpec:
     provider_family: str
     backend: str
     model_alias: str
-
 
 @dataclass(frozen=True)
 class DeepLoopExperimentExecutionSpec:
@@ -51,7 +47,6 @@ class DeepLoopExperimentExecutionSpec:
     model_artifact_url: str
     policy_note: str
 
-
 @dataclass(frozen=True)
 class DisposableUserSimulationScenario:
     scenario_id: str
@@ -62,7 +57,6 @@ class DisposableUserSimulationScenario:
     starter_id: str | None = None
     discovery_starter_id: str | None = None
     fixture_path: Path | None = None
-
 
 @dataclass(frozen=True)
 class DisposableUserSimulationMatrix:
@@ -77,41 +71,21 @@ class DisposableUserSimulationMatrix:
     scenarios: tuple[DisposableUserSimulationScenario, ...]
     source_path: Path
 
-
-def _load_yaml_mapping(path: Path) -> dict[str, Any]:
-    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if payload is None:
-        return {}
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected YAML mapping at {path}")
-    return payload
-
+from deeploop.core.shared import normalize_strings as _cs_normalize_strings
+from deeploop.core.structured_io import load_yaml_mapping
 
 def _normalize_strings(raw: Any) -> tuple[str, ...]:
-    if raw is None:
-        return ()
-    if isinstance(raw, str):
-        value = raw.strip()
-        return (value,) if value else ()
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return tuple(values)
-    value = str(raw).strip()
-    return (value,) if value else ()
-
+    return tuple(_cs_normalize_strings(raw))
 
 def _resolved_relative_path(path_text: str) -> Path:
     path = Path(path_text).expanduser()
     return path if path.is_absolute() else (REPO_ROOT / path).resolve()
 
-
 def load_disposable_user_simulation_matrix(
     path: Path = DEFAULT_MATRIX_PATH,
 ) -> DisposableUserSimulationMatrix:
     resolved_path = path.expanduser().resolve()
-    payload = _load_yaml_mapping(resolved_path)
+    payload = load_yaml_mapping(resolved_path)
     defaults = payload.get("campaign_defaults") if isinstance(payload.get("campaign_defaults"), dict) else {}
     docker = defaults.get("docker") if isinstance(defaults.get("docker"), dict) else {}
     simulator = defaults.get("simulator") if isinstance(defaults.get("simulator"), dict) else {}
@@ -194,7 +168,6 @@ def load_disposable_user_simulation_matrix(
         source_path=resolved_path,
     )
 
-
 def select_scenarios(
     matrix: DisposableUserSimulationMatrix,
     requested_ids: list[str],
@@ -208,7 +181,6 @@ def select_scenarios(
         raise ValueError(f"Unknown disposable user simulation scenarios: {', '.join(missing)}")
     return selected
 
-
 def scenario_project_root_in_container(
     matrix: DisposableUserSimulationMatrix,
     scenario: DisposableUserSimulationScenario,
@@ -216,7 +188,6 @@ def scenario_project_root_in_container(
     if scenario.project_shape == "discovery-first":
         return None
     return matrix.docker.workspace_root / "projects" / scenario.scenario_id
-
 
 def recommended_deeploop_commands(
     matrix: DisposableUserSimulationMatrix,
@@ -236,7 +207,6 @@ def recommended_deeploop_commands(
         ]
     )
     return commands
-
 
 def runtime_constraints_payload(matrix: DisposableUserSimulationMatrix) -> dict[str, Any]:
     experiment_model = {
@@ -280,7 +250,6 @@ def runtime_constraints_payload(matrix: DisposableUserSimulationMatrix) -> dict[
         },
     }
 
-
 def _runtime_constraint_lines(matrix: DisposableUserSimulationMatrix) -> list[str]:
     lines = [
         f"Use the `{matrix.control_plane.selection_profile}` control-plane provider.",
@@ -309,7 +278,6 @@ def _runtime_constraint_lines(matrix: DisposableUserSimulationMatrix) -> list[st
         )
     return lines
 
-
 def apply_runtime_constraints_to_project_facts(
     project_root: Path,
     matrix: DisposableUserSimulationMatrix,
@@ -318,7 +286,7 @@ def apply_runtime_constraints_to_project_facts(
     project_facts_path = project_root / "project-facts.yaml"
     if not project_facts_path.exists():
         return
-    payload = _load_yaml_mapping(project_facts_path)
+    payload = load_yaml_mapping(project_facts_path)
     project = payload.get("project") if isinstance(payload.get("project"), dict) else {}
     existing_constraints = [str(item).strip() for item in project.get("constraints", []) if str(item).strip()]
     for line in _runtime_constraint_lines(matrix):
@@ -346,7 +314,6 @@ def apply_runtime_constraints_to_project_facts(
     payload["project"] = project
     project_facts_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
 
-
 def materialize_scenario_workspace(
     matrix: DisposableUserSimulationMatrix,
     scenario: DisposableUserSimulationScenario,
@@ -373,7 +340,6 @@ def materialize_scenario_workspace(
         raise ValueError(f"Unsupported project_shape `{scenario.project_shape}`.")
     apply_runtime_constraints_to_project_facts(project_root, matrix, scenario)
     return project_root
-
 
 def build_scenario_contract(
     matrix: DisposableUserSimulationMatrix,
@@ -408,7 +374,6 @@ def build_scenario_contract(
             "fixture_path": str(scenario.fixture_path) if scenario.fixture_path is not None else None,
         },
     }
-
 
 def render_scenario_contract_markdown(contract: dict[str, Any]) -> list[str]:
     container = contract.get("container") if isinstance(contract.get("container"), dict) else {}
@@ -473,7 +438,6 @@ def render_scenario_contract_markdown(contract: dict[str, Any]) -> list[str]:
     lines.extend(f"- `{command}`" for command in recommended_commands)
     return lines
 
-
 def render_outer_user_prompt(
     matrix: DisposableUserSimulationMatrix,
     scenario: DisposableUserSimulationScenario,
@@ -529,7 +493,6 @@ def render_outer_user_prompt(
         ]
     )
     return lines
-
 
 __all__ = [
     "DEFAULT_MATRIX_PATH",

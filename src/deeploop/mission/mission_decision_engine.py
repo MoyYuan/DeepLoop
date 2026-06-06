@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-import re
 from typing import Any, Mapping
 
 import yaml
@@ -16,7 +15,7 @@ from deeploop.autonomy.mission_autonomy import (
     enrich_outer_loop_contract,
     load_mission_outer_loop_policy,
 )
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE, is_autonomous_operating_mode, resolve_operating_mode
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE, is_autonomous_operating_mode, resolve_operating_mode
 from deeploop.core.phase_defaults import (
     default_kind_for_phase as _default_kind_for_phase,
     default_role_for_phase as _default_role_for_phase,
@@ -43,28 +42,16 @@ _BLOCKING_STATUSES = {"blocked"}
 _DONE_STATUSES = {"completed", "cancelled"}
 _MISSING = object()
 
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Expected mapping in {path}")
     return loaded
 
+from deeploop.core.shared import deep_merge, normalize_strings as _cs_normalize_strings, slugify
 
 def _normalize_strings(raw: Any) -> tuple[str, ...]:
-    if raw is None:
-        return ()
-    if isinstance(raw, (str, Path)):
-        text = str(raw).strip()
-        return (text,) if text else ()
-    if isinstance(raw, list | tuple):
-        return tuple(str(item).strip() for item in raw if str(item).strip())
-    return ()
-
-
-def _slug(value: str, *, fallback: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-    return slug or fallback
+    return tuple(_cs_normalize_strings(raw))
 
 
 def _path_value(payload: Mapping[str, Any], path: str) -> Any:
@@ -79,13 +66,11 @@ def _path_value(payload: Mapping[str, Any], path: str) -> Any:
         current = current[part]
     return current
 
-
 def _recovery_role_for_missing_outputs(phase: str, *, kind: str, failure_count: int) -> str:
     default_role = _default_role_for_phase(phase)
     if failure_count > 0 and kind == "artifact-edit" and default_role != "planner":
         return "planner"
     return default_role
-
 
 def _phase_outputs_for_state(mission_state: Mapping[str, Any], phase: str) -> tuple[str, ...]:
     phase_outputs = mission_state.get("phase_outputs_by_phase")
@@ -97,7 +82,6 @@ def _phase_outputs_for_state(mission_state: Mapping[str, Any], phase: str) -> tu
         return _normalize_strings(mission_state.get("produced_outputs") or mission_state.get("phase_outputs"))
     return ()
 
-
 def _branch_type_for_transition(*, target_phase: str, branch_status: str, recovery_status: str) -> str:
     if recovery_status != "not-needed" or branch_status == "recovery-active":
         return "recovery"
@@ -108,16 +92,6 @@ def _branch_type_for_transition(*, target_phase: str, branch_status: str, recove
     if target_phase in {"execution", "experiment-design"}:
         return "execution"
     return "analysis"
-
-
-def _deep_merge(base: dict[str, Any], updates: Mapping[str, Any]) -> dict[str, Any]:
-    merged = dict(base)
-    for key, value in updates.items():
-        if isinstance(value, Mapping) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge(dict(merged[key]), value)
-        else:
-            merged[key] = value
-    return merged
 
 
 @dataclass(frozen=True)
@@ -180,7 +154,6 @@ class MissionBranchState:
         ensure_valid_contract_payload(payload, kind="mission_branch_record")
         return payload
 
-
 @dataclass(frozen=True)
 class PendingMissionAction:
     role: str
@@ -234,7 +207,6 @@ class PendingMissionAction:
             ),
         )
 
-
 @dataclass(frozen=True)
 class MissionEvidence:
     produced_outputs: tuple[str, ...] = ()
@@ -263,7 +235,6 @@ class MissionEvidence:
             failure_count=int(payload.get("failure_count", 0) or 0),
         )
 
-
 class MissionDecisionDirective(str, Enum):
     CONTINUE = "continue-current-phase"
     DISPATCH = "dispatch-executor"
@@ -274,13 +245,11 @@ class MissionDecisionDirective(str, Enum):
     FAIL = "fail"
     COMPLETE = "complete"
 
-
 @dataclass(frozen=True)
 class MissionExecutorDispatch:
     executor_id: MissionExecutorId
     action: MissionExecutorAction
     summary: str
-
 
 @dataclass(frozen=True)
 class MissionTransition:
@@ -296,7 +265,6 @@ class MissionTransition:
             "branch_status": self.branch_status,
             "recovery_status": self.recovery_status,
         }
-
 
 @dataclass(frozen=True)
 class MissionPlannedAction:
@@ -343,7 +311,6 @@ class MissionPlannedAction:
         ensure_valid_contract_payload(payload, kind="mission_action")
         return payload
 
-
 @dataclass(frozen=True)
 class MissionDecisionRecord:
     decision_id: str
@@ -389,7 +356,6 @@ class MissionDecisionRecord:
         ensure_valid_contract_payload(payload, kind="mission_decision")
         return payload
 
-
 @dataclass(frozen=True)
 class MissionDecisionOutcome:
     directive: MissionDecisionDirective
@@ -407,7 +373,6 @@ class MissionDecisionOutcome:
                 self.branch_record.to_payload(mission_id=self.decision.mission_id) if self.branch_record is not None else None
             ),
         }
-
 
 class MissionDecisionEngine:
     def __init__(
@@ -600,7 +565,7 @@ class MissionDecisionEngine:
             }
         )
         raw = evidence if isinstance(evidence, MissionEvidence) else MissionEvidence.from_mapping(evidence)
-        merged = _deep_merge(
+        merged = deep_merge(
             {
                 "produced_outputs": list(base.produced_outputs),
                 "blockers": list(base.blockers),
@@ -616,7 +581,7 @@ class MissionDecisionEngine:
                 "failure_count": state_evidence.failure_count,
             },
         )
-        merged = _deep_merge(
+        merged = deep_merge(
             merged,
             {
                 "produced_outputs": list(raw.produced_outputs),
@@ -764,11 +729,11 @@ class MissionDecisionEngine:
     ) -> MissionPlannedAction:
         scope, requires_operator_approval, _, _ = self._action_authority(mission_state, kind)
         _ = scope
-        action_id = pending_action.action_id or _slug(
+        action_id = pending_action.action_id or slugify(
             f"{mission_state['mission_id']}-{phase}-{pending_action.role}-{kind}",
             fallback="mission-action",
         )
-        decision_id = _slug(f"{mission_state['mission_id']}-{phase}-{kind}", fallback="mission-decision")
+        decision_id = slugify(f"{mission_state['mission_id']}-{phase}-{kind}", fallback="mission-decision")
         requires = pending_action.requires_operator_approval
         if requires is None:
             requires = requires_operator_approval
@@ -1104,7 +1069,7 @@ class MissionDecisionEngine:
         recovery_status = str(transition_meta.get("recovery_status", "not-needed"))
         decision_type = str(transition_meta.get("decision_type", "phase-transition"))
         role = _default_role_for_phase(to_phase)
-        decision_id = _slug(f"{mission_id}-{from_phase}-{to_phase}-{directive.value}", fallback="mission-decision")
+        decision_id = slugify(f"{mission_id}-{from_phase}-{to_phase}-{directive.value}", fallback="mission-decision")
         summary = str(transition_meta.get("summary") or f"Advance the mission from {from_phase} to {to_phase}.")
         if to_phase == "final-report":
             acceptance_blockers = acceptance_criteria_blockers(mission_state)
@@ -1123,7 +1088,7 @@ class MissionDecisionEngine:
                 recovery_status=recovery_status,
             )
             resolved_branch = MissionBranchState(
-                branch_id=_slug(f"{mission_id}-{branch_type}-{to_phase}", fallback="mission-branch"),
+                branch_id=slugify(f"{mission_id}-{branch_type}-{to_phase}", fallback="mission-branch"),
                 branch_type=branch_type,
                 objective=summary,
                 status=branch_status,
@@ -1135,7 +1100,7 @@ class MissionDecisionEngine:
                 notes=(summary,),
             )
         action = MissionPlannedAction(
-            action_id=_slug(f"{mission_id}-{to_phase}-phase-transition", fallback="phase-transition"),
+            action_id=slugify(f"{mission_id}-{to_phase}-phase-transition", fallback="phase-transition"),
             mission_id=mission_id,
             kind=decision_type,
             role=role,
@@ -1201,7 +1166,7 @@ class MissionDecisionEngine:
         kind = _default_kind_for_phase(phase)
         role = _recovery_role_for_missing_outputs(phase, kind=kind, failure_count=failure_count)
         mission_id = str(mission_state["mission_id"])
-        decision_id = _slug(f"{mission_id}-{phase}-missing-outputs", fallback="mission-decision")
+        decision_id = slugify(f"{mission_id}-{phase}-missing-outputs", fallback="mission-decision")
         phase_hint = self._phase_execution_hint(mission_state, phase=phase, missing_outputs=missing_outputs)
         task = (
             f"Close the remaining `{phase}` outputs: {', '.join(missing_outputs)}."
@@ -1228,7 +1193,7 @@ class MissionDecisionEngine:
             produces_outputs = phase_hint.produces_outputs or missing_outputs
             next_phase_on_success = phase_hint.next_phase_on_success
         action = MissionPlannedAction(
-            action_id=_slug(f"{mission_id}-{phase}-missing-outputs", fallback="mission-action"),
+            action_id=slugify(f"{mission_id}-{phase}-missing-outputs", fallback="mission-action"),
             mission_id=mission_id,
             kind=kind,
             role=role,
@@ -1277,9 +1242,9 @@ class MissionDecisionEngine:
         phase = str(mission_state["current_phase"])
         kind = self._resolved_action_kind(mission_state, pending_action, phase)
         mission_id = str(mission_state["mission_id"])
-        decision_id = _slug(f"{mission_id}-{phase}-{branch_record.branch_id}-retry", fallback="mission-decision")
+        decision_id = slugify(f"{mission_id}-{phase}-{branch_record.branch_id}-retry", fallback="mission-decision")
         action = MissionPlannedAction(
-            action_id=pending_action.action_id or _slug(f"{mission_id}-{phase}-retry", fallback="mission-action"),
+            action_id=pending_action.action_id or slugify(f"{mission_id}-{phase}-retry", fallback="mission-action"),
             mission_id=mission_id,
             kind=kind,
             role=pending_action.role,
@@ -1321,7 +1286,7 @@ class MissionDecisionEngine:
     ) -> MissionDecisionOutcome:
         mission_id = str(mission_state["mission_id"])
         phase = str(mission_state["current_phase"])
-        decision_id = _slug(f"{mission_id}-{phase}-{decision_type}-blocked", fallback="mission-decision")
+        decision_id = slugify(f"{mission_id}-{phase}-{decision_type}-blocked", fallback="mission-decision")
         if action is not None and action.decision_id != decision_id:
             action = MissionPlannedAction(
                 action_id=action.action_id,
@@ -1370,7 +1335,7 @@ class MissionDecisionEngine:
     ) -> MissionDecisionOutcome:
         phase = str(mission_state["current_phase"])
         mission_id = str(mission_state["mission_id"])
-        decision_id = _slug(f"{mission_id}-{phase}-failed", fallback="mission-decision")
+        decision_id = slugify(f"{mission_id}-{phase}-failed", fallback="mission-decision")
         notes = tuple(f"missing output: {output}" for output in missing_outputs)
         if failure_count:
             notes += (f"failure_count={failure_count}",)
@@ -1471,7 +1436,7 @@ class MissionDecisionEngine:
             )
         mission_id = str(mission_state["mission_id"])
         phase = str(mission_state["current_phase"])
-        decision_id = _slug(f"{mission_id}-{phase}-complete", fallback="mission-decision")
+        decision_id = slugify(f"{mission_id}-{phase}-complete", fallback="mission-decision")
         return MissionDecisionOutcome(
             directive=MissionDecisionDirective.COMPLETE,
             decision=self._decision_record(
@@ -1494,7 +1459,7 @@ class MissionDecisionEngine:
         action: MissionPlannedAction,
         missing_outputs: tuple[str, ...],
     ) -> MissionDecisionOutcome:
-        decision_id = action.decision_id or _slug(
+        decision_id = action.decision_id or slugify(
             f"{mission_state['mission_id']}-{action.phase}-{decision_type}",
             fallback="mission-decision",
         )
@@ -1717,8 +1682,8 @@ class MissionDecisionEngine:
             summary=f"Tree search {operation} on {target_desc}",
         )
 
-        action_id = _slug(f"{mission_id}-{current_phase}-tree-{operation}", fallback="mission-action")
-        decision_id = _slug(f"{mission_id}-{current_phase}-tree-{operation}", fallback="mission-decision")
+        action_id = slugify(f"{mission_id}-{current_phase}-tree-{operation}", fallback="mission-action")
+        decision_id = slugify(f"{mission_id}-{current_phase}-tree-{operation}", fallback="mission-decision")
 
         action = MissionPlannedAction(
             action_id=action_id,
@@ -1736,6 +1701,10 @@ class MissionDecisionEngine:
         # so it survives across decide() calls
         if isinstance(mission_state, dict):
             mission_state["experiment_tree"] = self._serialize_tree(tree)
+            mission_state["_tree_search_pending"] = {
+                "node_id": node_id,
+                "operation": operation,
+            }
 
         return self._selected_outcome(
             mission_state,
@@ -1745,6 +1714,52 @@ class MissionDecisionEngine:
             action=action,
             missing_outputs=(),
         )
+
+    @staticmethod
+    def apply_tree_search_result(
+        mission_state: dict[str, Any],
+        executor_payload: Mapping[str, Any] | None,
+    ) -> None:
+        """Update the experiment tree in *mission_state* after executor completion.
+
+        Reads the pending tree-search operation and the executor's result to call
+        the appropriate :class:`ExperimentTree` method (draft / improve / debug),
+        then clears the pending marker.
+        """
+        pending = mission_state.pop("_tree_search_pending", None)
+        if not isinstance(pending, dict):
+            return
+        tree_data = mission_state.get("experiment_tree")
+        if not isinstance(tree_data, dict):
+            return
+        tree = MissionDecisionEngine._deserialize_tree(tree_data)
+
+        experiment = (executor_payload or {}).get("experiment_result") if isinstance(executor_payload, Mapping) else None
+        if not isinstance(experiment, Mapping):
+            experiment = {}
+
+        code = str(experiment.get("code") or "")
+        plan = str(experiment.get("plan") or "")
+        metric = experiment.get("metric")
+        is_buggy = bool(experiment.get("is_buggy", False))
+        node_id = str(pending.get("node_id") or "")
+        operation = str(pending.get("operation") or "")
+
+        if operation == "draft":
+            new_id = tree.draft(code, plan)
+            if new_id in tree.nodes and metric is not None:
+                tree.nodes[new_id].metric = float(metric)
+            if is_buggy and new_id in tree.nodes:
+                tree.nodes[new_id].is_buggy = True
+        elif operation == "improve" and node_id and node_id in tree.nodes:
+            tree.improve(node_id, code, plan, float(metric) if metric is not None else 0.0)
+        elif operation == "debug" and node_id and node_id in tree.nodes:
+            if is_buggy:
+                tree.nodes[node_id].is_buggy = True
+            else:
+                tree.debug(node_id, code, plan)
+
+        mission_state["experiment_tree"] = MissionDecisionEngine._serialize_tree(tree)
 
     def _decision_record(
         self,
@@ -1782,7 +1797,6 @@ class MissionDecisionEngine:
             notes=notes,
         )
 
-
 def decide_next_mission_action(
     mission_state: Mapping[str, Any],
     *,
@@ -1790,3 +1804,11 @@ def decide_next_mission_action(
     engine: MissionDecisionEngine | None = None,
 ) -> MissionDecisionOutcome:
     return (engine or MissionDecisionEngine()).decide(mission_state, evidence=evidence)
+
+
+def apply_tree_search_result(
+    mission_state: dict[str, Any],
+    executor_payload: Mapping[str, Any] | None,
+) -> None:
+    """Module-level wrapper for :meth:`MissionDecisionEngine.apply_tree_search_result`."""
+    MissionDecisionEngine.apply_tree_search_result(mission_state, executor_payload)

@@ -8,10 +8,7 @@ import shlex
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 from typing import Any
-
-import yaml
 
 from deeploop.core.paths import (
     EXPECTED_EXTERNAL_DIRS,
@@ -21,31 +18,28 @@ from deeploop.core.paths import (
     ensure_expected_external_dirs,
     workspace_root_source,
 )
+from deeploop.core.structured_io import load_yaml_mapping
 
 _PROVIDER_SETUP_REGISTRY_PATH = REPO_ROOT / "configs" / "runtime" / "provider-setup-registry.yaml"
 _PROVIDER_SELECTION_REGISTRY_PATH = REPO_ROOT / "configs" / "runtime" / "provider-selection-registry.yaml"
 _DEFAULT_FIRST_RUN_SELECTION_PROFILE = "deepseek-chat-control-plane"
 _COMMAND_CHECK_TIMEOUT_SECONDS = 20
 
-
 def _check_python_version() -> tuple[bool, str]:
     major, minor = sys.version_info[:2]
     supported = (major, minor) >= (3, 11)
     return supported, f"detected {major}.{minor}; required >= 3.11"
-
 
 def _check_operating_system() -> tuple[bool, str]:
     system = platform.system()
     supported = system == "Linux"
     return supported, f"detected {system}; supported public bootstrap contract is Linux"
 
-
 def _check_workspace_root() -> tuple[bool, str]:
     if not WORKSPACE_ROOT.exists():
         return False, f"workspace root is missing: {WORKSPACE_ROOT}"
     writable = os.access(WORKSPACE_ROOT, os.W_OK)
     return writable, f"workspace root `{WORKSPACE_ROOT}` is {'writable' if writable else 'not writable'}"
-
 
 def _check_external_dirs() -> tuple[bool, str]:
     missing = [str(path) for path in EXPECTED_EXTERNAL_DIRS if not path.exists()]
@@ -56,7 +50,6 @@ def _check_external_dirs() -> tuple[bool, str]:
         return False, f"workspace dirs are not writable: {', '.join(unwritable[:4])}"
     return True, f"validated {len(EXPECTED_EXTERNAL_DIRS)} writable workspace dirs under `{WORKSPACE_ROOT}`"
 
-
 def validate_public_bootstrap_environment() -> dict[str, tuple[bool, str]]:
     return {
         "python_version": _check_python_version(),
@@ -64,7 +57,6 @@ def validate_public_bootstrap_environment() -> dict[str, tuple[bool, str]]:
         "workspace_root": _check_workspace_root(),
         "external_dirs": _check_external_dirs(),
     }
-
 
 def _preflight_payload() -> dict[str, object]:
     checks = validate_public_bootstrap_environment()
@@ -75,7 +67,6 @@ def _preflight_payload() -> dict[str, object]:
             for name, (passed, message) in checks.items()
         },
     }
-
 
 def _render_preflight_report(payload: dict[str, object]) -> str:
     checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
@@ -88,16 +79,8 @@ def _render_preflight_report(payload: dict[str, object]) -> str:
         lines.append(f"- {name}: {symbol} — {report.get('message')}")
     return "\n".join(lines)
 
-
-def _load_yaml_mapping(path: Path) -> dict[str, Any]:
-    loaded = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(loaded, dict):
-        raise ValueError(f"Expected YAML mapping at {path}")
-    return loaded
-
-
 def _selection_profile_record(selection_profile: str) -> dict[str, Any]:
-    registry = _load_yaml_mapping(_PROVIDER_SELECTION_REGISTRY_PATH)
+    registry = load_yaml_mapping(_PROVIDER_SELECTION_REGISTRY_PATH)
     profiles = registry.get("selection_profiles") if isinstance(registry.get("selection_profiles"), dict) else {}
     record = profiles.get(selection_profile)
     if not isinstance(record, dict):
@@ -106,15 +89,13 @@ def _selection_profile_record(selection_profile: str) -> dict[str, Any]:
         )
     return record
 
-
 def _provider_setup_record(provider_family: str) -> dict[str, Any]:
-    registry = _load_yaml_mapping(_PROVIDER_SETUP_REGISTRY_PATH)
+    registry = load_yaml_mapping(_PROVIDER_SETUP_REGISTRY_PATH)
     families = registry.get("provider_families") if isinstance(registry.get("provider_families"), dict) else {}
     record = families.get(provider_family)
     if not isinstance(record, dict):
         raise ValueError(f"Unknown provider family `{provider_family}` in {_PROVIDER_SETUP_REGISTRY_PATH}.")
     return record
-
 
 def _resolve_provider_target(
     *,
@@ -147,14 +128,12 @@ def _resolve_provider_target(
         raise ValueError("Provide --provider-family or --selection-profile.")
     return resolved_provider_family, resolved_profile, _provider_setup_record(resolved_provider_family)
 
-
 def _trim_process_output(stdout: str, stderr: str, *, limit: int = 200) -> str:
     combined = " ".join(part.strip() for part in (stdout, stderr) if part.strip())
     collapsed = " ".join(combined.split())
     if len(collapsed) <= limit:
         return collapsed
     return collapsed[: limit - 1].rstrip() + "…"
-
 
 def _resolve_registry_command(command: str) -> list[str]:
     tokens = shlex.split(command)
@@ -165,7 +144,6 @@ def _resolve_registry_command(command: str) -> list[str]:
         if len(tokens) > 1 and tokens[1].startswith("scripts/"):
             tokens[1] = str((REPO_ROOT / tokens[1]).resolve())
     return tokens
-
 
 def _command_check(command: str) -> dict[str, Any]:
     try:
@@ -207,7 +185,6 @@ def _command_check(command: str) -> dict[str, Any]:
         "message": message,
     }
 
-
 def _python_import_check(modules: list[str]) -> dict[str, Any]:
     module_list = [str(module).strip() for module in modules if str(module).strip()]
     command = [
@@ -244,7 +221,6 @@ def _python_import_check(modules: list[str]) -> dict[str, Any]:
         "passed": completed.returncode == 0,
         "message": message,
     }
-
 
 def _automated_readiness_checks(provider_record: dict[str, Any]) -> list[dict[str, Any]]:
     readiness = (
@@ -295,7 +271,6 @@ def _automated_readiness_checks(provider_record: dict[str, Any]) -> list[dict[st
             checks.append(check)
     return checks
 
-
 def _required_tool_checks(provider_record: dict[str, Any]) -> list[dict[str, Any]]:
     raw_tools = provider_record.get("required_tools") if isinstance(provider_record.get("required_tools"), list) else []
     checks: list[dict[str, Any]] = []
@@ -321,7 +296,6 @@ def _required_tool_checks(provider_record: dict[str, Any]) -> list[dict[str, Any
         )
     return checks
 
-
 def _manual_readiness_notes(provider_record: dict[str, Any]) -> list[str]:
     notes: list[str] = []
     for key in ("auth_prerequisites",):
@@ -340,7 +314,6 @@ def _manual_readiness_notes(provider_record: dict[str, Any]) -> list[str]:
             deduped.append(note)
     return deduped
 
-
 def build_provider_ready_command(
     *,
     provider_family: str | None = None,
@@ -352,7 +325,6 @@ def build_provider_ready_command(
     elif provider_family:
         command.extend(["--provider-family", provider_family])
     return shlex.join(command)
-
 
 def _next_provider_setup_step(provider_family: str, failed_checks: list[dict[str, Any]]) -> str:
     failed_env = next((check for check in failed_checks if check.get("kind") == "env"), None)
@@ -371,7 +343,6 @@ def _next_provider_setup_step(provider_family: str, failed_checks: list[dict[str
         tools = ", ".join(dict.fromkeys(name for name in failed_tool_names if name))
         return f"Install the required tool(s) for this provider family: {tools}."
     return "Complete the documented machine-level provider setup for this provider family."
-
 
 def check_provider_readiness(
     *,
@@ -427,7 +398,6 @@ def check_provider_readiness(
         "manual_notes": manual_notes,
     }
 
-
 def render_provider_ready_report(report: dict[str, Any]) -> str:
     lines = [
         "# DeepLoop provider readiness",
@@ -463,14 +433,12 @@ def render_provider_ready_report(report: dict[str, Any]) -> str:
         lines.extend(f"- {note}" for note in manual_notes)
     return "\n".join(lines) + "\n"
 
-
 def _add_setup_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Emit the scaffold result as JSON.")
     parser.add_argument(
         "--yes", action="store_true",
         help="Skip the confirmation prompt and create directories immediately.",
     )
-
 
 def _setup_workspace(args: argparse.Namespace) -> int:
     source, hint = workspace_root_source()
@@ -533,10 +501,8 @@ def _setup_workspace(args: argparse.Namespace) -> int:
     print("\n".join(lines))
     return 0
 
-
 def _add_preflight_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Emit the preflight report as JSON.")
-
 
 def _preflight(args: argparse.Namespace) -> int:
     payload = _preflight_payload()
@@ -550,7 +516,6 @@ def _preflight(args: argparse.Namespace) -> int:
     else:
         print(_render_preflight_report(payload))
     return 0 if all_passed else 1
-
 
 def _add_provider_ready_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
@@ -571,7 +536,6 @@ def _add_provider_ready_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--json", action="store_true", help="Emit the readiness report as JSON.")
 
-
 def _provider_ready(args: argparse.Namespace) -> int:
     report = check_provider_readiness(
         provider_family=getattr(args, "provider_family", None),
@@ -584,7 +548,6 @@ def _provider_ready(args: argparse.Namespace) -> int:
         print(render_provider_ready_report(report), end="")
     return 0 if report["status"] == "ready" else 1
 
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Validate the installed DeepLoop public bootstrap environment.",
@@ -593,7 +556,6 @@ def main(argv: list[str] | None = None) -> int:
     _add_preflight_args(parser)
     args = parser.parse_args(argv)
     return _preflight(args)
-
 
 __all__ = [
     "main",

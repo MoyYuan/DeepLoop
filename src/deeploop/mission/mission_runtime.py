@@ -15,13 +15,14 @@ from deeploop.autonomy.mission_contract_snapshot import resolve_phase_contract_f
 from deeploop.core.ledger import now_utc
 from deeploop.core.paths import REPO_ROOT
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects, write_json_object, write_markdown
+from deeploop.core.shared import deep_merge, normalize_strings as _normalize_strings
 from deeploop.mission.agent_dialogue import AgentDialogue
 from deeploop.autonomy.operator_inbox import (
     append_operator_request,
     clear_current_operator_request,
     ensure_operator_inbox_contract,
 )
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE
 from deeploop.mission._operator_surface import management_commands as _public_management_commands
 from deeploop.mission.mission_decision_engine import (
     MissionDecisionDirective,
@@ -29,6 +30,7 @@ from deeploop.mission.mission_decision_engine import (
     MissionEvidence,
     MissionExecutorDispatch,
     MissionPlannedAction,
+    apply_tree_search_result,
     decide_next_mission_action,
 )
 from deeploop.mission._runtime_contract import _append_contract_record, _outer_loop_contract
@@ -70,11 +72,9 @@ DEFAULT_RUNTIME_DIR_NAME = "mission_outer_runtime"
 _TERMINAL_RUNTIME_STATUSES = {"completed", "blocked", "failed", "max-iterations"}
 _INVOKE_PROVIDER_PROMPT_SCRIPT = REPO_ROOT / "scripts" / "runtime" / "invoke_provider_prompt.py"
 
-
 # ---------------------------------------------------------------------------
 # Composable stop conditions
 # ---------------------------------------------------------------------------
-
 
 @dataclass
 class StopCondition:
@@ -100,7 +100,6 @@ class StopCondition:
     May be a static string or a template that can be formatted with
     condition-specific values at runtime.
     """
-
 
 def check_stop_conditions(
     mission_state: dict[str, Any],
@@ -132,7 +131,6 @@ def check_stop_conditions(
             # A misbehaving condition should not crash the loop
             continue
     return False, None
-
 
 def default_stop_conditions(
     max_iterations: int,
@@ -225,7 +223,6 @@ def default_stop_conditions(
 
     return conditions
 
-
 # ---------------------------------------------------------------------------
 # Token & cost stop condition factories
 # ---------------------------------------------------------------------------
@@ -235,7 +232,6 @@ _MODEL_PRICING: dict[str, dict[str, float]] = {
     "deepseek-reasoner": {"input": 0.55, "output": 2.19},
 }
 
-
 def tokenCountIs(max_tokens: int) -> StopCondition:
     """Stop when total_tokens across all calls reaches *max_tokens*."""
     return StopCondition(
@@ -243,7 +239,6 @@ def tokenCountIs(max_tokens: int) -> StopCondition:
         check=lambda _ms, rs: int(rs.get("total_tokens", 0)) >= max_tokens,
         reason=f"Total token usage reached the configured limit of {max_tokens}.",
     )
-
 
 def inputTokenCountIs(max_tokens: int) -> StopCondition:
     """Stop when total_input_tokens reaches *max_tokens*."""
@@ -253,7 +248,6 @@ def inputTokenCountIs(max_tokens: int) -> StopCondition:
         reason=f"Input token usage reached the configured limit of {max_tokens}.",
     )
 
-
 def outputTokenCountIs(max_tokens: int) -> StopCondition:
     """Stop when total_output_tokens reaches *max_tokens*."""
     return StopCondition(
@@ -262,7 +256,6 @@ def outputTokenCountIs(max_tokens: int) -> StopCondition:
         reason=f"Output token usage reached the configured limit of {max_tokens}.",
     )
 
-
 def costIs(max_cost_usd: float) -> StopCondition:
     """Stop when accumulated_cost reaches *max_cost_usd*."""
     return StopCondition(
@@ -270,7 +263,6 @@ def costIs(max_cost_usd: float) -> StopCondition:
         check=lambda _ms, rs: float(rs.get("accumulated_cost", 0.0)) >= max_cost_usd,
         reason=f"Accumulated cost exceeded the configured limit of ${max_cost_usd:.2f}.",
     )
-
 
 def accumulate_cost(runtime_state: dict, model: str, input_tokens: int, output_tokens: int) -> float:
     """Accumulate estimated cost into runtime_state and return the new total.
@@ -296,22 +288,8 @@ def accumulate_cost(runtime_state: dict, model: str, input_tokens: int, output_t
     runtime_state["accumulated_cost"] = new_total
     return new_total
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return load_json_object(path)
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return load_jsonl_objects(path, missing_ok=True)
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_object(path, payload)
-
-
 def _write_markdown(path: Path, lines: list[str]) -> None:
     write_markdown(path, lines)
-
 
 def _jsonify(value: Any) -> Any:
     if isinstance(value, Path):
@@ -322,41 +300,23 @@ def _jsonify(value: Any) -> Any:
         return [_jsonify(item) for item in value]
     return value
 
-
-def _deep_merge(base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
     merged = dict(base)
     for key, value in updates.items():
         if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge(dict(merged[key]), value)
+            merged[key] = deep_merge(dict(merged[key]), value)
         else:
             merged[key] = value
     return merged
-
-
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        value = raw.strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
-
 
 def _branch_records_from_log(path: Path | None) -> list[dict[str, Any]]:
     if path is None or not path.exists():
         return []
     latest_by_branch: dict[str, dict[str, Any]] = {}
-    for record in _load_jsonl(path):
+    for record in load_jsonl_objects(path, missing_ok=True):
         branch_id = record.get("branch_id")
         if isinstance(branch_id, str) and branch_id:
             latest_by_branch[branch_id] = record
     return list(latest_by_branch.values())
-
 
 def gather_mission_evidence(
     mission_state_path: Path,
@@ -385,13 +345,11 @@ def gather_mission_evidence(
         }
     )
 
-
 # ---------------------------------------------------------------------------
 # Agent dialogue helpers (critique / experiment-design phases)
 # ---------------------------------------------------------------------------
 
 _DIALOGUE_PHASES = frozenset({"experiment-design", "critique"})
-
 
 def _dialogue_roles_for_phase(phase: str) -> list[str]:
     """Return the agent roles for a dialogue-enabled phase."""
@@ -400,7 +358,6 @@ def _dialogue_roles_for_phase(phase: str) -> list[str]:
     if phase == "critique":
         return ["execution-operator", "critic-verifier"]
     return []
-
 
 def _maybe_init_agent_dialogue(mission_state: dict[str, Any], to_phase: str) -> None:
     """Create an ``AgentDialogue`` when entering a dialogue-enabled phase.
@@ -423,7 +380,6 @@ def _maybe_init_agent_dialogue(mission_state: dict[str, Any], to_phase: str) -> 
     )
     mission_state["agent_dialogue"] = dialogue.to_dict()
 
-
 def _record_dialogue_turn(
     mission_state: dict[str, Any],
     *,
@@ -439,7 +395,6 @@ def _record_dialogue_turn(
     dialogue.add_turn(role=role, content=content, artifacts=artifacts)
     mission_state["agent_dialogue"] = dialogue.to_dict()
 
-
 def _dialogue_summary_for_action(mission_state: dict[str, Any]) -> str:
     """Return the dialogue protocol message + summary for injection into a task description.
 
@@ -453,10 +408,8 @@ def _dialogue_summary_for_action(mission_state: dict[str, Any]) -> str:
     protocol = dialogue.protocol_message(role=first_role, message_type="DIALOGUE")
     return f"\n\n## Agent Dialogue Context\n\n{dialogue.summary()}\n\n{protocol}"
 
-
 def _phase_transitions(phase: str, *, mission_state: Mapping[str, Any] | None = None) -> list[str]:
     return _normalize_strings(resolve_phase_contract_for_state(phase, mission_state=mission_state).get("transitions"))
-
 
 def _next_phase_for(
     current_phase: str,
@@ -471,11 +424,9 @@ def _next_phase_for(
         return transitions[0]
     return current_phase
 
-
 def _append_unique(values: list[str], item: str) -> None:
     if item and item not in values:
         values.append(item)
-
 
 def _merge_outputs(mission_state: dict[str, Any], *, phase: str, outputs: list[str]) -> None:
     if not outputs:
@@ -494,12 +445,10 @@ def _merge_outputs(mission_state: dict[str, Any], *, phase: str, outputs: list[s
         mission_state["produced_outputs"] = current_outputs
         mission_state["phase_outputs"] = current_outputs
 
-
 def _snapshot_phase_outputs(mission_state: dict[str, Any], phase: str) -> None:
     outputs = _normalize_strings(mission_state.get("produced_outputs") or mission_state.get("phase_outputs"))
     if outputs:
         _merge_outputs(mission_state, phase=phase, outputs=outputs)
-
 
 def _apply_phase_change(
     mission_state: dict[str, Any],
@@ -537,7 +486,6 @@ def _apply_phase_change(
         current_outputs = _normalize_strings(phase_outputs.get(resolved_to_phase))
     mission_state["produced_outputs"] = current_outputs
     mission_state["phase_outputs"] = current_outputs
-
 
 def _serialized_executor(executor_action: MissionExecutorAction) -> dict[str, Any]:
     if isinstance(executor_action, RecursiveAgentExecutorAction):
@@ -594,20 +542,17 @@ def _serialized_executor(executor_action: MissionExecutorAction) -> dict[str, An
         }
     raise TypeError(f"Unsupported mission executor action type: {type(executor_action).__name__}")
 
-
 def _action_payload(action: MissionPlannedAction) -> dict[str, Any]:
     payload = action.to_payload()
     if action.executor_dispatch is not None:
         payload["executor"] = _serialized_executor(action.executor_dispatch.action)
     return payload
 
-
 def _find_action(actions: list[dict[str, Any]], action_id: str) -> tuple[int, dict[str, Any] | None]:
     for index, action in enumerate(actions):
         if str(action.get("action_id") or "") == action_id:
             return index, action
     return -1, None
-
 
 def _upsert_selected_action(
     mission_state: dict[str, Any],
@@ -635,7 +580,6 @@ def _upsert_selected_action(
     next_actions["source_decision_id"] = action.decision_id
     next_actions["summary"] = summary
     return payload
-
 
 def _update_action_result(
     mission_state: dict[str, Any],
@@ -670,7 +614,6 @@ def _update_action_result(
         updated["notes"] = merged_notes
     actions[index] = updated
     return updated
-
 
 def _stage_managed_recovery_action(
     mission_state: dict[str, Any],
@@ -746,7 +689,6 @@ def _stage_managed_recovery_action(
     mission_state["automatic_recovery"] = record
     return record
 
-
 def _attach_managed_recovery_to_request(request: dict[str, Any], recovery_record: Mapping[str, Any]) -> dict[str, Any]:
     updated = dict(request)
     recommendation = dict(updated.get("recommendation")) if isinstance(updated.get("recommendation"), Mapping) else {}
@@ -765,7 +707,6 @@ def _attach_managed_recovery_to_request(request: dict[str, Any], recovery_record
     ).strip()
     return updated
 
-
 def _payload_phase_control(payload: Mapping[str, Any]) -> dict[str, Any]:
     phase_control = payload.get("phase_control")
     if isinstance(phase_control, Mapping):
@@ -775,7 +716,6 @@ def _payload_phase_control(payload: Mapping[str, Any]) -> dict[str, Any]:
         return dict(latest_outcome["phase_control"])
     return {}
 
-
 def _payload_state_updates(payload: Mapping[str, Any]) -> dict[str, Any]:
     updates = payload.get("mission_state_updates")
     if isinstance(updates, Mapping):
@@ -784,7 +724,6 @@ def _payload_state_updates(payload: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(latest_outcome, Mapping) and isinstance(latest_outcome.get("mission_state_updates"), Mapping):
         return dict(latest_outcome["mission_state_updates"])
     return {}
-
 
 def _resolved_executor_current_phase(
     updated_state: Mapping[str, Any],
@@ -809,16 +748,13 @@ def _resolved_executor_current_phase(
         return next_phase
     return raw_phase or current_phase
 
-
 def _bootstrap_mapping(mission_state: Mapping[str, Any]) -> dict[str, Any]:
     bootstrap = mission_state.get("bootstrap")
     return dict(bootstrap) if isinstance(bootstrap, Mapping) else {}
 
-
 def _bootstrap_followup_planner(bootstrap: Mapping[str, Any]) -> dict[str, Any]:
     planner = bootstrap.get("followup_planner")
     return dict(planner) if isinstance(planner, Mapping) else {}
-
 
 def _provider_pythonpath(values: Any, *, base_dir: Path) -> tuple[Path, ...]:
     if values is None:
@@ -838,7 +774,6 @@ def _provider_pythonpath(values: Any, *, base_dir: Path) -> tuple[Path, ...]:
         resolved.append(path)
     return tuple(resolved)
 
-
 @contextmanager
 def _temporary_sys_path(paths: tuple[Path, ...]) -> Any:
     import sys
@@ -855,7 +790,6 @@ def _temporary_sys_path(paths: tuple[Path, ...]) -> Any:
         for text in inserted:
             if text in sys.path:
                 sys.path.remove(text)
-
 
 def _resolve_followup_planner(
     mission_state: Mapping[str, Any],
@@ -879,7 +813,6 @@ def _resolve_followup_planner(
         pythonpath = _provider_pythonpath(planner_pythonpath, base_dir=repo_root)
     return entrypoint, params, pythonpath
 
-
 def _invoke_followup_planner(
     mission_state_path: Path,
     mission_state: Mapping[str, Any],
@@ -897,7 +830,6 @@ def _invoke_followup_planner(
     if not isinstance(result, dict):
         raise ValueError(f"Follow-up planner `{entrypoint}` must return a dict payload.")
     return result
-
 
 def _maybe_stage_bootstrap_followups(
     mission_state_path: Path,
@@ -924,7 +856,6 @@ def _maybe_stage_bootstrap_followups(
     reloaded_state["bootstrap"] = reloaded_bootstrap
     return reloaded_state, "Baseline queue completed; staged canonical follow-up runtime automatically."
 
-
 def _mission_state_updates_from_executor(
     mission_state: dict[str, Any],
     *,
@@ -935,7 +866,7 @@ def _mission_state_updates_from_executor(
     output_paths = [str(path) for path in result.artifacts.values()]
     payload_updates = _payload_state_updates(result.payload)
     if payload_updates:
-        updated_state = _deep_merge(updated_state, _jsonify(payload_updates))
+        updated_state = deep_merge(updated_state, _jsonify(payload_updates))
     phase_control = _payload_phase_control(result.payload)
     latest_outcome = result.payload.get("latest_outcome")
     from_phase = str(updated_state.get("current_phase") or action_payload.get("phase") or "")
@@ -979,7 +910,6 @@ def _mission_state_updates_from_executor(
             output_paths.extend(_normalize_strings(action_result.get("output_paths")))
     return updated_state, action_status, output_paths
 
-
 def _should_continue_after_recursive_executor_failure(
     *,
     result: MissionExecutionResult,
@@ -996,10 +926,8 @@ def _should_continue_after_recursive_executor_failure(
         return False
     return True
 
-
 def _record_history(runtime_root: Path, payload: dict[str, Any]) -> None:
     _record_history_impl(runtime_root, payload)
-
 
 def _write_state(
     mission_state_path: Path,
@@ -1027,7 +955,6 @@ def _write_state(
         sync_operator_inbox=_sync_operator_inbox,
     )
 
-
 def _record_ledger(
     mission_state_path: Path,
     *,
@@ -1050,7 +977,6 @@ def _record_ledger(
         metadata=metadata,
         jsonify=_jsonify,
     )
-
 
 def _record_selected_outcome(
     mission_state_path: Path,
@@ -1143,11 +1069,9 @@ def _record_selected_outcome(
         },
     )
 
-
 def _management_commands(mission_state_path: Path) -> dict[str, str]:
     commands = _public_management_commands(mission_state_path)
     return {name: commands[name] for name in ("status", "logs", "decisions", "inbox", "resume", "triage")}
-
 
 def _build_runtime_triage_prompt(
     *,
@@ -1163,7 +1087,7 @@ def _build_runtime_triage_prompt(
     blocker = request.get("blocker") if isinstance(request.get("blocker"), Mapping) else {}
     recommendation = request.get("recommendation") if isinstance(request.get("recommendation"), Mapping) else {}
     ledger_path = Path(str(snapshot.get("artifacts", {}).get("ledger_path") or "")).expanduser().resolve()
-    recent_ledger = _load_jsonl(ledger_path)[-6:] if ledger_path.exists() else []
+    recent_ledger = load_jsonl_objects(ledger_path, missing_ok=True)[-6:] if ledger_path.exists() else []
 
     lines = [
         "# DeepLoop automatic bounded triage",
@@ -1232,7 +1156,6 @@ def _build_runtime_triage_prompt(
     )
     return "\n".join(lines) + "\n"
 
-
 def _normalized_runtime_triage_result(payload: dict[str, Any]) -> dict[str, Any]:
     status_aliases = {"complete": "completed", "completed": "completed", "blocked": "blocked", "failed": "failed"}
     status = status_aliases.get(str(payload.get("status") or "").strip().lower(), "")
@@ -1257,7 +1180,6 @@ def _normalized_runtime_triage_result(payload: dict[str, Any]) -> dict[str, Any]
         else [],
     }
 
-
 def _should_auto_run_bounded_triage(
     request: Mapping[str, Any],
     *,
@@ -1271,7 +1193,6 @@ def _should_auto_run_bounded_triage(
     if not isinstance(blocked_entries, list) or not blocked_entries:
         return False
     return str(contract.get("intervention_profile") or "") == "hook-enabled"
-
 
 def _run_bounded_triage_before_escalation(
     mission_state_path: Path,
@@ -1330,7 +1251,7 @@ def _run_bounded_triage_before_escalation(
     log_path.write_text((completed.stdout or "") + (completed.stderr or ""), encoding="utf-8")
     if result_json_path.exists():
         try:
-            triage_result = _normalized_runtime_triage_result(_load_json(result_json_path))
+            triage_result = _normalized_runtime_triage_result(load_json_object(result_json_path))
         except Exception as exc:
             triage_result = {
                 "status": "failed",
@@ -1366,7 +1287,7 @@ def _run_bounded_triage_before_escalation(
         "returncode": completed.returncode,
         "auto_invoked": True,
     }
-    _write_json(report_json_path, summary)
+    write_json_object(report_json_path, summary)
     _record_ledger(
         mission_state_path,
         mission_state=dict(mission_state),
@@ -1383,7 +1304,6 @@ def _run_bounded_triage_before_escalation(
         },
     )
     return summary
-
 
 def _attach_auto_triage_to_request(request: dict[str, Any], triage_summary: Mapping[str, Any]) -> dict[str, Any]:
     result = triage_summary.get("result") if isinstance(triage_summary.get("result"), Mapping) else {}
@@ -1422,7 +1342,6 @@ def _attach_auto_triage_to_request(request: dict[str, Any], triage_summary: Mapp
     updated["explanation"] = f"{explanation} {triage_note}".strip()
     return updated
 
-
 def _hard_gate_event(
     mission_state: Mapping[str, Any],
     executor_payload: Mapping[str, Any] | None,
@@ -1437,7 +1356,6 @@ def _hard_gate_event(
         if str(candidate.get("gate") or "") == "hard":
             return dict(candidate)
     return None
-
 
 def _operator_guidance(
     *,
@@ -1544,7 +1462,6 @@ def _operator_guidance(
         ]
     _ = reason
     return recommendation, alternatives
-
 
 def _build_operator_request(
     mission_state_path: Path,
@@ -1727,7 +1644,6 @@ def _build_operator_request(
         "continue_command": commands["resume"],
     }
 
-
 def _sync_operator_inbox(
     mission_state_path: Path,
     mission_state: dict[str, Any],
@@ -1806,7 +1722,6 @@ def _sync_operator_inbox(
     runtime_state["current_operator_request_id"] = request["request_id"]
     return request
 
-
 def _sync_branch_state(mission_state: dict[str, Any], branch_payload: dict[str, Any] | None) -> None:
     if not isinstance(branch_payload, dict):
         return
@@ -1821,7 +1736,6 @@ def _sync_branch_state(mission_state: dict[str, Any], branch_payload: dict[str, 
     if not replaced:
         branch_records.append(branch_payload)
     mission_state["branch_records"] = branch_records
-
 
 def _stop_status(
     mission_state: dict[str, Any],
@@ -1849,7 +1763,6 @@ def _stop_status(
     elif status == "max-iterations":
         mission_state["status"] = "paused"
 
-
 def _refresh_completed_mission_package(
     mission_state_path: Path,
     mission_state: dict[str, Any],
@@ -1866,7 +1779,6 @@ def _refresh_completed_mission_package(
         output_root=package_root.parent,
     )
 
-
 def _handle_complete_directive(
     mission_state: dict[str, Any],
     runtime_state: dict[str, Any],
@@ -1874,14 +1786,12 @@ def _handle_complete_directive(
 ) -> None:
     _stop_status(mission_state, runtime_state=runtime_state, status="completed", reason=terminal_reason)
 
-
 def _handle_fail_directive(
     mission_state: dict[str, Any],
     runtime_state: dict[str, Any],
     terminal_reason: str,
 ) -> None:
     _stop_status(mission_state, runtime_state=runtime_state, status="failed", reason=terminal_reason)
-
 
 def _handle_block_directive(
     mission_state: dict[str, Any],
@@ -1898,7 +1808,6 @@ def _handle_block_directive(
         )
     _stop_status(mission_state, runtime_state=runtime_state, status="blocked", reason=terminal_reason)
     return "blocked"
-
 
 def _handle_transition_directive(
     mission_state: dict[str, Any],
@@ -1943,7 +1852,6 @@ def _handle_transition_directive(
     runtime_state["status"] = "running"
     runtime_state["terminal_reason"] = None
     return outcome.directive.value
-
 
 def _handle_dispatch_failure(
     resolved_state_path: Path,
@@ -2013,7 +1921,6 @@ def _handle_dispatch_failure(
     )
     return terminal_reason
 
-
 def _handle_dispatch_success(
     resolved_state_path: Path,
     mission_state: dict[str, Any],
@@ -2051,6 +1958,8 @@ def _handle_dispatch_success(
         stage_runs = updated_state.setdefault("stage_runs", {})
         stage_id = str(result.payload.get("stage_id") or outcome.action.action_id)
         stage_runs[stage_id] = _jsonify(result.payload)
+    if updated_state.get("_tree_search_pending"):
+        apply_tree_search_result(updated_state, result.payload)
     gate_event = result.payload.get("gate_event") if isinstance(result.payload.get("gate_event"), Mapping) else None
     if (
         str(result.status) == "deferred"
@@ -2209,7 +2118,6 @@ def _handle_dispatch_success(
     )
     return raw_outcome_status, terminal_reason, executor_payload, return_state, False
 
-
 def _handle_dispatch_directive(
     resolved_state_path: Path,
     mission_state: dict[str, Any],
@@ -2253,7 +2161,6 @@ def _handle_dispatch_directive(
             resolved_state_path, mission_state, runtime_state, runtime_root_path,
             outcome, action_payload, contract, dispatch, result,
         )
-
 
 def run_mission(
     mission_state_path: Path,
@@ -2429,6 +2336,7 @@ def run_mission(
             "branch_id": outcome.branch_record.branch_id if outcome.branch_record is not None else None,
             "outcome_status": raw_outcome_status,
             "mission_status": mission_state.get("status"),
+            "executor_id": runtime_state.get("last_executor_id"),
         }
         _record_history(runtime_root_path, history_entry)
         _write_state(

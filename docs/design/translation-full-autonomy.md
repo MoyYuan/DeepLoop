@@ -38,10 +38,10 @@ canonical path, not as the primary runtime.
 The recommended long-run translation pilot surface is now:
 
 1. `python scripts/mission/init_mission.py --config ~/workspaces/repos/translation-pilot/.deeploop/missions/translation-long-run.yaml --force`
-2. `python scripts/mission/manage_mission.py start --mission-state ~/workspaces/runs/deeploop/missions/translation-long-run-mission/mission_state.json`
-3. `python scripts/mission/manage_mission.py status --mission-state ~/workspaces/runs/deeploop/missions/translation-long-run-mission/mission_state.json`
-4. `python scripts/mission/manage_mission.py inbox --mission-state ~/workspaces/runs/deeploop/missions/translation-long-run-mission/mission_state.json`
-5. `python scripts/mission/manage_mission.py resume --mission-state ~/workspaces/runs/deeploop/missions/translation-long-run-mission/mission_state.json`
+2. `python scripts/mission/manage_mission.py start --mission-state ~/.deeploop/runs/deeploop/missions/translation-long-run-mission/mission_state.json`
+3. `python scripts/mission/manage_mission.py status --mission-state ~/.deeploop/runs/deeploop/missions/translation-long-run-mission/mission_state.json`
+4. `python scripts/mission/manage_mission.py inbox --mission-state ~/.deeploop/runs/deeploop/missions/translation-long-run-mission/mission_state.json`
+5. `python scripts/mission/manage_mission.py resume --mission-state ~/.deeploop/runs/deeploop/missions/translation-long-run-mission/mission_state.json`
 
 That mission profile carries its own launcher defaults:
 

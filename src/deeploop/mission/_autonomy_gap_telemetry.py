@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from deeploop.autonomy.operator_inbox import load_current_operator_request, load_operator_request_log
+from deeploop.core.shared import normalize_strings as _normalize_strings
 
 _PERMANENT_BOUNDARY_REQUEST_KINDS = {"hard-gate", "authority-boundary"}
 _TEMPORARY_GAP_REQUEST_KINDS = {"operator-review", "unrecoverable-failure"}
@@ -20,18 +21,8 @@ _RUNTIME_RECOVERY_COUNT_KEYS = (
 )
 
 
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        value = raw.strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
+
+
 
 
 def _request_payload(raw: Any) -> dict[str, Any] | None:

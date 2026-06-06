@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from deeploop.autonomy.operating_modes import canonical_operating_mode
+from deeploop.autonomy.gate_taxonomy import resolve_operating_mode
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import LEDGER_DIR, REPO_ROOT, RUNS_DIR, WORKSPACE_ROOT, resolve_workspace_path
 from deeploop.core.structured_io import load_json_object as _load_json, load_yaml_mapping as _load_yaml
@@ -326,7 +326,7 @@ def _classify_manifest(manifest_path: Path, manifest: dict[str, Any], contract: 
         "manifest_path": str(manifest_path),
         "loop_id": str(manifest.get("loop_id", manifest_path.parent.name)),
         "project": manifest.get("project"),
-        "mode": canonical_operating_mode(manifest.get("mode")),
+        "mode": resolve_operating_mode(manifest.get("mode")),
         "study_kind": study_kind,
         "run_status": run_status,
         "execution_profile": execution_profile,
@@ -523,11 +523,11 @@ def evaluate_self_correction(
     loaded_manifests = [(path, _load_json(path)) for path in candidate_paths]
     if manifest_paths is None and mission_state is not None:
         mission_id = mission_state.get("mission_id")
-        mission_mode = canonical_operating_mode(mission_state.get("mode"))
+        mission_mode = resolve_operating_mode(mission_state.get("mode"))
         loaded_manifests = [
             (path, manifest)
             for path, manifest in loaded_manifests
-            if manifest.get("mission_id") == mission_id and canonical_operating_mode(manifest.get("mode")) == mission_mode
+            if manifest.get("mission_id") == mission_id and resolve_operating_mode(manifest.get("mode")) == mission_mode
         ]
     if not loaded_manifests:
         raise RuntimeError("No mission-linked manifests remained after filtering.")

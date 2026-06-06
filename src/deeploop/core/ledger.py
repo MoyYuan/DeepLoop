@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,7 +13,12 @@ def now_utc() -> str:
 def append_jsonl(path: Path, record: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record) + "\n")
+        fcntl.lockf(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            handle.write(json.dumps(record) + "\n")
+            handle.flush()
+        finally:
+            fcntl.lockf(handle.fileno(), fcntl.LOCK_UN)
 
 
 def make_ledger_entry(

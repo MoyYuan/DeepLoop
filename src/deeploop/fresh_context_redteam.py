@@ -28,7 +28,6 @@ from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import REPO_ROOT, RUNS_DIR
 
 DEFAULT_CONTRACT_PATH = REPO_ROOT / "configs" / "autonomy" / "fresh-context-redteam.yaml"
-REPORT_SCHEMA_PATH = REPO_ROOT / "schemas" / "fresh-context-redteam-report.schema.json"
 
 
 def _load_yaml(path: Path) -> dict:
@@ -37,20 +36,11 @@ def _load_yaml(path: Path) -> dict:
         raise ValueError(f"Expected mapping in {path}")
     return loaded
 
-
-def _load_json(path: Path) -> dict:
-    loaded = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
-        raise ValueError(f"Expected object in {path}")
-    return loaded
-
-
 def _report_root(mission_state_path: Path | None, contract: dict[str, Any]) -> Path:
     artifact_dir_name = str(contract.get("artifact_dir_name", "fresh_context_redteam"))
     if mission_state_path is not None:
         return mission_state_path.parent / artifact_dir_name
     return RUNS_DIR / artifact_dir_name
-
 
 def _mission_ledger_path(mission_state_path: Path | None) -> Path:
     if mission_state_path is not None:
@@ -58,7 +48,6 @@ def _mission_ledger_path(mission_state_path: Path | None) -> Path:
     from deeploop.core.paths import LEDGER_DIR
     LEDGER_DIR.mkdir(parents=True, exist_ok=True)
     return LEDGER_DIR / "fresh_context_redteam.jsonl"
-
 
 @dataclass
 class FreshReading:
@@ -71,7 +60,6 @@ class FreshReading:
     
     def to_dict(self) -> dict:
         return asdict(self)
-
 
 @dataclass
 class AlternativeExplanation:
@@ -86,7 +74,6 @@ class AlternativeExplanation:
     
     def to_dict(self) -> dict:
         return asdict(self)
-
 
 @dataclass
 class FalsificationCheck:
@@ -103,7 +90,6 @@ class FalsificationCheck:
     def to_dict(self) -> dict:
         return asdict(self)
 
-
 @dataclass
 class DestructiveSanityCheck:
     """Deliberately adversarial check from the adversarial tactics."""
@@ -117,7 +103,6 @@ class DestructiveSanityCheck:
     
     def to_dict(self) -> dict:
         return asdict(self)
-
 
 @dataclass
 class AssumptionNode:
@@ -133,7 +118,6 @@ class AssumptionNode:
     def to_dict(self) -> dict:
         return asdict(self)
 
-
 @dataclass
 class ConfoundCatalogItem:
     """A potential confound with characterization."""
@@ -148,7 +132,6 @@ class ConfoundCatalogItem:
     def to_dict(self) -> dict:
         return asdict(self)
 
-
 @dataclass
 class CredibilityReassessment:
     """Updated credibility assessment of the primary finding."""
@@ -161,7 +144,6 @@ class CredibilityReassessment:
     
     def to_dict(self) -> dict:
         return asdict(self)
-
 
 @dataclass
 class RecommendedFollowup:
@@ -177,7 +159,6 @@ class RecommendedFollowup:
     
     def to_dict(self) -> dict:
         return asdict(self)
-
 
 @dataclass
 class RedteamReport:
@@ -211,7 +192,6 @@ class RedteamReport:
         
         result = asdict(self)
         return _convert(result)
-
 
 def evaluate_fresh_context_redteam(
     artifact_name: str,
@@ -291,7 +271,6 @@ def evaluate_fresh_context_redteam(
         "challenges_raised": 0,
         "status": "complete",
     }
-
 
 def _generate_markdown_report(report: RedteamReport) -> str:
     """Generate a human-readable markdown report from the analysis."""

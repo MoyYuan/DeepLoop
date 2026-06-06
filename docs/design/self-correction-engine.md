@@ -32,8 +32,8 @@ The first taxonomy covers:
 - module: `src/deeploop/research/self_correction.py`
 - runner: `scripts/mission/run_self_correction.py`
 - durable artifacts:
-  - mission-linked: `~/workspaces/runs/deeploop/missions/<mission_id>/self_correction/`
-  - standalone: `~/workspaces/runs/deeploop/self_correction/`
+  - mission-linked: `~/.deeploop/runs/deeploop/missions/<mission_id>/self_correction/`
+  - standalone: `~/.deeploop/runs/deeploop/self_correction/`
 - ledger integration:
   - `self-correction` entries capture the synthesized mission decision
   - mission state gains a `self_correction` summary block for later agents

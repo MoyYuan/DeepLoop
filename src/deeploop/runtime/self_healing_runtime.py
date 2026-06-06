@@ -22,41 +22,24 @@ DEFAULT_POLICY_PATH = DEEPLOOP_REPO_ROOT / "configs" / "runtime" / "self-healing
 RUN_MANIFEST_SCHEMA_PATH = DEEPLOOP_REPO_ROOT / "schemas" / "run-manifest.schema.json"
 DEFAULT_ARTIFACT_SEARCH_MAX_CANDIDATES = 24
 
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Expected mapping in {path}")
     return loaded
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    loaded = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
-        raise ValueError(f"Expected object in {path}")
-    return loaded
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
 def _write_markdown(path: Path, lines: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-
 def _resolved_path(path: Path) -> Path:
     return path.expanduser().resolve(strict=False)
-
 
 def _resolved_env_name(raw: Any) -> str | None:
     if raw is None:
         return None
     text = str(raw).strip()
     return text or None
-
 
 def _normalize_tokens(raw: Any) -> list[str]:
     if raw is None:
@@ -65,20 +48,17 @@ def _normalize_tokens(raw: Any) -> list[str]:
         return [str(raw)]
     return [str(item) for item in raw]
 
-
 def _resolve_workspace_tokens(raw: Any) -> list[str]:
     return [
         str(resolve_workspace_path(token)) if token.startswith("workspace://") else token
         for token in _normalize_tokens(raw)
     ]
 
-
 def _policy_entry(policy: dict[str, Any], kind: str) -> dict[str, Any]:
     entry = policy.get("taxonomy", {}).get(kind)
     if not isinstance(entry, dict):
         raise KeyError(f"Unknown runtime failure kind: {kind}")
     return entry
-
 
 def _failure_record(
     policy: dict[str, Any],
@@ -97,9 +77,8 @@ def _failure_record(
         "details": details,
     }
 
-
 def _manifest_validation_errors(manifest: dict[str, Any]) -> list[str]:
-    schema = _load_json(RUN_MANIFEST_SCHEMA_PATH)
+    schema = load_json_object(RUN_MANIFEST_SCHEMA_PATH)
     try:
         import jsonschema
     except ImportError:
@@ -120,14 +99,11 @@ def _manifest_validation_errors(manifest: dict[str, Any]) -> list[str]:
     validator = jsonschema.Draft202012Validator(schema)
     return [error.message for error in sorted(validator.iter_errors(manifest), key=lambda item: list(item.path))[:8]]
 
-
 def _history_path(entry_root: Path) -> Path:
     return entry_root / "history.jsonl"
 
-
 def _append_history(entry_root: Path, payload: dict[str, Any]) -> None:
     append_jsonl(_history_path(entry_root), payload)
-
 
 def _attempt_environment(
     *,
@@ -144,7 +120,6 @@ def _attempt_environment(
     environment["DEEPLOOP_RUNTIME_RECOVERY_MODE"] = mode
     environment["DEEPLOOP_RUNTIME_HISTORY_PATH"] = str(history_path)
     return environment
-
 
 def _execute_attempt(
     *,
@@ -202,7 +177,6 @@ def _execute_attempt(
         "exception": exception_text,
     }
 
-
 def _classify_process_failure(policy: dict[str, Any], attempt: dict[str, Any]) -> dict[str, Any]:
     signal_cfg = policy.get("signal_detection", {})
     combined_output = f"{attempt.get('stdout', '')}\n{attempt.get('stderr', '')}".lower()
@@ -226,7 +200,6 @@ def _classify_process_failure(policy: dict[str, Any], attempt: dict[str, Any]) -
             "output_excerpt": combined_output[-500:],
         },
     )
-
 
 def _classify_manifest_payload(
     *,
@@ -277,7 +250,6 @@ def _classify_manifest_payload(
         "assessment": assessment,
     }
 
-
 def _classify_attempt_outcome(
     *,
     policy: dict[str, Any],
@@ -296,7 +268,7 @@ def _classify_attempt_outcome(
             ),
         }
     try:
-        manifest = _load_json(expected_manifest)
+        manifest = load_json_object(expected_manifest)
     except (json.JSONDecodeError, ValueError) as exc:
         return {
             "status": "failure",
@@ -316,7 +288,6 @@ def _classify_attempt_outcome(
         manifest=manifest,
         log_path=str(attempt["log_path"]),
     )
-
 
 def _repair_hints(proposal_config_path: Path | None) -> dict[str, Any]:
     hints: dict[str, Any] = {
@@ -341,7 +312,6 @@ def _repair_hints(proposal_config_path: Path | None) -> dict[str, Any]:
     if loop_id:
         hints["loop_id"] = str(loop_id)
     return hints
-
 
 def _artifact_search_roots(
     *,
@@ -372,7 +342,6 @@ def _artifact_search_roots(
         seen.add(resolved)
     return ordered
 
-
 def _manifest_candidate_score(
     *,
     candidate_path: Path,
@@ -394,7 +363,6 @@ def _manifest_candidate_score(
         root_index,
         str(candidate_path),
     )
-
 
 def _maybe_self_heal_manifest_path(
     *,
@@ -432,7 +400,7 @@ def _maybe_self_heal_manifest_path(
                 if not _is_relative_to(resolved_candidate, root):
                     continue
                 try:
-                    manifest = _load_json(resolved_candidate)
+                    manifest = load_json_object(resolved_candidate)
                 except (OSError, json.JSONDecodeError, ValueError):
                     continue
                 if _manifest_validation_errors(manifest):
@@ -478,7 +446,6 @@ def _maybe_self_heal_manifest_path(
     }
     return outcome
 
-
 def _recovery_limits(policy: dict[str, Any], entry: dict[str, Any]) -> dict[str, int]:
     repair_cfg = entry.get("repair", {}) if isinstance(entry.get("repair"), dict) else {}
     return {
@@ -487,7 +454,6 @@ def _recovery_limits(policy: dict[str, Any], entry: dict[str, Any]) -> dict[str,
         "max_resumes": int(repair_cfg.get("max_resumes", policy.get("max_resumes", 0))),
         "max_reroutes": int(repair_cfg.get("max_reroutes", policy.get("max_reroutes", 0))),
     }
-
 
 def _reroute_command(entry: dict[str, Any], *, proposal_config_path: Path | None) -> tuple[list[str], str | None] | None:
     repair_cfg = entry.get("repair", {}) if isinstance(entry.get("repair"), dict) else {}
@@ -515,7 +481,6 @@ def _reroute_command(entry: dict[str, Any], *, proposal_config_path: Path | None
         command.extend(["--pythonpath", str(resolve_workspace_path(raw_path))])
     return command, reroute_env_name
 
-
 def _resume_command(entry: dict[str, Any], mode: str) -> tuple[list[str], str | None]:
     repair_cfg = entry.get("repair", {}) if isinstance(entry.get("repair"), dict) else {}
     if mode == "resume" and repair_cfg.get("resume_command"):
@@ -527,7 +492,6 @@ def _resume_command(entry: dict[str, Any], mode: str) -> tuple[list[str], str | 
         env_name = _resolved_env_name(repair_cfg.get("retry_env_name", entry.get("env_name")))
         return command, env_name
     return _resolve_workspace_tokens(entry.get("command")), _resolved_env_name(entry.get("env_name"))
-
 
 def _select_recovery(
     *,
@@ -558,7 +522,6 @@ def _select_recovery(
             break
     return None
 
-
 def _entry_summary_markdown(summary: dict[str, Any]) -> list[str]:
     lines = [
         f"# Runtime entry `{summary['entry_id']}`",
@@ -578,7 +541,6 @@ def _entry_summary_markdown(summary: dict[str, Any]) -> list[str]:
         if attempt.get("recovery_applied"):
             lines.append(f"  - recovery: `{attempt['recovery_applied']['mode']}`")
     return lines
-
 
 def _queue_summary_markdown(report: dict[str, Any]) -> list[str]:
     lines = [
@@ -613,7 +575,6 @@ def _queue_summary_markdown(report: dict[str, Any]) -> list[str]:
         if isinstance(reasons, list) and reasons:
             lines.append(f"  - top_blocking_reasons: {'; '.join(str(item) for item in reasons[:3])}")
     return lines
-
 
 def _update_mission_state(
     mission_state_path: Path,
@@ -675,14 +636,12 @@ def _update_mission_state(
     mission_state["autonomy_status"] = {"state": state, "reason": reason}
     mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
 
-
 def _entry_terminal_status(failure: dict[str, Any]) -> tuple[str, str | None]:
     if failure["kind"] == "scientific-failure":
         route_to = failure["details"].get("route_to")
         if failure["details"].get("scientific_action") == "reroute":
             return "rerouted", str(route_to) if route_to else None
     return "failed", None
-
 
 def _run_entry(
     *,
@@ -911,19 +870,18 @@ def _run_entry(
             )
     summary_json_path = entry_root / "summary.json"
     summary_markdown_path = entry_root / "summary.md"
-    _write_json(summary_json_path, summary)
+    write_json_object(summary_json_path, summary)
     _write_markdown(summary_markdown_path, _entry_summary_markdown(summary))
     summary["summary_json_path"] = str(summary_json_path)
     summary["summary_markdown_path"] = str(summary_markdown_path)
     return summary
-
 
 def run_self_healing_queue(config_path: Path, *, policy_path: Path | None = None) -> dict[str, Any]:
     config = _load_yaml(Path(config_path).resolve())
     resolved_policy_path = resolve_workspace_path(config.get("runtime_policy") or policy_path or DEFAULT_POLICY_PATH)
     policy = _load_yaml(resolved_policy_path)
     mission_state_path = resolve_workspace_path(config["mission_state"])
-    mission_state = _load_json(mission_state_path)
+    mission_state = load_json_object(mission_state_path)
     mission_root = mission_state_path.parent
     ledger_path = mission_root / "ledger.jsonl"
     queue_name = str(config.get("queue_name", Path(config_path).stem))
@@ -999,7 +957,7 @@ def run_self_healing_queue(config_path: Path, *, policy_path: Path | None = None
         if isinstance(sanity_report_path, str) and sanity_report_path:
             report_path = Path(sanity_report_path)
             if report_path.exists():
-                report = _load_json(report_path)
+                report = load_json_object(report_path)
                 reasons = report.get("reasons")
                 if isinstance(reasons, list):
                     for reason in reasons:
@@ -1051,7 +1009,7 @@ def run_self_healing_queue(config_path: Path, *, policy_path: Path | None = None
     }
     report_json_path = queue_root / "queue_summary.json"
     report_markdown_path = queue_root / "queue_summary.md"
-    _write_json(report_json_path, report)
+    write_json_object(report_json_path, report)
     _write_markdown(report_markdown_path, _queue_summary_markdown(report))
     _update_mission_state(
         mission_state_path,

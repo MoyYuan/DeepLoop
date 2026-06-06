@@ -16,37 +16,26 @@ from deeploop.mission._constants import (
 )
 from deeploop.autonomy.operator_inbox import build_operator_inbox_contract
 from deeploop.core.paths import LAUNCHES_DIR
+from deeploop.core.shared import normalize_strings as _normalize_strings
 from deeploop.core.structured_io import load_json_object, load_jsonl_objects
 
 _DEFAULT_RUNTIME_DIR_NAME = "mission_outer_runtime"
 _PROMOTION_STATE_ORDER = {"not-ready": 0, "exploratory": 1, "paper-candidate": 2}
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    return load_json_object(path)
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return load_jsonl_objects(path, missing_ok=True)
-
-
 def _maybe_load_json(path: Path | None) -> dict[str, Any] | None:
     if path is None or not path.exists():
         return None
-    return _load_json(path)
+    return load_json_object(path)
 
-
-def _maybe_load_jsonl(path: Path | None) -> list[dict[str, Any]]:
+def _maybe_load_jsonl(path: Path | None, missing_ok=True) -> list[dict[str, Any]]:
     if path is None or not path.exists():
         return []
-    return _load_jsonl(path)
-
+    return load_jsonl_objects(path, missing_ok=True)
 
 def _tail_lines(path: Path, line_count: int) -> list[str]:
     if line_count <= 0 or not path.exists():
         return []
     return path.read_text(encoding="utf-8", errors="replace").splitlines()[-line_count:]
-
 
 def _pid_status(pid: int | None) -> str:
     if pid is None or pid <= 0:
@@ -59,31 +48,14 @@ def _pid_status(pid: int | None) -> str:
         return "running"
     return "running"
 
-
 def _progress_root(mission_state_path: Path) -> Path:
     return mission_state_path.parent / "runtime" / "end_to_end_smoke"
-
 
 def _default_launch_metadata_path(mission_state_path: Path, mission_state: dict[str, Any]) -> Path:
     mission_id = mission_state.get("mission_id")
     if isinstance(mission_id, str) and mission_id:
         return LAUNCHES_DIR / mission_id / "launch.json"
     return _progress_root(mission_state_path) / "launch.json"
-
-
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        value = raw.strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
-
 
 def _maybe_path(raw: Any) -> Path | None:
     if not isinstance(raw, str):
@@ -93,11 +65,9 @@ def _maybe_path(raw: Any) -> Path | None:
         return None
     return Path(value).expanduser().resolve()
 
-
 def _default_outer_loop_paths(mission_state_path: Path) -> tuple[Path, Path]:
     mission_root = mission_state_path.parent
     return mission_root / "mission_decisions.jsonl", mission_root / "mission_branches.jsonl"
-
 
 def _default_operator_inbox_paths(mission_state_path: Path) -> tuple[Path, Path]:
     contract = build_operator_inbox_contract(mission_state_path.parent)
@@ -105,7 +75,6 @@ def _default_operator_inbox_paths(mission_state_path: Path) -> tuple[Path, Path]
         Path(contract["operator_request_log_path"]),
         Path(contract["current_operator_request_path"]),
     )
-
 
 def _runtime_root(mission_state_path: Path, mission_state: Mapping[str, Any]) -> Path:
     runtime = mission_state.get("mission_runtime")
@@ -115,7 +84,6 @@ def _runtime_root(mission_state_path: Path, mission_state: Mapping[str, Any]) ->
             return resolved
     return mission_state_path.parent / "runtime" / _DEFAULT_RUNTIME_DIR_NAME
 
-
 def _dedupe_records(records: list[dict[str, Any]], *, identity_field: str) -> list[dict[str, Any]]:
     latest_by_identity: dict[str, dict[str, Any]] = {}
     for record in records:
@@ -123,7 +91,6 @@ def _dedupe_records(records: list[dict[str, Any]], *, identity_field: str) -> li
         if identity:
             latest_by_identity[identity] = record
     return list(latest_by_identity.values())
-
 
 def _summarize_action(action: Mapping[str, Any]) -> dict[str, Any]:
     executor = action.get("executor") if isinstance(action.get("executor"), Mapping) else {}
@@ -140,7 +107,6 @@ def _summarize_action(action: Mapping[str, Any]) -> dict[str, Any]:
         "output_paths": _normalize_strings(action.get("output_paths")),
         "created_at": action.get("created_at"),
     }
-
 
 def _recursive_agent_snapshot(mission_state: Mapping[str, Any]) -> dict[str, Any] | None:
     agent_driver = mission_state.get("agent_driver")
@@ -185,7 +151,6 @@ def _recursive_agent_snapshot(mission_state: Mapping[str, Any]) -> dict[str, Any
         "latest_result_path": agent_driver.get("latest_result_path"),
     }
 
-
 def _summarize_branch(branch: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "branch_id": branch.get("branch_id"),
@@ -200,7 +165,6 @@ def _summarize_branch(branch: Mapping[str, Any]) -> dict[str, Any]:
         "notes": _normalize_strings(branch.get("notes"))[-3:],
     }
 
-
 def _latest_soft_gate_event(mission_state: Mapping[str, Any]) -> dict[str, Any] | None:
     events = mission_state.get("soft_gate_events")
     if isinstance(events, list):
@@ -214,7 +178,6 @@ def _latest_soft_gate_event(mission_state: Mapping[str, Any]) -> dict[str, Any] 
             return dict(event)
     return None
 
-
 def _runtime_snapshot(mission_state_path: Path, mission_state: dict[str, Any]) -> dict[str, Any] | None:
     runtime_root = _runtime_root(mission_state_path, mission_state)
     runtime_state_path = runtime_root / _RUNTIME_STATE_FILE
@@ -223,7 +186,7 @@ def _runtime_snapshot(mission_state_path: Path, mission_state: dict[str, Any]) -
     runtime_summary_md_path = runtime_root / _RUNTIME_SUMMARY_MD_FILE
     runtime_state = _maybe_load_json(runtime_state_path)
     runtime_summary = _maybe_load_json(runtime_summary_json_path)
-    runtime_history = _maybe_load_jsonl(runtime_history_path)
+    runtime_history = _maybe_load_jsonl(runtime_history_path, missing_ok=True)
     mission_runtime = mission_state.get("mission_runtime") if isinstance(mission_state.get("mission_runtime"), Mapping) else {}
 
     if not any(
@@ -250,15 +213,29 @@ def _runtime_snapshot(mission_state_path: Path, mission_state: dict[str, Any]) -
         merged["latest_history"] = runtime_history[-1:] if runtime_history else []
     merged["history_tail"] = runtime_history[-5:]
     last_executor_id = merged.get("last_executor_id")
-    if last_executor_id:
-        # Use structured runtime_state data (last_executor_id is set from mission_runtime.py dispatch path)
+    # Tier 1: Structured history records with executor_id (v0.2.1+).
+    # Iterates all history entries and accumulates a full executor usage count.
+    executor_usage_counts: Counter[str] = Counter()
+    found_structured = False
+    for record in runtime_history:
+        if not isinstance(record, Mapping):
+            continue
+        eid = str(record.get("executor_id") or "")
+        if eid:
+            executor_usage_counts[eid] += 1
+            found_structured = True
+    if found_structured:
+        merged["executor_usage_counts"] = dict(executor_usage_counts)
+        merged["recursive_agent_invocations"] = int(executor_usage_counts.get("recursive-agent", 0))
+    elif last_executor_id:
+        # Tier 2: Fall back to runtime_state last_executor_id (single count for
+        # the most recent executor; set from mission_runtime.py dispatch path).
         executor_usage_counts = Counter({last_executor_id: 1})
         merged["executor_usage_counts"] = dict(executor_usage_counts)
         merged["recursive_agent_invocations"] = int(last_executor_id == "recursive-agent")
     else:
-        # Fall back to parsing executor usage from history summaries when
-        # structured runtime_state data is unavailable.
-        executor_usage_counts: Counter[str] = Counter()
+        # Tier 3: Legacy fallback — parse executor usage from rendered summary
+        # text (backward compatibility with history records from before v0.2.1).
         for record in runtime_history:
             if not isinstance(record, Mapping):
                 continue
@@ -288,7 +265,6 @@ def _runtime_snapshot(mission_state_path: Path, mission_state: dict[str, Any]) -
         merged["remaining_iterations"] = None
     return merged
 
-
 def _scheduler_snapshot(mission_state: Mapping[str, Any]) -> dict[str, Any] | None:
     scheduler = mission_state.get("mission_scheduler")
     if not isinstance(scheduler, Mapping) or not scheduler:
@@ -312,7 +288,6 @@ def _scheduler_snapshot(mission_state: Mapping[str, Any]) -> dict[str, Any] | No
         "composition": dict(scheduler.get("composition", {})) if isinstance(scheduler.get("composition"), Mapping) else {},
     }
 
-
 def _branch_records(mission_state: dict[str, Any], branch_log: list[dict[str, Any]]) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
     state_records = mission_state.get("branch_records")
@@ -327,7 +302,6 @@ def _branch_records(mission_state: dict[str, Any], branch_log: list[dict[str, An
         if branch_id:
             merged[branch_id] = record
     return list(merged.values())
-
 
 def _select_current_action(
     actions: list[dict[str, Any]],
@@ -357,7 +331,6 @@ def _select_current_action(
         selected = actions[-1]
     return _summarize_action(selected)
 
-
 def _select_current_branch(
     branches: list[dict[str, Any]],
     *,
@@ -380,7 +353,6 @@ def _select_current_branch(
             return _summarize_branch(branch)
     return _summarize_branch(branches[-1])
 
-
 def _action_category(action: Mapping[str, Any]) -> str:
     kind = str(action.get("kind") or "").lower()
     executor = action.get("executor") if isinstance(action.get("executor"), Mapping) else {}
@@ -390,7 +362,6 @@ def _action_category(action: Mapping[str, Any]) -> str:
     if "eval" in kind or "evaluation" in kind or executor_id in {"stage-kernel", "evaluation-comparison"}:
         return "evaluation"
     return "other"
-
 
 def _runtime_recovery_entries(runtime_recovery: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     if not isinstance(runtime_recovery, Mapping):
@@ -409,7 +380,6 @@ def _runtime_recovery_entries(runtime_recovery: Mapping[str, Any] | None) -> lis
                 normalized.append(dict(payload))
     return normalized
 
-
 def _parse_timestamp(raw: Any) -> datetime | None:
     if not isinstance(raw, str):
         return None
@@ -426,7 +396,6 @@ def _parse_timestamp(raw: Any) -> datetime | None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed
 
-
 def _format_duration(seconds: float | int | None) -> str:
     if seconds is None:
         return "unavailable"
@@ -439,12 +408,10 @@ def _format_duration(seconds: float | int | None) -> str:
         return f"{minutes}m {secs}s" if minutes < 10 and secs else f"{minutes}m"
     return f"{secs}s"
 
-
 def _format_percent(value: Any) -> str | None:
     if not isinstance(value, int | float):
         return None
     return f"{round(float(value) * 100, 1):g}%"
-
 
 def _first_number(*values: Any) -> float | int | None:
     for value in values:
@@ -452,14 +419,12 @@ def _first_number(*values: Any) -> float | int | None:
             return value
     return None
 
-
 def _merge_mapping_values(*values: Any) -> dict[str, Any]:
     merged: dict[str, Any] = {}
     for value in values:
         if isinstance(value, Mapping):
             merged.update(dict(value))
     return merged
-
 
 def _stage_run_details(stage_id: str, payload: Mapping[str, Any]) -> dict[str, Any]:
     output_dir = payload.get("output_dir")
@@ -614,7 +579,6 @@ def _stage_run_details(stage_id: str, payload: Mapping[str, Any]) -> dict[str, A
         "cost_budget_usd": cost_budget_usd,
     }
 
-
 def _stage_runs_snapshot(mission_state: dict[str, Any]) -> list[dict[str, Any]]:
     stage_runs: list[dict[str, Any]] = []
     raw_stage_runs = mission_state.get("stage_runs")
@@ -625,7 +589,6 @@ def _stage_runs_snapshot(mission_state: dict[str, Any]) -> list[dict[str, Any]]:
             record = _stage_run_details(str(stage_id), payload)
             stage_runs.append(record)
     return stage_runs
-
 
 def _current_action_record(
     actions: list[dict[str, Any]],
@@ -640,7 +603,6 @@ def _current_action_record(
         if str(action.get("action_id") or "") == requested_action_id:
             return action
     return None
-
 
 def _select_stage_run_for_observability(
     stage_runs: list[dict[str, Any]],
@@ -662,7 +624,6 @@ def _select_stage_run_for_observability(
         if str(stage_run.get("status") or "") in {"running", "in_progress", "blocked", "pending"}:
             return stage_run
     return stage_runs[-1]
-
 
 def _outer_loop_eta(runtime: Mapping[str, Any] | None) -> dict[str, Any]:
     remaining_iterations = runtime.get("remaining_iterations") if isinstance(runtime, Mapping) else None
@@ -706,7 +667,6 @@ def _outer_loop_eta(runtime: Mapping[str, Any] | None) -> dict[str, Any]:
         "eta_seconds": None,
         "summary": "ETA is still uncertain because DeepLoop has not recorded enough outer-loop timing data yet.",
     }
-
 
 def _inner_loop_snapshot(
     stage_runs: list[dict[str, Any]],
@@ -760,7 +720,6 @@ def _inner_loop_snapshot(
         "cost_budget_usd": stage_run.get("cost_budget_usd"),
     }
 
-
 def _jobs_snapshot(
     actions: list[dict[str, Any]],
     runtime_recovery: Mapping[str, Any] | None,
@@ -789,7 +748,6 @@ def _jobs_snapshot(
         "stage_runs": stage_runs,
     }
 
-
 def _promotion_signal(payload: Mapping[str, Any], *, source: str, location: str) -> dict[str, Any] | None:
     recommended_state = payload.get("recommended_state")
     max_allowed_state = payload.get("max_allowed_state")
@@ -802,7 +760,6 @@ def _promotion_signal(payload: Mapping[str, Any], *, source: str, location: str)
         "max_allowed_state": str(max_allowed_state) if max_allowed_state is not None else None,
         "reasons": _normalize_strings(payload.get("reasons") or payload.get("promotion_reasons")),
     }
-
 
 def _find_promotion_signals(payload: Any, *, source: str, location: str = "root") -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
@@ -825,12 +782,10 @@ def _find_promotion_signals(payload: Any, *, source: str, location: str = "root"
             findings.extend(_find_promotion_signals(value, source=source, location=f"{location}[{index}]"))
     return findings
 
-
 def _promotion_rank(value: str | None) -> int:
     if value is None:
         return len(_PROMOTION_STATE_ORDER) + 1
     return _PROMOTION_STATE_ORDER.get(value, len(_PROMOTION_STATE_ORDER) + 1)
-
 
 def _promotion_candidate_paths(mission_state: dict[str, Any], end_to_end_summary: dict[str, Any] | None) -> list[tuple[str, Path]]:
     candidates: list[tuple[str, Path]] = []
@@ -869,7 +824,6 @@ def _promotion_candidate_paths(mission_state: dict[str, Any], end_to_end_summary
             for key in ("baseline_runtime_report", "followup_runtime_report", "package_manifest"):
                 _add(f"end_to_end:{key}", artifacts.get(key))
     return candidates
-
 
 def _promotion_snapshot(mission_state: dict[str, Any], end_to_end_summary: dict[str, Any] | None) -> dict[str, Any]:
     findings = _find_promotion_signals(mission_state, source="mission_state")
@@ -934,7 +888,6 @@ def _promotion_snapshot(mission_state: dict[str, Any], end_to_end_summary: dict[
         "summary": summary,
     }
 
-
 def _adaptation_metric_ratchet_snapshot(mission_state: dict[str, Any]) -> dict[str, Any] | None:
     adaptation = mission_state.get("adaptation_training")
     if not isinstance(adaptation, Mapping):
@@ -955,7 +908,6 @@ def _adaptation_metric_ratchet_snapshot(mission_state: dict[str, Any]) -> dict[s
         "report_json_path": adaptation.get("report_json_path"),
         "comparison_path": adaptation.get("comparison_path"),
     }
-
 
 def _failure_snapshot(
     mission_state: dict[str, Any],
@@ -1013,7 +965,6 @@ def _failure_snapshot(
         "last_reroute": last_reroute,
         "completion_reason": completion_reason,
 }
-
 
 def _budgets_snapshot(
     runtime: Mapping[str, Any] | None,

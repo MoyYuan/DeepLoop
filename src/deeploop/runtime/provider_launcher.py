@@ -16,8 +16,9 @@ from deeploop.core.phase_defaults import (
     default_role_for_phase as _default_role_for_phase,
 )
 from deeploop.runtime.openai_compatible_adapter import build_openai_compatible_prompt_command
+from deeploop.runtime.anthropic_adapter import build_anthropic_prompt_command
 
-_SUPPORTED_PROVIDER_FAMILIES = frozenset({"openai-compatible-api"})
+_SUPPORTED_PROVIDER_FAMILIES = frozenset({"openai-compatible-api", "anthropic-api"})
 _DEFAULT_IDLE_TIMEOUT_SECONDS = 300.0
 _POST_EXIT_RESULT_GRACE_SECONDS = 5.0
 _POST_EXIT_RESULT_POLL_SECONDS = 0.2
@@ -44,7 +45,14 @@ def build_provider_prompt_command(
     prompt_file: Path,
     result_json_path: Path | None = None,
     model: str | None = None,
+    provider_family: str = "openai-compatible-api",
 ) -> list[str]:
+    if provider_family == "anthropic-api":
+        return build_anthropic_prompt_command(
+            prompt_file,
+            result_json_path=result_json_path,
+            model=model,
+        )
     return build_openai_compatible_prompt_command(
         prompt_file,
         result_json_path=result_json_path,

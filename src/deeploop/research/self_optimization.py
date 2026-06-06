@@ -20,7 +20,7 @@ from typing import Any, Optional
 
 import yaml
 
-from deeploop.core.dotted import get_dotted as _get_nested
+from deeploop.core.shared import get_dotted as _get_nested
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import REPO_ROOT, RUNS_DIR
 from deeploop.core.structured_io import load_json as _load_json, load_yaml as _load_yaml
@@ -131,7 +131,7 @@ def _load_utility_signals(
             signals["utility_branch_count"] = len(
                 data.get("ranked_branches", data.get("branch_scores", []))
             )
-        except Exception:  # noqa: S110
+        except (json.JSONDecodeError, FileNotFoundError, OSError):
             pass
     
     return signals
@@ -160,7 +160,7 @@ def _load_self_correction_signals(
                 signals["consistency_signal"] = continue_count / len(data["assessments"])
             
             signals["correction_source"] = str(correction_file)
-        except Exception:  # noqa: S110
+        except (json.JSONDecodeError, FileNotFoundError, OSError):
             pass
     
     return signals
@@ -182,7 +182,7 @@ def _load_statistical_signals(
             signals["confidence_interval_width"] = _get_nested(data, "primary_metric.interval_width")
             signals["warning_count"] = len(data.get("warnings", []))
             signals["rigor_source"] = str(rigor_file)
-        except Exception:  # noqa: S110
+        except (json.JSONDecodeError, FileNotFoundError, OSError):
             pass
     
     return signals
@@ -204,7 +204,7 @@ def _load_confound_signals(
             signals["confound_risk"] = _risk_level_to_score(risk_level)
             signals["detected_confound_count"] = len(data.get("detected_confounds", []))
             signals["confound_source"] = str(confound_file)
-        except Exception:  # noqa: S110
+        except (json.JSONDecodeError, FileNotFoundError, OSError):
             pass
     
     return signals

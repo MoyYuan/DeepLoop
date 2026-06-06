@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+
+from deeploop.core.shared import normalize_strings as _normalize_strings
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -11,19 +13,6 @@ DEFAULT_ACCEPTANCE_CAMPAIGN = "translation-paper-scale"
 def _now_utc() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
-
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        value = raw.strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
 
 
 def _path_exists(path_value: Any) -> bool:

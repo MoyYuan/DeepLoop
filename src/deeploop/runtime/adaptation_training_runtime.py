@@ -29,30 +29,15 @@ _PRODUCED_OUTPUTS = [
     "keep/discard adaptation comparison",
 ]
 
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Expected mapping in {path}")
     return loaded
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    loaded = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(loaded, dict):
-        raise ValueError(f"Expected object in {path}")
-    return loaded
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
 def _write_markdown(path: Path, lines: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
 
 def _resolve_path(base_dir: Path, value: str | Path | None, *, default: Path | None = None) -> Path | None:
     if value is None:
@@ -62,7 +47,6 @@ def _resolve_path(base_dir: Path, value: str | Path | None, *, default: Path | N
         path = base_dir / path
     return path.resolve()
 
-
 def _normalize_command(raw: Any) -> tuple[str, ...]:
     if isinstance(raw, str):
         return tuple(shlex.split(raw))
@@ -71,7 +55,6 @@ def _normalize_command(raw: Any) -> tuple[str, ...]:
         if command:
             return command
     raise ValueError("Expected a non-empty command.")
-
 
 @dataclass(frozen=True)
 class AdaptationCommand:
@@ -102,7 +85,6 @@ class AdaptationCommand:
             env_name=(str(raw.get("env_name")).strip() if raw.get("env_name") is not None else None) or None,
             timeout_seconds=max(resolved_timeout, 1),
         )
-
 
 @dataclass(frozen=True)
 class AdaptationTrainingConfig:
@@ -196,10 +178,8 @@ class AdaptationTrainingConfig:
             comparison=MetricRatchetConfig.from_mapping(comparison_cfg),
         )
 
-
 def _job_path(output_root: Path, step: str) -> Path:
     return output_root / f"{step}_job.json"
-
 
 def _report_paths(output_root: Path) -> tuple[Path, Path, Path]:
     return (
@@ -208,10 +188,8 @@ def _report_paths(output_root: Path) -> tuple[Path, Path, Path]:
         output_root / "adaptation_training_comparison.json",
     )
 
-
 def _log_path(output_root: Path, step: str) -> Path:
     return output_root / f"{step}.log"
-
 
 def _environment(config: AdaptationTrainingConfig, *, step: str) -> dict[str, str]:
     env = dict(os.environ)
@@ -227,7 +205,6 @@ def _environment(config: AdaptationTrainingConfig, *, step: str) -> dict[str, st
     if config.mission_state_path is not None:
         env["DEEPLOOP_ADAPTATION_MISSION_STATE_PATH"] = str(config.mission_state_path)
     return env
-
 
 def _job_payload(
     config: AdaptationTrainingConfig,
@@ -270,7 +247,6 @@ def _job_payload(
         "failure_reason": failure_reason,
     }
 
-
 def _execute_command(
     config: AdaptationTrainingConfig,
     *,
@@ -293,7 +269,7 @@ def _execute_command(
         started_at=started_at,
         expected_outputs=expected_outputs,
     )
-    _write_json(job_path, pending_payload)
+    write_json_object(job_path, pending_payload)
     full_command = _build_command(command.command, command.env_name)
     try:
         completed = subprocess.run(
@@ -339,9 +315,8 @@ def _execute_command(
         expected_outputs=expected_outputs,
         failure_reason=failure_reason,
     )
-    _write_json(job_path, payload)
+    write_json_object(job_path, payload)
     return payload
-
 
 def _gate_event(config: AdaptationTrainingConfig, gates: dict[str, Any]) -> dict[str, Any] | None:
     if config.training_kind == "dpo":
@@ -390,11 +365,10 @@ def _gate_event(config: AdaptationTrainingConfig, gates: dict[str, Any]) -> dict
         )
     return None
 
-
 def _write_report(report_json_path: Path, report_markdown_path: Path, comparison_path: Path, report: dict[str, Any]) -> None:
-    _write_json(report_json_path, report)
+    write_json_object(report_json_path, report)
     if isinstance(report.get("comparison"), dict):
-        _write_json(comparison_path, report["comparison"])
+        write_json_object(comparison_path, report["comparison"])
     lines = [
         "# Adaptation training runtime",
         "",
@@ -425,7 +399,6 @@ def _write_report(report_json_path: Path, report_markdown_path: Path, comparison
     if report.get("summary"):
         lines.append(f"- summary: {report['summary']}")
     _write_markdown(report_markdown_path, lines)
-
 
 def _result_payload(
     config: AdaptationTrainingConfig,
@@ -507,7 +480,6 @@ def _result_payload(
         "produced_outputs": report["produced_outputs"],
         "mission_state_updates": mission_state_updates,
     }
-
 
 def run_adaptation_training(
     training_config_path: Path | str,
@@ -607,13 +579,13 @@ def run_adaptation_training(
             failure_reason=failure_reason,
         )
 
-    baseline_metrics = metric_map(_load_json(config.baseline_metrics_path))
+    baseline_metrics = metric_map(load_json_object(config.baseline_metrics_path))
     intervention_metrics = (
-        metric_map(_load_json(config.intervention_metrics_path))
+        metric_map(load_json_object(config.intervention_metrics_path))
         if config.intervention_metrics_path is not None
         else None
     )
-    adapted_metrics = metric_map(_load_json(config.evaluation_metrics_path))
+    adapted_metrics = metric_map(load_json_object(config.evaluation_metrics_path))
     try:
         comparison = build_metric_ratchet_decision(
             config.comparison,

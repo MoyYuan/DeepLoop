@@ -19,13 +19,11 @@ from deeploop.runtime import (
 
 logger = logging.getLogger(__name__)
 
-
 STAGE_REGISTRY_CONTRACT_PATH = stage_kernel_registry.STAGE_REGISTRY_CONTRACT_PATH
 INFERENCE_FAMILY_CONTRACT_PATH = DEEPLOOP_REPO_ROOT / "configs" / "execution-profiles" / "inference-families.yaml"
 ZONE_ORDER = ("early", "mid", "late")
 AUTOTUNE_CACHE_PATH = RUNS_DIR / "runtime-autotune-cache" / "batch_size_cache.json"
 UNKNOWN_MISSION_ID = "unknown-mission"
-
 
 @dataclass
 class KernelRunResult:
@@ -35,7 +33,6 @@ class KernelRunResult:
     manifest_path: Path
     summary_path: Path | None = None
     artifacts: dict[str, Path] = field(default_factory=dict)
-
 
 class StageAdapter(Protocol):
     name: str
@@ -83,13 +80,11 @@ class StageAdapter(Protocol):
         source_metadata: dict,
     ) -> dict: ...
 
-
 @dataclass(frozen=True)
 class StageKernel:
     stage_id: str
     runner: Any
     summary: str
-
 
 @dataclass(frozen=True)
 class ExecutionProfilePlan:
@@ -130,7 +125,6 @@ class ExecutionProfilePlan:
             "contract_path": self.contract_path,
         }
 
-
 def _normalize_generation_config(
     decode_config: dict[str, Any] | None,
     *,
@@ -145,7 +139,6 @@ def _normalize_generation_config(
         "repetition_penalty": float(raw.get("repetition_penalty", 1.0)),
         "max_new_tokens": int(raw.get("max_new_tokens", max_new_tokens) or max_new_tokens),
     }
-
 
 class MockPredictor:
     batch_size = 64
@@ -162,7 +155,6 @@ class MockPredictor:
 
     def predict_many(self, prompts: list[str]) -> list[str]:
         return [self.predict(prompt) for prompt in prompts]
-
 
 class TransformersPredictor:
     def __init__(
@@ -318,7 +310,6 @@ class TransformersPredictor:
         if current_peak is None or peak_vram_mb > float(current_peak):
             self.runtime_stats["peak_vram_mb"] = peak_vram_mb
 
-
 class VllmPredictor:
     def __init__(
         self,
@@ -412,39 +403,22 @@ class VllmPredictor:
         if current_peak is None or peak_vram_mb > float(current_peak):
             self.runtime_stats["peak_vram_mb"] = peak_vram_mb
 
-
-
-
-
 def _load_yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
-
-
-def _load_json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _write_json(path: Path, payload: dict | list) -> None:
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
 
 def _write_jsonl(path: Path, records: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record) + "\n")
 
-
-def _git_commit(repo_root: Path) -> str:
-    return stage_kernel_reporting.git_commit(repo_root)
-
+from deeploop.core.structured_io import load_json_object as _load_json  # noqa: E402
+from deeploop.core.structured_io import write_json_object as _write_json  # noqa: E402
 
 def _validate_manifest(manifest: dict) -> None:
     stage_kernel_reporting.validate_manifest(manifest, load_json=_load_json)
 
-
 def _now_utc() -> str:
     return stage_kernel_reporting.now_utc()
-
 
 def _normalize_notes(raw_notes: Any) -> list[str]:
     if raw_notes is None:
@@ -458,17 +432,14 @@ def _normalize_notes(raw_notes: Any) -> list[str]:
         return notes
     return [str(raw_notes)]
 
-
 def _runtime_context() -> dict[str, Any]:
     return stage_kernel_resolution.runtime_context_from_env()
-
 
 def _dataset_name(adapter: StageAdapter, promotion_manifest: dict) -> str:
     dataset_name = getattr(adapter, "dataset_name", None)
     if callable(dataset_name):
         return str(dataset_name(promotion_manifest))
     return str(promotion_manifest.get("dataset_id", adapter.substrate_name))
-
 
 def _adapter_runtime_contract(adapter: StageAdapter) -> dict[str, Any]:
     runtime_contract = getattr(adapter, "runtime_contract", None)
@@ -478,12 +449,10 @@ def _adapter_runtime_contract(adapter: StageAdapter) -> dict[str, Any]:
             return resolved
     return {}
 
-
 def _configure_adapter_model_family(adapter: StageAdapter, model_cfg: dict[str, Any]) -> None:
     configure_model_family = getattr(adapter, "configure_model_family", None)
     if callable(configure_model_family):
         configure_model_family(model_cfg.get("family"))
-
 
 def _configure_adapter_prompt(adapter: StageAdapter, prompt_cfg: dict[str, Any] | None) -> None:
     if not isinstance(prompt_cfg, dict):
@@ -500,7 +469,6 @@ def _configure_adapter_prompt(adapter: StageAdapter, prompt_cfg: dict[str, Any] 
     except (AttributeError, TypeError):
         return
 
-
 def _empty_runtime_stats() -> dict[str, Any]:
     return {
         "oom_retries": 0,
@@ -508,7 +476,6 @@ def _empty_runtime_stats() -> dict[str, Any]:
         "batch_adjustments": [],
         "batch_requests": [],
     }
-
 
 def _predictor_machine_fingerprint(predictor: Any) -> dict[str, Any]:
     torch_module = _predictor_torch_module(predictor)
@@ -537,7 +504,6 @@ def _predictor_machine_fingerprint(predictor: Any) -> dict[str, Any]:
     )
     return fingerprint
 
-
 def _autotune_prompt_signature(predictor: Any, prompts: list[str]) -> dict[str, Any]:
     counts = [_count_tokens(prompt, predictor) for prompt in prompts]
     return {
@@ -545,7 +511,6 @@ def _autotune_prompt_signature(predictor: Any, prompts: list[str]) -> dict[str, 
         "prompt_tokens_max": max(counts) if counts else 0,
         "prompt_tokens_avg": round(sum(counts) / len(counts), 3) if counts else 0.0,
     }
-
 
 def _autotune_cache_key(
     predictor: Any,
@@ -573,7 +538,6 @@ def _autotune_cache_key(
     }
     return json.dumps(key_payload, sort_keys=True), key_payload
 
-
 def _load_autotune_cache(cache_path: Path) -> dict[str, Any]:
     if not cache_path.exists():
         return {"schema_version": 1, "entries": {}}
@@ -588,7 +552,6 @@ def _load_autotune_cache(cache_path: Path) -> dict[str, Any]:
         "entries": entries,
     }
 
-
 def _write_autotune_cache_entry(cache_path: Path, *, cache_key: str, payload: dict[str, Any]) -> None:
     cache = _load_autotune_cache(cache_path)
     cache["entries"][cache_key] = payload
@@ -596,7 +559,6 @@ def _write_autotune_cache_entry(cache_path: Path, *, cache_key: str, payload: di
     temp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
     temp_path.write_text(json.dumps(cache, indent=2) + "\n", encoding="utf-8")
     temp_path.replace(cache_path)
-
 
 def _autotune_warnings(
     *,
@@ -627,10 +589,8 @@ def _autotune_warnings(
             )
     return warnings, selected_peak_vram_utilization
 
-
 def _module_available(module_name: str) -> bool:
     return stage_kernel_resolution.module_available(module_name)
-
 
 def _runtime_capability_probe(
     predictor: Any,
@@ -686,13 +646,11 @@ def _runtime_capability_probe(
     }
     return probe
 
-
 def _predictor_torch_module(predictor: Any) -> Any | None:
     torch_module = getattr(predictor, "torch", None)
     if torch_module is None or not bool(torch_module.cuda.is_available()):
         return None
     return torch_module
-
 
 def _predictor_total_vram_mb(predictor: Any) -> float | None:
     torch_module = _predictor_torch_module(predictor)
@@ -701,13 +659,11 @@ def _predictor_total_vram_mb(predictor: Any) -> float | None:
     device_index = int(torch_module.cuda.current_device())
     return round(float(torch_module.cuda.get_device_properties(device_index).total_memory) / (1024 * 1024), 3)
 
-
 def _reset_predictor_peak_vram(predictor: Any) -> None:
     torch_module = _predictor_torch_module(predictor)
     if torch_module is None:
         return
     torch_module.cuda.reset_peak_memory_stats()
-
 
 def _read_predictor_peak_vram_mb(predictor: Any) -> float | None:
     torch_module = _predictor_torch_module(predictor)
@@ -715,20 +671,17 @@ def _read_predictor_peak_vram_mb(predictor: Any) -> float | None:
         return None
     return round(float(torch_module.cuda.max_memory_allocated()) / (1024 * 1024), 3)
 
-
 def _clear_predictor_cuda_cache(predictor: Any) -> None:
     torch_module = _predictor_torch_module(predictor)
     if torch_module is None:
         return
     torch_module.cuda.empty_cache()
 
-
 def _warmup_batch_prompts(prompts: list[str], batch_size: int) -> list[str]:
     if not prompts:
         return []
     seed_prompt = max(prompts, key=lambda item: len(str(item)))
     return [seed_prompt] * max(1, int(batch_size))
-
 
 def _maybe_autotune_batch_size(predictor: Any, prompts: list[str]) -> Any:
     runtime_stats = dict(getattr(predictor, "runtime_stats", _empty_runtime_stats()))
@@ -920,7 +873,6 @@ def _maybe_autotune_batch_size(predictor: Any, prompts: list[str]) -> Any:
     predictor.runtime_stats = runtime_stats
     return predictor
 
-
 def _normalize_batch_probe_order(batch_probe_order: Iterable[int] | None, *, default: int) -> list[int]:
     resolved: list[int] = []
     for value in batch_probe_order or ():
@@ -934,7 +886,6 @@ def _normalize_batch_probe_order(batch_probe_order: Iterable[int] | None, *, def
         resolved.append(max(1, int(default)))
     return resolved
 
-
 def _estimate_token_count(text: str) -> int:
     stripped = str(text).strip()
     if not stripped:
@@ -942,7 +893,6 @@ def _estimate_token_count(text: str) -> int:
     whitespace_tokens = len([token for token in stripped.split() if token])
     char_tokens = math.ceil(len(stripped) / 4)
     return max(1, whitespace_tokens, char_tokens)
-
 
 def _count_tokens(text: str, predictor: Any, *, clamp: int | None = None) -> int:
     token_counter = getattr(predictor, "count_tokens", None)
@@ -957,22 +907,17 @@ def _count_tokens(text: str, predictor: Any, *, clamp: int | None = None) -> int
         count = min(count, int(clamp))
     return max(0, count)
 
-
 def _resolve_profile_backend(backend: str) -> str:
     return stage_kernel_resolution.normalize_backend_name(backend)
-
 
 def _load_backend_policy() -> dict[str, Any]:
     return stage_kernel_resolution.load_backend_policy(load_yaml=_load_yaml)
 
-
 def _known_runtime_backends() -> set[str]:
     return stage_kernel_resolution.known_runtime_backends()
 
-
 def _available_runtime_backends() -> dict[str, dict[str, Any]]:
     return stage_kernel_resolution.available_runtime_backends()
-
 
 def _backend_search_order(
     *,
@@ -986,7 +931,6 @@ def _backend_search_order(
         defaults=defaults,
         backend_policy=_load_backend_policy(),
     )
-
 
 def _model_profile_aliases(model_cfg: dict[str, Any]) -> tuple[str, ...]:
     aliases: list[str] = []
@@ -1005,14 +949,12 @@ def _model_profile_aliases(model_cfg: dict[str, Any]) -> tuple[str, ...]:
         aliases.append(Path(text).name)
     return tuple(dict.fromkeys(aliases))
 
-
 def _profile_applies_to_model(profile: dict[str, Any], model_cfg: dict[str, Any]) -> bool:
     applies_to = [str(item).strip().lower() for item in profile.get("applies_to", []) if str(item).strip()]
     if not applies_to:
         return True
     aliases = _model_profile_aliases(model_cfg)
     return any(target in alias for target in applies_to for alias in aliases)
-
 
 def _select_context_bucket(context_buckets: dict[str, Any], prompts: list[str]) -> str | None:
     candidates: list[tuple[int, str]] = []
@@ -1031,7 +973,6 @@ def _select_context_bucket(context_buckets: dict[str, Any], prompts: list[str]) 
             return bucket_id
     return candidates[-1][1]
 
-
 def _context_bucket_candidates(context_buckets: dict[str, Any], prompts: list[str]) -> list[str]:
     candidates: list[tuple[int, str]] = []
     observed_max_prompt = max((_estimate_token_count(prompt) for prompt in prompts), default=0)
@@ -1044,7 +985,6 @@ def _context_bucket_candidates(context_buckets: dict[str, Any], prompts: list[st
             candidates.append((prompt_tokens, str(bucket_id)))
     candidates.sort(key=lambda item: item[0])
     return [bucket_id for _, bucket_id in candidates]
-
 
 def _max_new_token_candidates(base_max_new_tokens: int, *, fallback_ladder: tuple[str, ...]) -> list[int]:
     resolved = [max(1, int(base_max_new_tokens))]
@@ -1059,7 +999,6 @@ def _max_new_token_candidates(base_max_new_tokens: int, *, fallback_ladder: tupl
             break
     return resolved
 
-
 def _execution_profile_contract(
     execution_profile: str,
 ) -> tuple[dict[str, Any], dict[str, Any] | None, dict[str, Any], tuple[str, ...], tuple[str, ...]]:
@@ -1070,7 +1009,6 @@ def _execution_profile_contract(
     profiles = contract.get("profiles", []) if isinstance(contract, dict) else []
     profile = next((item for item in profiles if str(item.get("id")) == str(execution_profile)), None)
     return contract, profile if isinstance(profile, dict) else None, defaults, fallback_ladder, contract_metrics
-
 
 def _build_execution_profile_plan(
     execution_profile: str,
@@ -1147,7 +1085,6 @@ def _build_execution_profile_plan(
         contract_path=str(INFERENCE_FAMILY_CONTRACT_PATH),
     )
 
-
 def _execution_plan_search_candidates(
     execution_profile: str,
     *,
@@ -1206,7 +1143,6 @@ def _execution_plan_search_candidates(
     base_key = (base_plan.resolved_backend, base_plan.context_bucket, base_plan.max_new_tokens)
     return [base_plan, *[candidate for candidate in candidates if (candidate.resolved_backend, candidate.context_bucket, candidate.max_new_tokens) != base_key]]
 
-
 def _selected_autotune_metric(autotune: dict[str, Any], field: str) -> float | None:
     selected_batch_size = autotune.get("selected_batch_size")
     if selected_batch_size is not None:
@@ -1219,7 +1155,6 @@ def _selected_autotune_metric(autotune: dict[str, Any], field: str) -> float | N
     if direct_value is None:
         return None
     return float(direct_value)
-
 
 def _autotune_candidate_rank(
     *,
@@ -1236,7 +1171,6 @@ def _autotune_candidate_rank(
         float(selected_samples_per_s),
         -int(backend_rank.get(candidate_plan.resolved_backend, 999)),
     )
-
 
 def _autotune_execution_plan(
     stage_id: str,
@@ -1370,7 +1304,6 @@ def _autotune_execution_plan(
     best_predictor.runtime_stats = best_runtime_stats
     return best_plan, best_predictor
 
-
 def _resolve_execution_profile(
     execution_profile: str,
     *,
@@ -1399,7 +1332,6 @@ def _resolve_execution_profile(
         selected_bucket=selected_bucket,
     )
 
-
 def _truncate_text_markers(text: str, markers: tuple[str, ...]) -> str:
     cutoff = len(text)
     lowered = text.lower()
@@ -1409,7 +1341,6 @@ def _truncate_text_markers(text: str, markers: tuple[str, ...]) -> str:
             cutoff = min(cutoff, index)
     return text[:cutoff].strip()
 
-
 def _normalize_prediction_output(adapter: StageAdapter, raw_output: str, *, prompt: str) -> str:
     normalize_prediction_output = getattr(adapter, "normalize_prediction_output", None)
     if callable(normalize_prediction_output):
@@ -1417,7 +1348,6 @@ def _normalize_prediction_output(adapter: StageAdapter, raw_output: str, *, prom
         if isinstance(normalized, str):
             return normalized
     return raw_output
-
 
 def _load_dataset_bundle(
     adapter: StageAdapter,
@@ -1457,7 +1387,6 @@ def _load_dataset_bundle(
         "selected_files": selected_files,
         "examples": examples,
     }
-
 
 def _build_predictor(
     *,
@@ -1499,7 +1428,6 @@ def _build_predictor(
         return _apply_execution_plan(predictor, execution_plan)
     raise ValueError(f"Unsupported backend: {backend}")
 
-
 def _apply_execution_plan(predictor: Any, execution_plan: ExecutionProfilePlan | None) -> Any:
     predictor.runtime_stats = dict(getattr(predictor, "runtime_stats", _empty_runtime_stats()))
     if execution_plan is None:
@@ -1514,7 +1442,6 @@ def _apply_execution_plan(predictor: Any, execution_plan: ExecutionProfilePlan |
     predictor.runtime_stats["selected_batch_size"] = int(getattr(predictor, "batch_size", 1) or 1)
     return predictor
 
-
 def _attach_runtime_context(predictor: Any, *, stage_id: str, model: dict[str, Any]) -> Any:
     runtime_stats = dict(getattr(predictor, "runtime_stats", _empty_runtime_stats()))
     runtime_stats["stage_id"] = stage_id
@@ -1527,7 +1454,6 @@ def _attach_runtime_context(predictor: Any, *, stage_id: str, model: dict[str, A
     predictor.runtime_stats = runtime_stats
     return predictor
 
-
 def _configure_generation_tokenizer(tokenizer: Any) -> Any:
     if getattr(tokenizer, "pad_token_id", None) is None and getattr(tokenizer, "eos_token_id", None) is not None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -1538,7 +1464,6 @@ def _configure_generation_tokenizer(tokenizer: Any) -> Any:
             return tokenizer
     return tokenizer
 
-
 def _default_transformers_batch_size(model_path: str) -> int:
     lowered = model_path.lower()
     if "2b" in lowered or "0.8b" in lowered:
@@ -1546,7 +1471,6 @@ def _default_transformers_batch_size(model_path: str) -> int:
     if "4b" in lowered or "e4b" in lowered or "3b" in lowered:
         return 8
     return 4
-
 
 def _round_robin_examples(
     per_source_examples: list[list[tuple[dict, dict]]],
@@ -1571,7 +1495,6 @@ def _round_robin_examples(
         if not advanced:
             break
     return selected
-
 
 def _run_predictions(
     adapter: StageAdapter,
@@ -1627,7 +1550,6 @@ def _run_predictions(
     _finalize_runtime_stats(predictor, started_monotonic)
     return records
 
-
 def _append_prediction_batch(
     adapter: StageAdapter,
     predictor: Any,
@@ -1656,7 +1578,6 @@ def _append_prediction_batch(
         if handle is not None:
             handle.write(json.dumps(record) + "\n")
     _record_runtime_batch(predictor, prompts, raw_outputs, requested_batch_size=len(batch))
-
 
 def _record_runtime_batch(
     predictor: Any,
@@ -1690,7 +1611,6 @@ def _record_runtime_batch(
     )
     predictor.runtime_stats = runtime_stats
 
-
 def _finalize_runtime_stats(predictor: Any, started_monotonic: float) -> None:
     runtime_stats = dict(getattr(predictor, "runtime_stats", _empty_runtime_stats()))
     elapsed_seconds = max(time.monotonic() - started_monotonic, 1e-9)
@@ -1715,7 +1635,6 @@ def _finalize_runtime_stats(predictor: Any, started_monotonic: float) -> None:
     }
     predictor.runtime_stats = runtime_stats
 
-
 def _build_runtime_report(
     *,
     stage_id: str,
@@ -1734,10 +1653,8 @@ def _build_runtime_report(
         empty_runtime_stats=_empty_runtime_stats,
     )
 
-
 def _runtime_telemetry_metrics(runtime_report: dict[str, Any]) -> dict[str, Any]:
     return stage_kernel_reporting.runtime_telemetry_metrics(runtime_report)
-
 
 def _runtime_manifest_payload(runtime_report: dict[str, Any]) -> dict[str, Any]:
     return stage_kernel_reporting.runtime_manifest_payload(runtime_report)
@@ -1749,36 +1666,6 @@ def _selection_slice(selected_files: list[dict]) -> str:
         if label not in seen:
             seen.append(label)
     return ",".join(seen)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 def dry_run_validate(config_path: Path, *, max_steps: int = 2, timeout: float = 60) -> bool:
     """Run a quick validation of experiment code before full GPU launch.
@@ -1869,7 +1756,6 @@ def dry_run_validate(config_path: Path, *, max_steps: int = 2, timeout: float = 
         )
         return False
 
-
 def _build_manifest(
     *,
     adapter: StageAdapter,
@@ -1919,7 +1805,6 @@ def _build_manifest(
         status=status,
     )
 
-
 def _merge_model_config(stage_model: dict, source_model: dict) -> dict:
     identifier = stage_model.get("identifier") or stage_model.get("checkpoint") or source_model.get("identifier")
     return {
@@ -1930,7 +1815,6 @@ def _merge_model_config(stage_model: dict, source_model: dict) -> dict:
         "max_new_tokens": int(stage_model.get("max_new_tokens", source_model.get("max_new_tokens", 32))),
     }
 
-
 def _units_from_layer_spec(layer_spec: Any) -> list[str]:
     if isinstance(layer_spec, list):
         units = [str(item).strip().lower() for item in layer_spec if str(item).strip()]
@@ -1938,7 +1822,6 @@ def _units_from_layer_spec(layer_spec: Any) -> list[str]:
         text = str(layer_spec or "").lower()
         units = [unit for unit in ZONE_ORDER if unit in text]
     return units or list(ZONE_ORDER)
-
 
 def _assign_proxy_unit(record: dict, allowed_units: list[str]) -> str:
     chain_len = int(record.get("chain_len", 0) or 0)
@@ -1990,10 +1873,8 @@ _KERNELS = {
     ),
 }
 
-
 def get_stage_registry() -> dict[str, StageKernel]:
     return stage_kernel_registry.get_stage_registry(_KERNELS)
-
 
 def run_stage_from_config(
     stage_id: str,
@@ -2011,10 +1892,8 @@ def run_stage_from_config(
         adapter_loader=load_stage_adapter,
     )
 
-
 def load_stage_adapter(adapter_spec: str | None) -> StageAdapter:
     return stage_kernel_registry.load_stage_adapter(adapter_spec)
-
 
 def load_stage_registry_contract() -> dict:
     return stage_kernel_registry.load_stage_registry_contract(load_yaml=_load_yaml)

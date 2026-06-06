@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 from deeploop.core.ledger import append_jsonl, now_utc
 from deeploop.core.structured_io import json_safe_value, load_json_object, load_jsonl_objects, write_json_object
+from deeploop.core.shared import normalize_strings as _normalize_strings, resolved_contract_path, slugify
 from deeploop.mission._constants import TERMINAL_BRANCH_STATUSES as _TERMINAL_BRANCH_STATUSES
 from deeploop.research.indexed_memory import (
     ensure_research_memory_contract,
@@ -17,48 +18,12 @@ DEFAULT_MISSION_MEMORY_FILE = "mission_memory.json"
 DEFAULT_MISSION_EXPERIMENT_LEDGER_FILE = "mission_experiments.jsonl"
 _SNAPSHOT_HISTORY_LIMIT = 16
 
-
-def _load_json(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    raw = path.read_text(encoding="utf-8").strip()
-    if not raw:
-        return {}
-    return load_json_object(path)
-
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return load_jsonl_objects(path, missing_ok=True)
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_object(path, payload)
-
-
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, (str, Path)):
-        value = str(raw).strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
-
-
 def _jsonify(value: Any) -> Any:
     return json_safe_value(value)
 
-
-def _slug(value: str, *, fallback: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     return slug or fallback
 
-
-def _resolved_contract_path(mission_root: Path, raw: Any, *, default_name: str) -> Path:
     if isinstance(raw, str) and raw.strip():
         path = Path(raw).expanduser()
         if not path.is_absolute():
@@ -67,19 +32,18 @@ def _resolved_contract_path(mission_root: Path, raw: Any, *, default_name: str) 
         path = mission_root / default_name
     return path.resolve()
 
-
 def build_mission_memory_contract(
     mission_root: Path,
     *,
     record_files: Mapping[str, Any] | None = None,
 ) -> dict[str, str]:
     record_files = record_files if isinstance(record_files, Mapping) else {}
-    mission_memory_path = _resolved_contract_path(
+    mission_memory_path = resolved_contract_path(
         mission_root,
         record_files.get("mission_memory"),
         default_name=DEFAULT_MISSION_MEMORY_FILE,
     )
-    experiment_ledger_path = _resolved_contract_path(
+    experiment_ledger_path = resolved_contract_path(
         mission_root,
         record_files.get("mission_experiments"),
         default_name=DEFAULT_MISSION_EXPERIMENT_LEDGER_FILE,
@@ -88,7 +52,6 @@ def build_mission_memory_contract(
         "mission_memory_path": str(mission_memory_path),
         "experiment_ledger_path": str(experiment_ledger_path),
     }
-
 
 def ensure_mission_memory_contract(
     mission_root: Path,
@@ -99,14 +62,14 @@ def ensure_mission_memory_contract(
     built = build_mission_memory_contract(mission_root, record_files=record_files)
     resolved = {
         "mission_memory_path": str(
-            _resolved_contract_path(
+            resolved_contract_path(
                 mission_root,
                 (contract or {}).get("mission_memory_path"),
                 default_name=Path(built["mission_memory_path"]).name,
             )
         ),
         "experiment_ledger_path": str(
-            _resolved_contract_path(
+            resolved_contract_path(
                 mission_root,
                 (contract or {}).get("experiment_ledger_path"),
                 default_name=Path(built["experiment_ledger_path"]).name,
@@ -124,16 +87,14 @@ def ensure_mission_memory_contract(
     ledger_path.touch(exist_ok=True)
     return resolved
 
-
 def append_unique_jsonl(path: Path, payload: dict[str, Any], *, identity_field: str | None = None) -> None:
     if identity_field is not None:
         identity = str(payload.get(identity_field) or "").strip()
         if identity:
-            for record in _load_jsonl(path):
+            for record in load_jsonl_objects(path, missing_ok=True):
                 if str(record.get(identity_field) or "").strip() == identity:
                     return
     append_jsonl(path, payload)
-
 
 def append_mission_experiment_entry(
     mission_state_path: Path,
@@ -174,7 +135,6 @@ def append_mission_experiment_entry(
     _record_experiment_research_memory(mission_state_path, contract=contract, experiment_entry=payload)
     return payload
 
-
 def _branch_registry(
     mission_state: Mapping[str, Any],
     *,
@@ -188,7 +148,7 @@ def _branch_registry(
             if isinstance(payload, Mapping):
                 registry[str(branch_id)] = dict(payload)
     if branch_log_path is not None:
-        for record in _load_jsonl(branch_log_path):
+        for record in load_jsonl_objects(branch_log_path, missing_ok=True):
             branch_id = str(record.get("branch_id") or "").strip()
             if branch_id:
                 registry[branch_id] = record
@@ -201,7 +161,6 @@ def _branch_registry(
                 registry[branch_id] = dict(record)
     return {branch_id: registry[branch_id] for branch_id in sorted(registry)}
 
-
 def _active_branch_ids(branch_registry: Mapping[str, Mapping[str, Any]]) -> list[str]:
     active: list[str] = []
     for branch_id, payload in branch_registry.items():
@@ -209,7 +168,6 @@ def _active_branch_ids(branch_registry: Mapping[str, Mapping[str, Any]]) -> list
         if branch_id and status not in _TERMINAL_BRANCH_STATUSES:
             active.append(branch_id)
     return active
-
 
 def _evidence_snapshot_entry(
     mission_state: Mapping[str, Any],
@@ -250,7 +208,6 @@ def _evidence_snapshot_entry(
         "active_branch_ids": _active_branch_ids(branch_registry),
     }
 
-
 def _merge_evidence_snapshots(existing: Any, candidate: Mapping[str, Any] | None) -> list[dict[str, Any]]:
     snapshots = [dict(item) for item in existing or [] if isinstance(item, Mapping)]
     if candidate is None:
@@ -265,7 +222,6 @@ def _merge_evidence_snapshots(existing: Any, candidate: Mapping[str, Any] | None
     if not replaced:
         snapshots.append(dict(candidate))
     return snapshots[-_SNAPSHOT_HISTORY_LIMIT:]
-
 
 def _open_questions(
     mission_state: Mapping[str, Any],
@@ -286,7 +242,7 @@ def _open_questions(
                 continue
             entries.append(
                 {
-                    "question_id": str(item.get("question_id") or _slug(question, fallback=f"question-{index}")),
+                    "question_id": str(item.get("question_id") or slugify(question, fallback=f"question-{index}")),
                     "question": question,
                     "status": str(item.get("status") or "open"),
                     "phase": str(item.get("phase") or phase),
@@ -300,7 +256,7 @@ def _open_questions(
             continue
         entries.append(
             {
-                "question_id": _slug(question, fallback=f"question-{index}"),
+                "question_id": slugify(question, fallback=f"question-{index}"),
                 "question": question,
                 "status": "open",
                 "phase": phase,
@@ -309,7 +265,6 @@ def _open_questions(
             }
         )
     return entries
-
 
 def _blocked_items(mission_state: Mapping[str, Any]) -> list[dict[str, Any]]:
     phase = str(mission_state.get("current_phase") or "")
@@ -348,14 +303,12 @@ def _blocked_items(mission_state: Mapping[str, Any]) -> list[dict[str, Any]]:
             )
     return blocked_items
 
-
 def _finding_summary(path: Path) -> str:
     for line in path.read_text(encoding="utf-8").splitlines():
         summary = line.strip()
         if summary:
             return summary
     return path.stem.replace("-", " ")
-
 
 def _research_query_text(mission_state: Mapping[str, Any]) -> str:
     query_parts = [
@@ -370,7 +323,6 @@ def _research_query_text(mission_state: Mapping[str, Any]) -> str:
         else:
             query_parts.append(str(item))
     return " ".join(part.strip() for part in query_parts if str(part).strip())
-
 
 def _record_experiment_research_memory(
     mission_state_path: Path,
@@ -478,7 +430,6 @@ def _record_experiment_research_memory(
         contract=dict(contract),
     )
 
-
 def _record_mission_research_memory(
     mission_state_path: Path,
     *,
@@ -583,7 +534,6 @@ def _promoted_findings(
             )
     return [findings[key] for key in sorted(findings)]
 
-
 def _completed_phase_outputs(mission_state: Mapping[str, Any]) -> dict[str, list[str]]:
     completed = _normalize_strings(mission_state.get("completed_phases"))
     if str(mission_state.get("status") or "") == "completed":
@@ -598,7 +548,6 @@ def _completed_phase_outputs(mission_state: Mapping[str, Any]) -> dict[str, list
             values = _normalize_strings(mission_state.get("produced_outputs") or mission_state.get("phase_outputs"))
         outputs[phase] = values
     return outputs
-
 
 def sync_mission_memory(
     mission_state_path: Path,
@@ -615,9 +564,9 @@ def sync_mission_memory(
     ensure_research_memory_contract(contract=contract)
     memory_path = Path(resolved_paths["mission_memory_path"])
     experiment_path = Path(resolved_paths["experiment_ledger_path"])
-    existing = _load_json(memory_path)
+    existing = load_json_object(memory_path)
     branch_log_path = (
-        _resolved_contract_path(mission_root, contract.get("branch_log_path"), default_name="mission_branches.jsonl")
+        resolved_contract_path(mission_root, contract.get("branch_log_path"), default_name="mission_branches.jsonl")
         if contract.get("branch_log_path") is not None
         else None
     )
@@ -628,7 +577,7 @@ def sync_mission_memory(
             branch_registry = dict(branch_registry)
             branch_registry[branch_id] = dict(branch_payload)
             branch_registry = {key: branch_registry[key] for key in sorted(branch_registry)}
-    experiment_entries = _load_jsonl(experiment_path)
+    experiment_entries = load_jsonl_objects(experiment_path, missing_ok=True)
     latest_decision = dict(existing.get("latest_decision") or {}) if isinstance(existing.get("latest_decision"), Mapping) else {}
     if isinstance(decision_payload, Mapping):
         latest_decision = {
@@ -722,5 +671,5 @@ def sync_mission_memory(
         "experiment_entries": len(experiment_entries),
         "retrieved_research_matches": len(snapshot["retrieved_research_context"]["matches"]),
     }
-    _write_json(memory_path, snapshot)
+    write_json_object(memory_path, snapshot)
     return snapshot

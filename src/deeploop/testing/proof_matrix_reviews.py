@@ -4,21 +4,9 @@ import json
 from pathlib import Path
 from typing import Any, Mapping
 
+from deeploop.core.shared import normalize_strings as _normalize_strings
 from deeploop.core.structured_io import write_json_object, write_markdown
 
-
-def _normalize_strings(raw: Any) -> list[str]:
-    if raw is None:
-        return []
-    if isinstance(raw, str):
-        value = raw.strip()
-        return [value] if value else []
-    if isinstance(raw, list | tuple):
-        values: list[str] = []
-        for item in raw:
-            values.extend(_normalize_strings(item))
-        return values
-    return [str(raw)]
 
 
 def _case_failure_categories(case_summary: Mapping[str, Any]) -> list[str]:

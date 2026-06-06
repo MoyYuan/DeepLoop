@@ -11,6 +11,70 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.3.0
+
+Major release: codebase simplification (2,200+ lines removed), tree search
+feedback loop, Anthropic API adapter, workspace hygiene, and mission dashboard.
+
+### Changed
+
+- **Workspace root:** default changed from `~/workspaces` (auto-detected) to
+  `~/.deeploop` (predictable, follows XDG convention). Override with
+  `DEEPLOOP_WORKSPACE_ROOT` as before.
+- **Modules merged:** `operating_modes.py` → `gate_taxonomy.py`,
+  `core/dotted.py` → `core/shared.py` — fewer files, simpler imports.
+- **Dead code removed:** 9 dead scripts, 3 unused configs, 3 unused schemas,
+  `_git_commit` from `stage_kernels.py`, `REPORT_SCHEMA_PATH` dead constant.
+- **IO wrappers consolidated:** 13 `_load_json`, 9 `_load_jsonl`, 11
+  `_write_json`, 4 `_load_yaml_mapping` duplicates replaced with canonical
+  `core/structured_io.py` imports (~200 lines removed).
+- **Utilities deduplicated:** `_slugify` (4→1), `_is_relative_to` (3→1),
+  `_build_command` (3→1), `_deep_merge` (3→1), `_slug` (2→1),
+  `_resolved_contract_path` (2→1), `_normalize_strings` (15→2 tuple-wrappers),
+  `_schema_errors` (3→1) — all canonical in `core/shared.py` or
+  `core/structured_io.py`.
+- **Silent exceptions:** 11 `except Exception` blocks narrowed to specific
+  types (`json.JSONDecodeError`, `FileNotFoundError`, `OSError`).
+- **Example configs:** moved `recursive-agent-runtime-provider.example.yaml`
+  and `translation-long-run-baseline-queue.yaml` from `configs/runtime/` →
+  `examples/`.
+
+### Added
+
+- **Tree search feedback loop:** experiment results now flow back into
+  `ExperimentTree` nodes via `apply_tree_search_result()` post-execution
+  hook, enabling draft→improve→debug search progression.
+- **Anthropic API adapter** (`runtime/anthropic_adapter.py`): native Anthropic
+  Messages API support using stdlib `urllib` (no new dependencies). Wired
+  into provider launcher and config registries (`deferred` → `implemented`).
+- **Mission dashboard** (`cli/dashboard.py`): zero-dependency HTTP server
+  (stdlib `http.server` + `rich`) serving `render_mission_snapshot()` as
+  HTML. Launch with `python -m deeploop.cli.dashboard --state-path <path>`.
+- **File locking:** `fcntl.lockf` added to `append_jsonl` in `core/ledger.py`
+  for concurrent-write safety.
+- **Structured executor tracking:** `executor_id` field added to history
+  entries (`mission_runtime.py`) with three-tier fallback in
+  `_monitor_classification.py`.
+- **`safe_get()` helper** added to `core/shared.py` for safe dict access.
+
+### Fixed
+
+- Version references in `release-maintenance.md` → 0.3.0.
+- `_maybe_load_json` naming fixed after IO wrapper consolidation.
+- Missing `deep_merge` and `resolved_contract_path` imports fixed across
+  multiple modules.
+- `repo_check.py` and `test_package_structure.py` updated for deleted/moved
+  files.
+
+### Removed
+
+- 9 dead scripts (zero references in Makefile, src, CI).
+- 3 unused config YAMLs (`operator-boundaries`, `gpu-monitor`, `placement`).
+- 3 unused JSON schemas (`ledger-entry`, `mission-acceptance-criteria`,
+  `recursive-agent-result`).
+- `autonomy/operating_modes.py` and `core/dotted.py` (merged into parents).
+- Unused `typer` dependency from `pyproject.toml`.
+
 ## 0.2.0
 
 Major release: API-only control plane with DeepSeek integration, 11 features

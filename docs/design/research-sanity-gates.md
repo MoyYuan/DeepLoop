@@ -35,8 +35,8 @@ anchors, and a cheap power-worthiness threshold.
 - Standalone runner: `scripts/runtime/run_sanity_gate.py`
 - Queue integration: `src/deeploop/runtime/self_healing_runtime.py`
 - Durable artifacts:
-  - mission-linked: `~/workspaces/runs/deeploop/missions/<mission_id>/research_sanity/`
-  - standalone: `~/workspaces/runs/deeploop/research_sanity/`
+  - mission-linked: `~/.deeploop/runs/deeploop/missions/<mission_id>/research_sanity/`
+  - standalone: `~/.deeploop/runs/deeploop/research_sanity/`
 - Ledger integration:
   - `research-sanity-gate` entries capture verdicts and reasons
   - `autoexec-block` entries record blocked queue jobs

@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_POLICY_PATH = REPO_ROOT / "configs" / "runtime" / "recovery-policy.yaml"
 
-
 @dataclass
 class RecoveryAttempt:
     attempt: int
@@ -26,7 +25,6 @@ class RecoveryAttempt:
     classification: str | None = None
     action: str | None = None
     detail: str | None = None
-
 
 @dataclass
 class RecoveryRunResult:
@@ -41,23 +39,15 @@ class RecoveryRunResult:
     artifacts: dict[str, Path]
     resumed: bool = False
 
-
 def _load_yaml(path: Path) -> dict[str, Any]:
     loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(loaded, dict):
         raise ValueError(f"Expected mapping in {path}")
     return loaded
 
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
 def _expected_manifest_path(stage_id: str, output_dir: Path) -> Path:
     run_manifest_stages = {"baseline-evaluation", "prompt-decode-sweep"}
     return output_dir / ("run_manifest.json" if stage_id in run_manifest_stages else "study_manifest.json")
-
 
 def _expected_summary_path(stage_id: str, output_dir: Path) -> Path | None:
     if stage_id == "baseline-evaluation":
@@ -67,7 +57,6 @@ def _expected_summary_path(stage_id: str, output_dir: Path) -> Path | None:
         return summary_path if summary_path.exists() else None
     summary_path = output_dir / "study_summary.json"
     return summary_path if summary_path.exists() else None
-
 
 def _infer_output_dir(stage_id: str, config: dict[str, Any], adapter: StageAdapter) -> Path:
     configured = config.get("run", {}).get("output_dir")
@@ -81,7 +70,6 @@ def _infer_output_dir(stage_id: str, config: dict[str, Any], adapter: StageAdapt
         return adapter.runs_root / loop_id
     return adapter.runs_root / str(config.get("study_id", f"{stage_id}-recovery"))
 
-
 def _classify_exception(exc: Exception) -> str:
     message = str(exc).lower()
     if isinstance(exc, FileNotFoundError):
@@ -94,14 +82,12 @@ def _classify_exception(exc: Exception) -> str:
         return "config-error"
     return "unexpected-error"
 
-
 def _classify_blocked(stage_id: str, config: dict[str, Any]) -> str:
     if stage_id == "causal-intervention":
         localization_source = config.get("localization_source")
         if localization_source and not Path(str(localization_source)).expanduser().exists():
             return "missing-artifact"
     return "stage-blocked"
-
 
 def _patch_backend_fallback(config: dict[str, Any], policy: dict[str, Any]) -> tuple[dict[str, Any], str] | None:
     fallback_cfg = policy.get("fallback_backends", {}).get("default")
@@ -116,7 +102,6 @@ def _patch_backend_fallback(config: dict[str, Any], policy: dict[str, Any]) -> t
     if isinstance(notes, list):
         notes.append("DeepLoop runtime recovery applied backend fallback.")
     return patched, "fallback-backend"
-
 
 def _write_recovery_outputs(
     *,
@@ -135,7 +120,7 @@ def _write_recovery_outputs(
     report_path = recovery_root / str(names.get("report_json", "recovery-report.json"))
     for attempt in attempts:
         append_jsonl(history_path, asdict(attempt))
-    _write_json(
+    write_json_object(
         report_path,
         {
             "stage_id": stage_id,
@@ -148,7 +133,6 @@ def _write_recovery_outputs(
         },
     )
     return report_path, history_path
-
 
 def run_stage_with_recovery(
     stage_id: str,

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
-from deeploop.core.dotted import get_dotted as _get_nested
+from deeploop.core.shared import get_dotted as _get_nested
 from deeploop.core.paths import MISSIONS_DIR, RUNS_DIR
 from deeploop.core.structured_io import (
     load_json_object as _load_json,

@@ -7,14 +7,19 @@ modules.  Import from here instead of re-defining locally.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Sequence
 
 
-def slugify(value: str) -> str:
-    """Canonical slug: lowercase alphanumeric tokens joined by hyphens."""
+def slugify(value: str, *, fallback: str = "") -> str:
+    """Canonical slug: lowercase alphanumeric tokens joined by hyphens.
+
+    When the result would be empty, returns *fallback* instead.
+    """
     tokens = re.findall(r"[a-z0-9]+", value.lower())
-    return "-".join(token for token in tokens if token) if tokens else value.lower().replace(" ", "-")
+    result = "-".join(tokens) if tokens else ""
+    return result or fallback or value.lower().replace(" ", "-")
 
 
 def is_relative_to(path: Path, parent: Path) -> bool:
@@ -72,3 +77,45 @@ def normalize_list_like(raw: object) -> list[str]:
     if isinstance(raw, list):
         return [str(item) for item in raw]
     return []
+
+
+def deep_merge(base: dict[str, Any], updates: Mapping[str, Any]) -> dict[str, Any]:
+    """Recursively merge *updates* into *base*, returning a new dict."""
+    merged = dict(base)
+    for key, value in updates.items():
+        if isinstance(value, Mapping) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def resolved_contract_path(mission_root: Path, raw: Any, *, default_name: str) -> Path:
+    """Resolve a contract path relative to *mission_root*.
+
+    If *raw* is a non-empty string, it is treated as a path (made absolute
+    relative to *mission_root* if needed).  Otherwise *default_name* is used.
+    """
+    if isinstance(raw, str) and raw.strip():
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = mission_root / path
+    else:
+        path = mission_root / default_name
+    return path.resolve()
+
+
+def get_dotted(payload: Mapping[str, Any], dotted_path: str) -> Any:
+    """Walk *dotted_path* through nested mappings, returning the terminal value or None."""
+    current: Any = payload
+    for piece in dotted_path.split("."):
+        if not isinstance(current, Mapping) or piece not in current:
+            return None
+        current = current[piece]
+    return current
+
+
+def safe_get(data: Mapping[str, Any], key: str, default: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return ``data[key]`` if it is a dict, otherwise *default* (or ``{}``)."""
+    v = data.get(key)
+    return v if isinstance(v, dict) else (default if default is not None else {})

@@ -5,26 +5,20 @@ from typing import Any, Mapping
 
 from deeploop.autonomy.mission_autonomy import build_outer_loop_contract, enrich_outer_loop_contract
 from deeploop.autonomy.mission_contract_snapshot import load_mission_contract_snapshot_for_state
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE
 from deeploop.autonomy.operator_inbox import ensure_operator_inbox_contract
 from deeploop.core.ledger import append_jsonl
 from deeploop.core.structured_io import load_jsonl_objects
 from deeploop.mission.mission_memory import ensure_mission_memory_contract
 from deeploop.research.indexed_memory import ensure_research_memory_contract
 
-
-def _load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return load_jsonl_objects(path, missing_ok=True)
-
-
 def _latest_matching_record(path: Path | None, field: str, value: str | None) -> dict[str, Any] | None:
     if path is None or value is None or not path.exists():
         return None
-    for record in reversed(_load_jsonl(path)):
+    for record in reversed(load_jsonl_objects(path, missing_ok=True)):
         if str(record.get(field) or "") == value:
             return record
     return None
-
 
 def _append_contract_record(path: Path, payload: dict[str, Any], *, identity_field: str | None = None) -> None:
     if identity_field is not None:
@@ -34,7 +28,6 @@ def _append_contract_record(path: Path, payload: dict[str, Any], *, identity_fie
             if latest == payload:
                 return
     append_jsonl(path, payload)
-
 
 def _outer_loop_contract(mission_state_path: Path, mission_state: dict[str, Any]) -> dict[str, Any]:
     mission_root = mission_state_path.parent

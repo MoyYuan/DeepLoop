@@ -14,7 +14,7 @@ import yaml
 
 from deeploop.autonomy.mission_contract_snapshot import materialize_mission_contract_snapshot
 from deeploop.autonomy.mission_autonomy import build_outer_loop_contract
-from deeploop.autonomy.operating_modes import DEFAULT_OPERATING_MODE
+from deeploop.autonomy.gate_taxonomy import DEFAULT_OPERATING_MODE
 from deeploop.autonomy.operator_inbox import ensure_operator_inbox_contract
 from deeploop.core.ledger import append_jsonl, make_ledger_entry
 from deeploop.core.paths import MISSIONS_DIR, REPO_ROOT, resolve_workspace_path
