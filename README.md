@@ -91,6 +91,9 @@ The `deeploop` CLI is the single entry point — `start`, `status`, `inbox`,
 ## Readiness at a glance
 
 - **Unified first run:** Linux, Python 3.11+, `pip install deeploop`, `export OPENAI_API_KEY="sk-..."`, `deeploop start --idea "your research idea"`
+- **Multi-provider:** DeepSeek (default), Anthropic API (`ANTHROPIC_API_KEY`), and OpenAI-compatible endpoints all supported as first-class control-plane providers
+- **Tree search experiments:** opt-in via `enable_tree_search: true` in mission state for best-first exploration of experiment designs during `experiment-design` and `execution` phases
+- **Mission dashboard:** `python -m deeploop.cli.dashboard --state-path <mission_state.json>` for an HTML read-only view (zero additional dependencies)
 - **Same front door for existing work:** use `deeploop start --project-root <project-folder> --idea "your research idea"`
 - **Repo-checkout validation path:** `make setup`, `make public-bootstrap-check`, and direct access to `examples/translation-budget-ladder/`
 - **Messy starts are supported:** rough plain-folder projects can initialize with disclosed clarifications/defaults, or you can use `deeploop init --discover ...` for a guided kickoff

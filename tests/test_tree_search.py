@@ -367,3 +367,61 @@ class ExperimentTreeTests(unittest.TestCase):
         """__contains__ checks if a node_id exists."""
         self.assertIn(self.tree.root_id, self.tree)
         self.assertNotIn("nonexistent", self.tree)
+
+    # ------------------------------------------------------------------
+    # Integration: draft → evaluate → improve cycle
+    # ------------------------------------------------------------------
+
+    def test_draft_evaluate_improve_cycle_progresses_metric(self):
+        """Full draft→evaluate→improve cycle: best_node metric improves."""
+        tree = ExperimentTree("code", "plan", higher_is_better=True, num_drafts=2)
+        self.assertIsNone(tree.best_node())
+
+        d1 = tree.draft("d1", "plan1")
+        tree.nodes[d1].metric = 0.72
+        d2 = tree.draft("d2", "plan2")
+        tree.nodes[d2].metric = 0.85
+
+        best = tree.best_node()
+        self.assertIsNotNone(best)
+        self.assertEqual(best.metric, 0.85)
+
+        improved = tree.improve(best.node_id, "d2++", "improved", metric=0.91)
+        self.assertIsNotNone(improved)
+        self.assertEqual(tree.best_node().metric, 0.91)
+        self.assertEqual(len(tree.nodes), 4)  # root + 2 drafts + 1 improve
+
+    def test_best_node_recognizes_minimization_metric(self):
+        """When higher_is_better=False, best_node returns minimum metric."""
+        tree = ExperimentTree("code", "plan", higher_is_better=False, num_drafts=2)
+        d1 = tree.draft("d1", "p1")
+        tree.nodes[d1].metric = 0.5   # lower loss = better
+        d2 = tree.draft("d2", "p2")
+        tree.nodes[d2].metric = 0.3
+
+        best = tree.best_node()
+        self.assertEqual(best.metric, 0.3)
+
+    # ------------------------------------------------------------------
+    # Serialization round-trip
+    # ------------------------------------------------------------------
+
+    def test_serialize_deserialize_preserves_tree_state(self):
+        """Round-trip preserves node count, metrics, and selection."""
+        from deeploop.mission.mission_decision_engine import MissionDecisionEngine
+
+        tree = ExperimentTree("c", "p", higher_is_better=True, num_drafts=2)
+        d1 = tree.draft("a", "A")
+        tree.nodes[d1].metric = 0.5
+        d2 = tree.draft("b", "B")
+        tree.nodes[d2].metric = 0.8
+
+        data = MissionDecisionEngine._serialize_tree(tree)
+        restored = MissionDecisionEngine._deserialize_tree(data)
+
+        self.assertEqual(len(restored.nodes), len(tree.nodes))
+        self.assertEqual(restored.higher_is_better, tree.higher_is_better)
+        self.assertEqual(restored.num_drafts, tree.num_drafts)
+        self.assertIsNotNone(restored.best_node())
+        self.assertEqual(restored.best_node().metric, 0.8)
+        self.assertEqual(len(restored.draft_nodes), len(tree.draft_nodes))
