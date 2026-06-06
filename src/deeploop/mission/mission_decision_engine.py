@@ -395,9 +395,12 @@ class MissionDecisionEngine:
         if not mission_id or not current_phase:
             raise ValueError("mission_state must include non-empty mission_id and current_phase")
 
-        # ── Tree-search-based action selection (on by default; opt-out via enable_tree_search: false) ──
+        # ── Tree-search-based action selection (on by default for missions with recursive-agent config; opt-out via enable_tree_search: false) ──
         tree_phases = {"experiment-design", "execution"}
-        tree_enabled = mission_state.get("enable_tree_search") is not False
+        tree_enabled = mission_state.get("enable_tree_search") is not False and (
+            isinstance(mission_state.get("experiment_tree"), dict)
+            or self._resolve_recursive_config_path(mission_state) is not None
+        )
         if current_phase in tree_phases and tree_enabled:
             outcome = self._tree_search_decision(mission_state, mission_id, current_phase)
             if outcome is not None:
