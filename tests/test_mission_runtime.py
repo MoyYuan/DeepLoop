@@ -1320,6 +1320,7 @@ class MissionRuntimeTests(unittest.TestCase):
                 "target_repo": str(REPO_ROOT),
                 "completed_phases": [],
                 "phase_history": ["idea-intake"],
+                "enable_tree_search": False,
                 "roles": [
                     "planner",
                     "literature-scout",
@@ -1471,6 +1472,7 @@ class MissionRuntimeTests(unittest.TestCase):
                 "target_repo": str(REPO_ROOT),
                 "completed_phases": [],
                 "phase_history": ["idea-intake"],
+                "enable_tree_search": False,
                 "roles": [
                     "planner",
                     "literature-scout",
