@@ -72,28 +72,30 @@ def resolve_model_for_role(
     phase: str | None = None,
     explicit_model: str | None = None,
     tiers_config: Path | None = None,
+    provider_family: str = "openai-compatible-api",
 ) -> str:
-    """Resolve which model identifier to use based on role and phase tier configuration.
+    """Resolve which model identifier to use based on role, phase, and provider family.
 
     Resolution order:
     1. If ``explicit_model`` is provided, use it directly.
     2. Look up ``role`` in the model tiers config — first by direct role match,
        then by phase-to-role mapping.
     3. Fall back to the configured ``default_tier`` model.
-    4. Fall back to the ``OPENAI_MODEL`` environment variable.
-    5. Fall back to ``"deepseek-chat"`` as a last resort.
+    4. Fall back to the ``OPENAI_MODEL`` / ``ANTHROPIC_MODEL`` environment variable.
+    5. Fall back to ``"deepseek-chat"`` / ``"claude-sonnet-4-20250514"``.
+
+    When *provider_family* is ``"anthropic-api"``, the function prefers
+    ``model_identifier_anthropic`` over ``model_identifier`` from each tier.
 
     Args:
         role: The intended role (e.g. ``"planner"``, ``"execution-operator"``).
         phase: Optional phase name (e.g. ``"experiment-design"``, ``"execution"``).
-            When provided and the role is not directly listed in any tier, the
-            function attempts to match the phase to a tier instead.
         explicit_model: If set, bypasses tier resolution and returns this value.
-        tiers_config: Path to the model-tiers YAML configuration file. Defaults to
-            ``<REPO_ROOT>/configs/runtime/model-tiers.yaml``.
+        tiers_config: Path to the model-tiers YAML configuration file.
+        provider_family: One of ``"openai-compatible-api"`` or ``"anthropic-api"``.
 
     Returns:
-        A model identifier string (e.g. ``"deepseek-chat"``, ``"deepseek-reasoner"``).
+        A model identifier string.
     """
     if explicit_model:
         return explicit_model
@@ -112,6 +114,14 @@ def resolve_model_for_role(
     tiers_data: dict = raw if isinstance(raw, dict) else {}
     tiers: list[dict] = tiers_data.get("tiers", {})
     default_tier_name: str = str(tiers_data.get("default_tier", "execution"))
+    is_anthropic = provider_family == "anthropic-api"
+    identifier_key = "model_identifier_anthropic" if is_anthropic else "model_identifier"
+
+    def _resolve_identifier(cfg: dict) -> str | None:
+        identifier = cfg.get(identifier_key) or cfg.get("model_identifier")
+        if isinstance(identifier, str) and identifier:
+            return identifier
+        return None
 
     # --- Look up role in tiers ---
     for tier_name, tier_cfg in tiers.items():
@@ -119,9 +129,9 @@ def resolve_model_for_role(
             continue
         intended_roles = tier_cfg.get("intended_roles", [])
         if isinstance(intended_roles, list) and role in intended_roles:
-            identifier = tier_cfg.get("model_identifier")
-            if isinstance(identifier, str) and identifier:
-                return identifier
+            resolved = _resolve_identifier(tier_cfg)
+            if resolved:
+                return resolved
 
     # --- Fallback: look up phase in tiers ---
     if phase:
@@ -130,24 +140,25 @@ def resolve_model_for_role(
                 continue
             intended_phases = tier_cfg.get("intended_phases", [])
             if isinstance(intended_phases, list) and phase in intended_phases:
-                identifier = tier_cfg.get("model_identifier")
-                if isinstance(identifier, str) and identifier:
-                    return identifier
+                resolved = _resolve_identifier(tier_cfg)
+                if resolved:
+                    return resolved
 
     # --- Fallback to default tier ---
     if default_tier_name in tiers:
         default_cfg = tiers[default_tier_name]
         if isinstance(default_cfg, dict):
-            identifier = default_cfg.get("model_identifier")
-            if isinstance(identifier, str) and identifier:
-                return identifier
+            resolved = _resolve_identifier(default_cfg)
+            if resolved:
+                return resolved
 
     # --- Fallback to env var ---
-    env_model = os.environ.get("OPENAI_MODEL", "").strip()
+    env_var = "ANTHROPIC_MODEL" if is_anthropic else "OPENAI_MODEL"
+    env_model = os.environ.get(env_var, "").strip()
     if env_model:
         return env_model
 
-    return "deepseek-chat"
+    return "claude-sonnet-4-20250514" if is_anthropic else "deepseek-chat"
 
 
 def _load_json_file(path: Path) -> dict[str, object] | None:
