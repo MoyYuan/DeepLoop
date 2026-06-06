@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import shutil
 import sys
 import unittest
@@ -94,6 +95,7 @@ class ReleaseDockerValidationTests(unittest.TestCase):
             SCRATCH_DIR / "release-validation" / "docker-smoke",
         )
 
+    @unittest.skipIf(os.environ.get("OPENAI_API_KEY"), "Requires clean container environment without API keys")
     def test_zero_start_smoke_materializes_selected_starter_and_stops_for_provider_setup(self) -> None:
         mission_id = "release-docker-validation-zero-start"
         self.addCleanup(
