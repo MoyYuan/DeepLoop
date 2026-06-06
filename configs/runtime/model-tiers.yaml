@@ -13,6 +13,7 @@ tiers:
   reasoning:
     label: Expensive model for planning, architecture decisions, paper writing
     model_identifier: deepseek-reasoner
+    model_identifier_anthropic: claude-opus-4-20250514
     intended_roles:
       - planner
       - experiment-designer
@@ -28,6 +29,7 @@ tiers:
   execution:
     label: Fast/cheap model for code generation, metric parsing, monitoring
     model_identifier: deepseek-chat
+    model_identifier_anthropic: claude-sonnet-4-20250514
     intended_roles:
       - literature-scout
       - execution-operator
@@ -46,3 +48,9 @@ pricing_per_1m_tokens:
   deepseek-reasoner:
     input: 0.55
     output: 2.19
+  claude-sonnet-4-20250514:
+    input: 3.00
+    output: 15.00
+  claude-opus-4-20250514:
+    input: 15.00
+    output: 75.00
