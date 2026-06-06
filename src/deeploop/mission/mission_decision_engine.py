@@ -1747,8 +1747,8 @@ class MissionDecisionEngine:
 
         if operation == "draft":
             new_id = tree.draft(code, plan)
-            if new_id in tree.nodes and metric is not None:
-                tree.nodes[new_id].metric = float(metric)
+            if new_id in tree.nodes:
+                tree.nodes[new_id].metric = float(metric) if metric is not None else 0.0
             if is_buggy and new_id in tree.nodes:
                 tree.nodes[new_id].is_buggy = True
         elif operation == "improve" and node_id and node_id in tree.nodes:
