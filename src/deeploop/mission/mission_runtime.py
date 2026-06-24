@@ -847,8 +847,39 @@ def _maybe_stage_bootstrap_followups(
         return mission_state, None
     if str(bootstrap.get("status") or "").strip() == "followup-staged":
         return mission_state, None
-    write_mission_state(mission_state_path, mission_state)
-    _invoke_followup_planner(mission_state_path, mission_state, bootstrap)
+
+    # Deep-copy state before the planner runs so we can restore on failure.
+    # The planner is user-supplied code that may crash after partially
+    # modifying state files on disk.
+    import copy as _copy
+    _pre_planner_state = _copy.deepcopy(mission_state)
+
+    # Write to a temporary file, then atomically rename — this prevents
+    # a partial write from corrupting the canonical state file.
+    _tmp_path = Path(str(mission_state_path) + ".tmp")
+    try:
+        write_mission_state(_tmp_path, mission_state)
+        _tmp_path.replace(mission_state_path)
+    except Exception:
+        # If even the pre-planner write fails, don't invoke the planner.
+        if _tmp_path.exists():
+            _tmp_path.unlink(missing_ok=True)
+        return mission_state, None
+
+    try:
+        _invoke_followup_planner(mission_state_path, mission_state, bootstrap)
+    except Exception:
+        # The user-supplied planner crashed — restore the pre-planner state
+        # so the canonical state file is not left corrupted.
+        _tmp_restore = Path(str(mission_state_path) + ".tmp")
+        try:
+            write_mission_state(_tmp_restore, _pre_planner_state)
+            _tmp_restore.replace(mission_state_path)
+        except Exception:
+            if _tmp_restore.exists():
+                _tmp_restore.unlink(missing_ok=True)
+        raise
+
     reloaded_state = load_mission_state(mission_state_path)
     reloaded_bootstrap = _bootstrap_mapping(reloaded_state) or bootstrap
     reloaded_bootstrap["status"] = "followup-staged"
@@ -1240,13 +1271,63 @@ def _run_bounded_triage_before_escalation(
     if target_repo:
         command.extend(["--target-repo", target_repo])
     started_at = now_utc()
-    completed = subprocess.run(
-        command,
-        cwd=Path(target_repo).expanduser().resolve() if target_repo else REPO_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=Path(target_repo).expanduser().resolve() if target_repo else REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        completed_at = now_utc()
+        log_path.write_text(
+            (exc.stdout or "") + (exc.stderr or "")
+            + f"\nTimeoutExpired after 300 seconds\n",
+            encoding="utf-8",
+        )
+        triage_result = {
+            "status": "failed",
+            "summary": "Automatic bounded triage timed out after 300 seconds.",
+            "recommended_operator_action": "inspect",
+            "recommended_resume_action": "Check provider health and retry bounded triage.",
+            "findings": ["Bounded triage subprocess exceeded the 300-second timeout."],
+            "evidence_paths": [str(log_path)],
+            "notes": ["The LLM provider may be unresponsive."],
+        }
+        # Skip to writing the report — bypass the normal result-json loading
+        summary = {
+            "schema_version": 1,
+            "request_id": request_id,
+            "started_at": started_at,
+            "completed_at": completed_at,
+            "command": command,
+            "prompt_path": str(prompt_path),
+            "result_json_path": str(result_json_path),
+            "log_path": str(log_path),
+            "report_json_path": str(report_json_path),
+            "blocked_entries": blocked_entries,
+            "result": triage_result,
+            "returncode": -1,
+            "auto_invoked": True,
+        }
+        write_json_object(report_json_path, summary)
+        _record_ledger(
+            mission_state_path,
+            mission_state=dict(mission_state),
+            runtime_root=Path(str(runtime_state.get("runtime_root") or mission_root / "runtime" / DEFAULT_RUNTIME_DIR_NAME)),
+            contract=dict(contract),
+            kind="runtime-bounded-triage",
+            status=triage_result["status"],
+            summary=f"Automatic bounded triage for `{request_id}` timed out.",
+            metadata={
+                "request_id": request_id,
+                "recommended_operator_action": triage_result.get("recommended_operator_action"),
+                "report_json_path": str(report_json_path),
+            },
+        )
+        return summary
     completed_at = now_utc()
     log_path.write_text((completed.stdout or "") + (completed.stderr or ""), encoding="utf-8")
     if result_json_path.exists():
@@ -2287,16 +2368,23 @@ def run_mission(
                     content=f"Dispatch completed: {terminal_reason or raw_outcome_status}",
                     artifacts=_normalize_strings(executor_payload.get("output_paths") if isinstance(executor_payload, dict) else None) or None,
                 )
-            # -- Estimate token usage and accumulate cost --
+            # -- Accumulate token usage and cost from the executor result --
             if executor_payload is not None:
-                executor_id = runtime_state.get("last_executor_id", "")
-                input_tokens = 0
-                output_tokens = 0
-                if executor_id == "recursive-agent":
-                    payload_text = json.dumps(_jsonify(executor_payload))
-                    total_chars = len(payload_text)
-                    output_tokens = total_chars // 4
-                    input_tokens = output_tokens // 3
+                tokens = executor_payload.get("tokens") if isinstance(executor_payload.get("tokens"), dict) else None
+                if tokens is not None:
+                    input_tokens = int(tokens.get("input_tokens", 0) or 0)
+                    output_tokens = int(tokens.get("output_tokens", 0) or 0)
+                else:
+                    # Fallback: estimate from payload size for executors that don't report tokens
+                    executor_id = runtime_state.get("last_executor_id", "")
+                    if executor_id == "recursive-agent":
+                        payload_text = json.dumps(_jsonify(executor_payload))
+                        total_chars = len(payload_text)
+                        output_tokens = max(1, total_chars // 4)
+                        input_tokens = max(1, output_tokens // 3)
+                    else:
+                        input_tokens = 0
+                        output_tokens = 0
                 runtime_state["total_tokens"] = int(runtime_state.get("total_tokens", 0) or 0) + input_tokens + output_tokens
                 runtime_state["total_input_tokens"] = int(runtime_state.get("total_input_tokens", 0) or 0) + input_tokens
                 runtime_state["total_output_tokens"] = int(runtime_state.get("total_output_tokens", 0) or 0) + output_tokens

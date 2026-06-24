@@ -1529,10 +1529,15 @@ class MissionDecisionEngine:
 
     @staticmethod
     def _deserialize_tree(data: Mapping[str, Any]) -> ExperimentTree:
-        """Rebuild an ExperimentTree from a serialized dict."""
+        """Rebuild an ExperimentTree from a serialized dict.
+
+        The constructor requires non-empty *root_code*, so we pass a
+        placeholder that is immediately replaced by the deserialized node
+        data below.
+        """
         tree = ExperimentTree(
-            root_code="",
-            root_plan="",
+            root_code="# deserialized placeholder",
+            root_plan="Deserialized experiment tree root.",
             higher_is_better=bool(data.get("higher_is_better", True)),
         )
         tree.num_drafts = int(data.get("num_drafts", 5))
@@ -1738,12 +1743,24 @@ class MissionDecisionEngine:
         if not isinstance(experiment, Mapping):
             experiment = {}
 
-        code = str(experiment.get("code") or "")
-        plan = str(experiment.get("plan") or "")
+        code = str(experiment.get("code") or "").strip()
+        plan = str(experiment.get("plan") or "").strip()
         metric = experiment.get("metric")
         is_buggy = bool(experiment.get("is_buggy", False))
         node_id = str(pending.get("node_id") or "")
         operation = str(pending.get("operation") or "")
+
+        # Guard against empty code/plan — an executor that doesn't produce
+        # structured experiment output would create garbage tree nodes.
+        if not code:
+            mission_state["experiment_tree"] = MissionDecisionEngine._serialize_tree(tree)
+            mission_state.setdefault("_tree_search_skipped", []).append({
+                "operation": operation,
+                "node_id": node_id or None,
+                "reason": "Executor did not provide experiment code; node creation skipped.",
+                "recorded_at": now_utc(),
+            })
+            return
 
         if operation == "draft":
             new_id = tree.draft(code, plan)

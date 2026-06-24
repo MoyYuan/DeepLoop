@@ -87,7 +87,12 @@ class ExperimentTree:
 
         Returns:
             The generated node_id.
+
+        Raises:
+            ValueError: If *code* is empty (nodes must have executable code).
         """
+        if not code or not code.strip():
+            raise ValueError("ExperimentTree: cannot create node with empty code.")
         node_id = self._generate_node_id()
         node = ExperimentNode(
             node_id=node_id,

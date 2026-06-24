@@ -1322,6 +1322,18 @@ def _handle_package(args: argparse.Namespace) -> int:
 def _handle_export(args: argparse.Namespace) -> int:
     return _export_mission(args)
 
+def _handle_generate_paper(args: argparse.Namespace) -> int:
+    """Handler for the ``generate-paper`` subcommand."""
+    from deeploop.scripts.paper.generate_paper import main as generate_paper_main
+
+    argv = [
+        "--mission-state", str(args.mission_state),
+        "--conference", args.conference,
+    ]
+    if args.output_dir:
+        argv.extend(["--output-dir", str(args.output_dir)])
+    return generate_paper_main(argv)
+
 def _handle_analyze(args: argparse.Namespace) -> int:
     return _analyze(args)
 
@@ -1624,6 +1636,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze_budget_p.add_argument("--json", action="store_true", help="Emit the budget report as JSON.")
     analyze_budget_p.set_defaults(handler=_handle_analyze_budget)
+
+    generate_paper_p = subparsers.add_parser(
+        "generate-paper",
+        help="Generate a conference paper from a completed DeepLoop mission.",
+        description=(
+            "Build a full conference paper (LaTeX + PDF) using the DeepLoop paper "
+            "generation pipeline. Requires a completed mission with experiment results."
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    generate_paper_p.add_argument(
+        "--mission-state",
+        required=True,
+        help="Path to the mission state JSON file.",
+    )
+    generate_paper_p.add_argument(
+        "--conference",
+        default="iclr2025",
+        choices=["iclr2025", "neurips2025", "icml2025"],
+        help="Target conference style.",
+    )
+    generate_paper_p.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory (default: <mission_root>/paper_output).",
+    )
+    generate_paper_p.set_defaults(handler=_handle_generate_paper)
 
     return parser
 

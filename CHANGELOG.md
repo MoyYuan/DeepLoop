@@ -11,6 +11,53 @@ changes that affect:
 - proof / CI / validation surfaces
 - public docs, governance, trust, and support posture
 
+## 0.6.1
+
+Bug-fix and paper-infrastructure release.
+
+### Fixed
+
+- **Critical: token/cost tracking for all executor types.** Previously only
+  `recursive-agent` accumulated tokens — the 5 other executor types contributed
+  zero, making budget stop conditions (`tokenCountIs`, `costIs`) false promises.
+  Every executor now populates `tokens: {input_tokens, output_tokens}` in its
+  result payload. (#109 follow-up)
+- **Critical: tree search garbage node prevention.** `apply_tree_search_result()`
+  no longer creates nodes with empty code/plan when the executor doesn't provide
+  structured experiment output.
+- **Critical: bootstrap followup crash state corruption.** The user-supplied
+  followup planner can no longer leave a corrupted `mission_state.json`; state is
+  deep-copied before invocation and atomically restored on crash.
+- **Model tiers YAML silent parse failure.** Broken `model-tiers.yaml` now emits
+  a visible `[deeploop] WARNING:` to stderr instead of silently falling back to
+  `deepseek-chat`.
+- **Missing `subprocess.run` timeout in bounded triage.** The triage subprocess
+  now has `timeout=300` with proper `TimeoutExpired` handling.
+- **Mission state file locking.** `write_mission_state()` now acquires
+  `fcntl.LOCK_EX` before writing, preventing concurrent process corruption.
+- **#109: `invoke_provider_prompt.py` unrecognized arguments crash.** Added
+  `--allow-all` and `--no-ask-user` (vestigial Copilot CLI flags) to both the
+  CLI script argparse and `run_provider_prompt()` signature so orchestrator,
+  triage, and analyze callers don't crash.
+
+### Added
+
+- **Conference paper generation pipeline** (`paper/` package):
+  - Template manager supporting ICLR 2025, NeurIPS 2025, and ICML 2025
+  - Section-by-section LLM generator with 29-key context builder
+  - Figure pipeline (matplotlib PDFs: learning curves, comparison charts,
+    ablation charts, metric trends)
+  - LaTeX table generation (best values bolded, std dev, significance)
+  - Semantic Scholar citation search and bibliography manager
+  - NeurIPS-style simulated peer review (7 dimensions, panel aggregation)
+  - Statistical narrative bridge (Wilson intervals → publication prose)
+  - `deeploop generate-paper` CLI subcommand
+- **Synthetic experiment result generator** for testing the paper pipeline
+  without GPU hardware
+- **Recursive agent retry with exponential backoff** (0, 2, 4, 8s) for
+  transient API failures, configurable via `max_retries` in
+  `recursive-agent-runtime.yaml`
+
 ## 0.3.0
 
 Major release: codebase simplification (2,200+ lines removed), tree search
