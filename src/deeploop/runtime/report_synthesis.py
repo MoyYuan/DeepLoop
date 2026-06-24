@@ -195,10 +195,18 @@ def synthesize_report(
     experiment_dag: ExperimentDAG | None = None,
     bounded_memory: BoundedMemory | None = None,
     output_dir: Path | None = None,
+    *,
+    conference: str | None = None,
+    experiment_results: dict[str, Any] | None = None,
+    statistical_report: dict[str, Any] | None = None,
 ) -> dict:
     """Generate a research report from mission artifacts.
 
     Produces LaTeX source and compiles to PDF if ``pdflatex`` is available.
+
+    When *conference* is provided (e.g. ``"iclr2025"``), the full paper
+    generation pipeline is used — producing a conference-formatted paper
+    with section-by-section LLM generation, figures, and citations.
 
     Parameters
     ----------
@@ -214,6 +222,13 @@ def synthesize_report(
         ``mission_runtime_root / `` ``research_report`` when the mission
         state contains a ``target_repo`` key, otherwise the current working
         directory.
+    conference:
+        Optional conference style identifier (``"iclr2025"``, etc.).
+        When set, the full paper generation pipeline is used.
+    experiment_results:
+        Optional dict of experiment results for paper context.
+    statistical_report:
+        Optional dict of statistical analysis for paper context.
 
     Returns
     -------
@@ -225,6 +240,26 @@ def synthesize_report(
     - ``"summary"`` -- short human-readable summary of the report
     - ``"output_dir"`` -- the output directory used
     """
+    # If a conference is specified, use the full paper generation pipeline
+    if conference:
+        try:
+            from deeploop.paper.generator import generate_paper as gen_paper
+            result = gen_paper(
+                mission_state,
+                conference=conference,
+                experiment_results=experiment_results,
+                statistical_report=statistical_report,
+                output_dir=output_dir,
+            )
+            return {
+                "report_tex_path": result["tex_path"],
+                "report_pdf_path": result.get("pdf_path", ""),
+                "summary": result["summary"],
+                "output_dir": result["output_dir"],
+            }
+        except Exception:
+            # Fall through to the legacy template-based synthesis
+            pass
     # --- Resolve output directory ---
     resolved_output_dir: Path
     if output_dir is not None:
