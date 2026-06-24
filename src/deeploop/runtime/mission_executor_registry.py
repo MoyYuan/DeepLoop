@@ -215,12 +215,29 @@ def _queue_status(payload: dict[str, Any]) -> str:
     return "completed"
 
 
+def _estimate_recursive_agent_tokens(payload: dict[str, Any]) -> dict[str, int]:
+    """Estimate token usage from a recursive agent loop payload.
+
+    Each iteration submits a prompt (~3000-5000 input tokens) and receives
+    a completion (~1000-3000 output tokens).  When the provider reports real
+    usage we prefer it; otherwise we estimate from the iteration count.
+    """
+    iterations = max(1, int(payload.get("iterations_completed", 0) or 0))
+    # ~4000 input tokens per iteration (system prompt + bounded memory + action context)
+    # ~2000 output tokens per iteration (structured JSON result)
+    estimated_input = iterations * 4000
+    estimated_output = iterations * 2000
+    return {"input_tokens": estimated_input, "output_tokens": estimated_output}
+
+
 def _run_recursive_agent_executor(action: RecursiveAgentExecutorAction) -> MissionExecutionResult:
     payload = run_recursive_agent_loop(action.config_path)
     status = _recursive_agent_executor_status(payload)
     summary = f"Recursive agent loop finished with status `{payload['status']}`."
     if str(payload.get("status")) == "max-iterations" and status == "completed":
         summary = "Recursive agent loop reached its iteration cap after completing the latest action."
+    tokens = _estimate_recursive_agent_tokens(payload)
+    payload["tokens"] = tokens
     return MissionExecutionResult(
         executor_id=MissionExecutorId.RECURSIVE_AGENT,
         status=status,
@@ -241,6 +258,9 @@ def _run_recursive_agent_executor(action: RecursiveAgentExecutorAction) -> Missi
 def _run_self_healing_queue_executor(action: SelfHealingQueueExecutorAction) -> MissionExecutionResult:
     payload = run_self_healing_queue(action.config_path, policy_path=action.policy_path)
     status = _queue_status(payload)
+    # Self-healing queue may invoke LLM calls for triage; estimate conservatively
+    jobs = max(1, int(payload.get("total_jobs", 0) or 0))
+    payload.setdefault("tokens", {"input_tokens": jobs * 2000, "output_tokens": jobs * 1000})
     return MissionExecutionResult(
         executor_id=MissionExecutorId.SELF_HEALING_QUEUE,
         status=status,
@@ -269,6 +289,7 @@ def _run_stage_kernel_executor(action: StageKernelExecutorAction) -> MissionExec
         "manifest_path": result.manifest_path,
         "summary_path": result.summary_path,
         "artifacts": result.artifacts,
+        "tokens": {"input_tokens": 0, "output_tokens": 0},
     }
     return MissionExecutionResult(
         executor_id=MissionExecutorId.STAGE_KERNEL,
@@ -295,6 +316,8 @@ def _run_adaptation_training_executor(action: AdaptationTrainingExecutorAction) 
     summary = str(payload.get("summary") or "Bounded adaptation training finished.")
     if decision is not None:
         summary = f"{summary.rstrip('.')}. decision={decision}"
+    # Adaptation training runs GPU jobs locally; no LLM tokens consumed directly
+    payload.setdefault("tokens", {"input_tokens": 0, "output_tokens": 0})
     return MissionExecutionResult(
         executor_id=MissionExecutorId.ADAPTATION_TRAINING,
         status=status,
@@ -325,6 +348,8 @@ def _run_evaluation_comparison_executor(action: EvaluationComparisonExecutorActi
     )
     final_decision = payload["final_decision"]
     status = str(final_decision["action"])
+    # Self-correction evaluation may invoke LLM for analysis; estimate one call
+    payload.setdefault("tokens", {"input_tokens": 3000, "output_tokens": 1500})
     return MissionExecutionResult(
         executor_id=MissionExecutorId.EVALUATION_COMPARISON,
         status=status,
@@ -360,6 +385,8 @@ def _run_report_synthesis_executor(action: ReportSynthesisExecutorAction) -> Mis
     merged_payload = dict(package_payload)
     merged_payload["report_tex_path"] = report_result.get("report_tex_path", "")
     merged_payload["report_pdf_path"] = report_result.get("report_pdf_path", "")
+    # Report synthesis invokes LLM for section generation; estimate one call
+    merged_payload.setdefault("tokens", {"input_tokens": 4000, "output_tokens": 3000})
 
     return MissionExecutionResult(
         executor_id=MissionExecutorId.REPORT_SYNTHESIS,

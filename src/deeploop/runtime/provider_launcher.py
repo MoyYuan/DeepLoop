@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Sequence
@@ -108,10 +109,31 @@ def resolve_model_for_role(
 
     try:
         raw = yaml.safe_load(resolved_tiers_path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
+    except OSError as exc:
+        print(
+            f"[deeploop] WARNING: Could not read model tiers config "
+            f"`{resolved_tiers_path}`: {exc}. "
+            f"Falling back to provider defaults.",
+            file=sys.stderr,
+        )
+        raw = None
+    except yaml.YAMLError as exc:
+        print(
+            f"[deeploop] WARNING: Model tiers config `{resolved_tiers_path}` "
+            f"has invalid YAML: {exc}. "
+            f"All tiered model selections are disabled; falling back to provider defaults.",
+            file=sys.stderr,
+        )
         raw = None
 
     tiers_data: dict = raw if isinstance(raw, dict) else {}
+    if not isinstance(raw, dict) and raw is not None:
+        print(
+            f"[deeploop] WARNING: Model tiers config `{resolved_tiers_path}` "
+            f"is not a mapping (got {type(raw).__name__}). "
+            f"Falling back to provider defaults.",
+            file=sys.stderr,
+        )
     tiers: list[dict] = tiers_data.get("tiers", {})
     default_tier_name: str = str(tiers_data.get("default_tier", "execution"))
     is_anthropic = provider_family == "anthropic-api"
@@ -1017,6 +1039,8 @@ def run_provider_prompt(
     model: str | None = None,
     cwd: Path | None = None,
     idle_timeout_seconds: float | None = None,
+    allow_all: bool = False,
+    no_ask_user: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     prompt_text = prompt_file.read_text(encoding="utf-8")
     try:

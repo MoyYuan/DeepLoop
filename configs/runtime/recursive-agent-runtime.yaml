@@ -2,6 +2,7 @@ version: 1
 artifact_dir_name: recursive_agent_runtime
 max_iterations: 12
 max_consecutive_failures: 2
+max_retries: 3
 timeout_seconds: 1800
 phase_timeout_seconds:
   idea-intake: 900

@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -1438,24 +1439,57 @@ def run_recursive_agent_loop(config_path: Path) -> dict[str, Any]:
             str(root): _snapshot_boundary_root_files(root)
             for root in boundary_roots
         }
-        try:
-            completed = subprocess.run(
-                full_command,
-                cwd=resolve_workspace_path(str(agent_cfg.get("cwd", mission_state["target_repo"]))),
-                input=prompt_text if bool(agent_cfg.get("stdin_prompt", False)) else None,
-                text=True,
-                capture_output=True,
-                timeout=timeout_seconds,
-                check=False,
-                env=environment,
-            )
-            stdout = completed.stdout
-            stderr = completed.stderr
-            returncode = completed.returncode
-        except subprocess.TimeoutExpired as exc:
-            stdout = exc.stdout or ""
-            stderr = (exc.stderr or "") + f"\nTimeoutExpired after {timeout_seconds} seconds\n"
-            returncode = 124
+        max_retries = int(config.get("max_retries", policy.get("max_retries", 0)))
+        last_exception: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                completed = subprocess.run(
+                    full_command,
+                    cwd=resolve_workspace_path(str(agent_cfg.get("cwd", mission_state["target_repo"]))),
+                    input=prompt_text if bool(agent_cfg.get("stdin_prompt", False)) else None,
+                    text=True,
+                    capture_output=True,
+                    timeout=timeout_seconds,
+                    check=False,
+                    env=environment,
+                )
+                stdout = completed.stdout
+                stderr = completed.stderr
+                returncode = completed.returncode
+                last_exception = None
+                # Only retry on transient failures (timeout, non-zero exit)
+                if returncode == 0 or attempt >= max_retries:
+                    break
+                # Non-zero returncode: treat as transient for API/network errors
+                last_exception = RuntimeError(f"Subprocess exited with code {returncode}")
+                if attempt < max_retries:
+                    backoff = 2 ** attempt
+                    time.sleep(backoff)
+            except subprocess.TimeoutExpired as exc:
+                last_exception = exc
+                if attempt < max_retries:
+                    backoff = 2 ** attempt
+                    time.sleep(backoff)
+                else:
+                    stdout = exc.stdout or ""
+                    stderr = (exc.stderr or "") + f"\nTimeoutExpired after {timeout_seconds} seconds (all retries exhausted)\n"
+                    returncode = 124
+            except OSError as exc:
+                last_exception = exc
+                if attempt < max_retries:
+                    backoff = 2 ** attempt
+                    time.sleep(backoff)
+                else:
+                    stdout = ""
+                    stderr = f"OSError after {max_retries + 1} attempts: {exc}\n"
+                    returncode = 1
+        if last_exception is not None and returncode != 124:
+            stdout = getattr(last_exception, "stdout", None) or ""
+            if hasattr(last_exception, "stderr"):
+                stderr = (getattr(last_exception, "stderr", None) or "") + f"\n{type(last_exception).__name__}: {last_exception}\n"
+            else:
+                stderr = f"{type(last_exception).__name__}: {last_exception}\n"
+            returncode = returncode if returncode not in (0, 124) else 1
         completed_at = now_utc()
         boundary_warnings: list[str] = []
         for root in boundary_roots:

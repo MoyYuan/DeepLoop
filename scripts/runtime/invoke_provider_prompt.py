@@ -44,6 +44,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target-repo")
     parser.add_argument("--model")
     parser.add_argument("--idle-timeout-seconds", type=float)
+    parser.add_argument(
+        "--allow-all", action="store_true",
+        help="Legacy flag (no-op in DeepSeek/Anthropic API provider mode).",
+    )
+    parser.add_argument(
+        "--no-ask-user", action="store_true",
+        help="Legacy flag (no-op in DeepSeek/Anthropic API provider mode).",
+    )
     args = parser.parse_args(argv)
 
     completed = run_provider_prompt(
