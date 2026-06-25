@@ -656,14 +656,6 @@ def _effective_outcome(outcome: dict[str, Any] | None, loop_status: str) -> dict
     effective["action_result"] = action_result
     return effective
 
-    merged = dict(base)
-    for key, value in updates.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = deep_merge(dict(merged[key]), value)
-        else:
-            merged[key] = value
-    return merged
-
 def _runtime_root(mission_state_path: Path, artifact_dir_name: str, loop_name: str) -> Path:
     return mission_state_path.parent / "runtime" / artifact_dir_name / loop_name
 

@@ -80,7 +80,7 @@ def _extract_response_text(response_payload: dict[str, Any]) -> str:
     raise RuntimeError("Anthropic response did not include textual content")
 
 
-def _invoke_anthropic(prompt_text: str, *, model: str, json_only: bool = False) -> str:
+def _invoke_anthropic(prompt_text: str, *, model: str, json_only: bool = False) -> tuple[str, dict[str, int]]:
     request = Request(
         _messages_endpoint(),
         data=_request_payload(prompt_text, model=model, json_only=json_only),
@@ -102,7 +102,16 @@ def _invoke_anthropic(prompt_text: str, *, model: str, json_only: bool = False) 
         raise RuntimeError(f"Anthropic request failed: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise RuntimeError("Anthropic endpoint returned malformed JSON") from exc
-    return _extract_response_text(payload)
+    response_text = _extract_response_text(payload)
+    usage = payload.get("usage")
+    if isinstance(usage, dict):
+        tokens = {
+            "input_tokens": int(usage.get("input_tokens", 0) or 0),
+            "output_tokens": int(usage.get("output_tokens", 0) or 0),
+        }
+    else:
+        tokens = {"input_tokens": 0, "output_tokens": 0}
+    return response_text, tokens
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -120,10 +129,11 @@ def main(argv: list[str] | None = None) -> int:
     model = _resolved_model(args.model)
     json_only = args.result_json_path is not None
 
-    response_text = _invoke_anthropic(prompt_text, model=model, json_only=json_only)
+    response_text, tokens = _invoke_anthropic(prompt_text, model=model, json_only=json_only)
 
     if json_only:
         parsed = _extract_first_json_object(response_text)
+        parsed["tokens"] = tokens
         result_path = Path(args.result_json_path).expanduser().resolve()
         result_path.parent.mkdir(parents=True, exist_ok=True)
         result_path.write_text(json.dumps(parsed, indent=2) + "\n", encoding="utf-8")

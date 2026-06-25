@@ -228,9 +228,19 @@ def default_stop_conditions(
 # ---------------------------------------------------------------------------
 
 _MODEL_PRICING: dict[str, dict[str, float]] = {
+    # DeepSeek (per 1M tokens, USD)
     "deepseek-chat": {"input": 0.27, "output": 1.10},
     "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+    "deepseek-v4-pro": {"input": 0.27, "output": 1.10},
+    # Anthropic Claude (per 1M tokens, USD)
+    "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5-20251001": {"input": 0.80, "output": 4.00},
+    "claude-opus-4-20250514": {"input": 15.00, "output": 75.00},
+    "claude-fable-5": {"input": 15.00, "output": 75.00},
 }
+
+# Track which models we've already warned about to avoid log spam
+_UNPRICED_MODEL_WARNED: set[str] = set()
 
 def tokenCountIs(max_tokens: int) -> StopCondition:
     """Stop when total_tokens across all calls reaches *max_tokens*."""
@@ -281,6 +291,15 @@ def accumulate_cost(runtime_state: dict, model: str, input_tokens: int, output_t
     """
     pricing = _MODEL_PRICING.get(model)
     if pricing is None:
+        if model and model not in _UNPRICED_MODEL_WARNED:
+            _UNPRICED_MODEL_WARNED.add(model)
+            import sys as _sys
+            print(
+                f"[deeploop] WARNING: Model `{model}` is not in the pricing table. "
+                f"Cost tracking will be inaccurate. Add pricing to _MODEL_PRICING "
+                f"in mission_runtime.py.",
+                file=_sys.stderr,
+            )
         return float(runtime_state.get("accumulated_cost", 0.0))
     cost = (input_tokens / 1_000_000) * pricing["input"] + (output_tokens / 1_000_000) * pricing["output"]
     current = float(runtime_state.get("accumulated_cost", 0.0))
@@ -2388,7 +2407,13 @@ def run_mission(
                 runtime_state["total_tokens"] = int(runtime_state.get("total_tokens", 0) or 0) + input_tokens + output_tokens
                 runtime_state["total_input_tokens"] = int(runtime_state.get("total_input_tokens", 0) or 0) + input_tokens
                 runtime_state["total_output_tokens"] = int(runtime_state.get("total_output_tokens", 0) or 0) + output_tokens
-                accumulate_cost(runtime_state, os.environ.get("OPENAI_MODEL", "deepseek-chat"), input_tokens, output_tokens)
+                # Use the executor's actual model if available, else fall back to env
+                cost_model = (
+                    executor_payload.get("model")
+                    or runtime_state.get("last_executor_model")
+                    or os.environ.get("OPENAI_MODEL", "deepseek-chat")
+                )
+                accumulate_cost(runtime_state, cost_model, input_tokens, output_tokens)
             if _skip_iteration:
                 continue
         else:

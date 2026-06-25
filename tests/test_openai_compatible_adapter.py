@@ -101,7 +101,10 @@ class OpenAICompatibleAdapterTests(unittest.TestCase):
 
     @patch("deeploop.runtime.openai_compatible_adapter._invoke_openai_compatible")
     def test_main_writes_result_json_from_response(self, mock_invoke) -> None:
-        mock_invoke.return_value = "{\"status\": \"completed\", \"summary\": \"done\"}"
+        mock_invoke.return_value = (
+            "{\"status\": \"completed\", \"summary\": \"done\"}",
+            {"input_tokens": 42, "output_tokens": 17},
+        )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             prompt_file = root / "prompt.md"
@@ -124,4 +127,6 @@ class OpenAICompatibleAdapterTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(payload["status"], "completed")
         self.assertEqual(payload["summary"], "done")
+        self.assertEqual(payload["tokens"]["input_tokens"], 42)
+        self.assertEqual(payload["tokens"]["output_tokens"], 17)
         self.assertEqual(mock_invoke.call_args.kwargs["json_only"], True)

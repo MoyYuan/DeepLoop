@@ -165,7 +165,7 @@ def _request_payload(prompt_text: str, *, model: str, json_only: bool = False) -
     return json.dumps(payload).encode("utf-8")
 
 
-def _invoke_openai_compatible(prompt_text: str, *, model: str, json_only: bool = False) -> str:
+def _invoke_openai_compatible(prompt_text: str, *, model: str, json_only: bool = False) -> tuple[str, dict[str, int]]:
     request = Request(
         _chat_completion_endpoint(),
         data=_request_payload(prompt_text, model=model, json_only=json_only),
@@ -197,7 +197,16 @@ def _invoke_openai_compatible(prompt_text: str, *, model: str, json_only: bool =
     first_choice = choices[0]
     if not isinstance(first_choice, dict):
         raise RuntimeError("OpenAI-compatible response choice was not an object")
-    return _extract_choice_response_text(first_choice)
+    response_text = _extract_choice_response_text(first_choice)
+    usage = payload.get("usage")
+    if isinstance(usage, dict):
+        tokens = {
+            "input_tokens": int(usage.get("prompt_tokens", 0) or 0),
+            "output_tokens": int(usage.get("completion_tokens", 0) or 0),
+        }
+    else:
+        tokens = {"input_tokens": 0, "output_tokens": 0}
+    return response_text, tokens
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -209,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
 
     prompt_file = Path(args.prompt_file).expanduser().resolve()
     prompt_text = prompt_file.read_text(encoding="utf-8")
-    response_text = _invoke_openai_compatible(
+    response_text, tokens = _invoke_openai_compatible(
         prompt_text,
         model=_resolved_model(args.model),
         json_only=bool(args.result_json_path),
@@ -217,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
     print(response_text, end="" if response_text.endswith("\n") else "\n")
     if args.result_json_path:
         payload = _extract_first_json_object(response_text)
+        payload["tokens"] = tokens
         result_json_path = Path(args.result_json_path).expanduser().resolve()
         result_json_path.parent.mkdir(parents=True, exist_ok=True)
         result_json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
