@@ -692,9 +692,9 @@ class ProjectRunnerTests(unittest.TestCase):
             "literature-review": ["prior-art memo", "benchmark and method watchlist"],
             "question-design": ["hypotheses", "evaluation targets"],
             "benchmark-selection": ["dataset shortlist", "slice plan"],
-            "experiment-design": ["run manifest draft", "execution profile selection", "resource tier selection"],
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "experiment-design": ["manifest.json", "execution_profile.json", "resource_tier.json"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "replication": ["repeated-run manifests", "replication summary"],
         }
 
@@ -825,7 +825,7 @@ class ProjectRunnerTests(unittest.TestCase):
             "literature-review": ["prior-art memo", "benchmark and method watchlist"],
             "question-design": ["hypotheses", "evaluation targets"],
             "benchmark-selection": ["dataset shortlist", "slice plan"],
-            "experiment-design": ["run manifest draft", "execution profile selection", "resource tier selection"],
+            "experiment-design": ["manifest.json", "execution_profile.json", "resource_tier.json"],
         }
 
         def _fake_recursive_runtime(config_path: Path) -> dict:

@@ -789,7 +789,7 @@ class ArtifactPackagerTests(unittest.TestCase):
                     "generated_configs": [],
                 },
                 "phase_outputs_by_phase": {
-                    "execution": ["run logs", "metrics", "crash / stability notes"],
+                    "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
                 },
                 "agent_driver": {
                     "memory_path": str(memory_path),
@@ -871,7 +871,7 @@ class ArtifactPackagerTests(unittest.TestCase):
             )
             self.assertFalse(
                 any(
-                    "crash / stability notes" in item
+                    "runtime_report.json" in item
                     or str((output_root / "recursive-output-package-mission" / "mission_artifact_package.json").resolve()) in item
                     or str((output_root / "recursive-output-package-mission" / "mission_artifact_package.md").resolve()) in item
                     for item in package["claim_summary"]["release_candidate_blockers"]

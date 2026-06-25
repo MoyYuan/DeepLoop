@@ -31,22 +31,23 @@ states:
       - experiment-design
   - id: experiment-design
     outputs:
-      - run manifest draft
-      - execution profile selection
-      - resource tier selection
+      - manifest.json
+      - execution_profile.json
+      - resource_tier.json
     transitions:
       - execution
   - id: execution
     outputs:
-      - run logs
-      - metrics
-      - crash / stability notes
+      - run_manifest.json
+      - predictions.jsonl
+      - metrics.json
+      - runtime_report.json
     transitions:
       - critique
   - id: critique
     outputs:
-      - evidence assessment
-      - confound notes
+      - critique_evidence.json
+      - confound_notes
       - next-step recommendation
     transitions:
       - experiment-design

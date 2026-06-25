@@ -173,11 +173,11 @@ class MissionRuntimeTests(unittest.TestCase):
             "critique",
         ]
         mission_state["phase_outputs_by_phase"] = {
-            "experiment-design": ["run manifest draft", "execution profile selection"],
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "experiment-design": ["manifest.json", "execution_profile.json"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
         }
-        mission_state["produced_outputs"] = ["evidence assessment", "confound notes", "next-step recommendation"]
+        mission_state["produced_outputs"] = ["critique_evidence.json", "confound_notes", "next-step recommendation"]
         mission_state["phase_outputs"] = list(mission_state["produced_outputs"])
 
         _apply_phase_change(
@@ -234,9 +234,9 @@ class MissionRuntimeTests(unittest.TestCase):
                 "action_id": "close-experiment-design",
                 "phase": "experiment-design",
                 "produces_outputs": [
-                    "run manifest draft",
-                    "execution profile selection",
-                    "resource tier selection",
+                    "manifest.json",
+                    "execution_profile.json",
+                    "resource_tier.json",
                 ],
             },
             result=result,
@@ -349,7 +349,7 @@ class MissionRuntimeTests(unittest.TestCase):
                                 "id": "recursive-agent",
                                 "params": {"config_path": "configs/runtime/demo-recursive.yaml"},
                             },
-                            "produces_outputs": ["run logs", "metrics", "crash / stability notes"],
+                            "produces_outputs": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
                         }
                     ],
                 ),
@@ -378,7 +378,7 @@ class MissionRuntimeTests(unittest.TestCase):
                 status="completed",
                 summary="Recovered execution outputs after bounded retry.",
                 payload={
-                    "produced_outputs": ["run logs", "metrics", "crash / stability notes"],
+                    "produced_outputs": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
                     "phase_control": {
                         "current_phase": "execution",
                         "next_phase": "critique",
@@ -397,7 +397,7 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertEqual(mission_state["failure_count"], 1)
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["execution"],
-            ["run logs", "metrics", "crash / stability notes"],
+            ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
         )
 
     @patch("deeploop.mission.mission_runtime.run_mission_action")
@@ -425,7 +425,7 @@ class MissionRuntimeTests(unittest.TestCase):
                                 "id": "recursive-agent",
                                 "params": {"config_path": "configs/runtime/demo-recursive.yaml"},
                             },
-                            "produces_outputs": ["evidence assessment", "confound notes", "next-step recommendation"],
+                            "produces_outputs": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
                         }
                     ],
                 ),
@@ -454,7 +454,7 @@ class MissionRuntimeTests(unittest.TestCase):
                 status="completed",
                 summary="Recovered critique outputs after bounded retry.",
                 payload={
-                    "produced_outputs": ["evidence assessment", "confound notes", "next-step recommendation"],
+                    "produced_outputs": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
                     "phase_control": {
                         "current_phase": "critique",
                         "next_phase": "replication",
@@ -473,7 +473,7 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertEqual(mission_state["failure_count"], 1)
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["critique"],
-            ["evidence assessment", "confound notes", "next-step recommendation"],
+            ["critique_evidence.json", "confound_notes", "next-step recommendation"],
         )
 
     @patch("deeploop.runtime.mission_executor_registry.run_stage_from_config")
@@ -503,7 +503,7 @@ class MissionRuntimeTests(unittest.TestCase):
                                 "config_path": "configs/runtime/demo-stage.yaml",
                             },
                         },
-                        "produces_outputs": ["run logs", "metrics", "crash / stability notes"],
+                        "produces_outputs": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
                     }
                 ],
             ),
@@ -532,7 +532,7 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertEqual(mission_state["next_actions"]["actions"][2]["status"], "blocked")
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["execution"],
-            ["run logs", "metrics", "crash / stability notes"],
+            ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
         )
         decision_log = (mission_state_path.parent / "mission_decisions.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len([line for line in decision_log if line.strip()]), 3)
@@ -541,7 +541,7 @@ class MissionRuntimeTests(unittest.TestCase):
         mission_memory = json.loads((mission_state_path.parent / "mission_memory.json").read_text(encoding="utf-8"))
         self.assertEqual(len(mission_memory["branch_registry"]), 1)
         self.assertEqual(next(iter(mission_memory["branch_registry"].values()))["status"], "critique-ready")
-        self.assertEqual(mission_memory["completed_phase_outputs"]["execution"], ["run logs", "metrics", "crash / stability notes"])
+        self.assertEqual(mission_memory["completed_phase_outputs"]["execution"], ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"])
         self.assertEqual(mission_memory["counts"]["evidence_snapshots"], 3)
         experiment_entries = [
             json.loads(line)
@@ -585,7 +585,7 @@ class MissionRuntimeTests(unittest.TestCase):
                                 "config_path": "configs/runtime/demo-stage.yaml",
                             },
                         },
-                        "produces_outputs": ["run logs", "metrics", "crash / stability notes"],
+                        "produces_outputs": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
                     }
                 ],
             ),
@@ -660,8 +660,8 @@ class MissionRuntimeTests(unittest.TestCase):
             ]
             state["phase_outputs"] = list(state["produced_outputs"])
             state["phase_outputs_by_phase"] = {
-                "execution": ["run logs", "metrics", "crash / stability notes"],
-                "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+                "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+                "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
                 "replication": ["repeated-run manifests", "replication summary"],
                 "final-report": list(state["produced_outputs"]),
             }
@@ -823,8 +823,8 @@ class MissionRuntimeTests(unittest.TestCase):
             ]
             state["phase_outputs"] = list(state["produced_outputs"])
             state["phase_outputs_by_phase"] = {
-                "execution": ["run logs", "metrics", "crash / stability notes"],
-                "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+                "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+                "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
                 "final-report": list(state["produced_outputs"]),
             }
             state["branch_closure_mode"] = "no-win-under-budget"
@@ -914,8 +914,8 @@ class MissionRuntimeTests(unittest.TestCase):
             ]
             state["phase_outputs"] = list(state["produced_outputs"])
             state["phase_outputs_by_phase"] = {
-                "execution": ["run logs", "metrics", "crash / stability notes"],
-                "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+                "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+                "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
                 "final-report": list(state["produced_outputs"]),
             }
             _write_json(mission_state_path, state)
@@ -989,8 +989,8 @@ class MissionRuntimeTests(unittest.TestCase):
         ]
         mission_state["phase_history"] = list(mission_state["completed_phases"]) + ["final-report"]
         mission_state["phase_outputs_by_phase"] = {
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "replication": ["repeated-run manifests", "replication summary"],
         }
         _write_json(mission_state_path, mission_state)
@@ -1044,11 +1044,11 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertEqual(mission_state["status"], "completed")
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["execution"],
-            ["run logs", "metrics", "crash / stability notes"],
+            ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
         )
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["critique"],
-            ["evidence assessment", "confound notes", "next-step recommendation"],
+            ["critique_evidence.json", "confound_notes", "next-step recommendation"],
         )
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["replication"],
@@ -1099,8 +1099,8 @@ class MissionRuntimeTests(unittest.TestCase):
             "report_json_path": runtime_root / "report.json",
             "report_markdown_path": runtime_root / "report.md",
             "produced_outputs": [
-                "evidence assessment",
-                "confound notes",
+                "critique_evidence.json",
+                "confound_notes",
                 "next-step recommendation",
             ],
             "latest_outcome": {
@@ -1121,7 +1121,7 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertEqual(mission_state["next_actions"]["actions"][0]["status"], "completed")
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["critique"],
-            ["evidence assessment", "confound notes", "next-step recommendation"],
+            ["critique_evidence.json", "confound_notes", "next-step recommendation"],
         )
         mission_memory = json.loads((mission_state_path.parent / "mission_memory.json").read_text(encoding="utf-8"))
         self.assertEqual(mission_memory["latest_experiment"]["executor_id"], "recursive-agent")
@@ -1170,8 +1170,8 @@ class MissionRuntimeTests(unittest.TestCase):
             ]
             state["phase_outputs"] = list(state["produced_outputs"])
             state["phase_outputs_by_phase"] = {
-                "execution": ["run logs", "metrics", "crash / stability notes"],
-                "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+                "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+                "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
                 "replication": ["repeated-run manifests", "replication summary"],
                 "final-report": list(state["produced_outputs"]),
             }
@@ -1238,7 +1238,7 @@ class MissionRuntimeTests(unittest.TestCase):
                             "id": "self-healing-queue",
                             "params": {"config_path": str(queue_config_path)},
                         },
-                        "produces_outputs": ["run logs", "metrics", "crash / stability notes"],
+                        "produces_outputs": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
                     }
                 },
             },
@@ -1376,8 +1376,8 @@ class MissionRuntimeTests(unittest.TestCase):
                 "literature-review": ["prior-art memo", "benchmark and method watchlist"],
                 "question-design": ["hypotheses", "evaluation targets"],
                 "benchmark-selection": ["dataset shortlist", "slice plan"],
-                "experiment-design": ["run manifest draft", "execution profile selection", "resource tier selection"],
-                "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+                "experiment-design": ["manifest.json", "execution_profile.json", "resource_tier.json"],
+                "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             }
             next_phase = {
                 "question-design": "benchmark-selection",
@@ -1523,9 +1523,9 @@ class MissionRuntimeTests(unittest.TestCase):
                 "literature-review": ["prior-art memo", "benchmark and method watchlist"],
                 "question-design": ["hypotheses", "evaluation targets"],
                 "benchmark-selection": ["dataset shortlist", "slice plan"],
-                "experiment-design": ["run manifest draft", "execution profile selection", "resource tier selection"],
-                "execution": ["run logs", "metrics", "crash / stability notes"],
-                "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+                "experiment-design": ["manifest.json", "execution_profile.json", "resource_tier.json"],
+                "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+                "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
                 "replication": ["repeated-run manifests", "replication summary"],
             }
             next_phase = {
@@ -1574,7 +1574,7 @@ class MissionRuntimeTests(unittest.TestCase):
         self.assertIn("replication", mission_state["completed_phases"])
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["execution"],
-            ["run logs", "metrics", "crash / stability notes"],
+            ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
         )
         self.assertEqual(
             mission_state["phase_outputs_by_phase"]["replication"],
@@ -2141,7 +2141,7 @@ class MissionRuntimeTests(unittest.TestCase):
                                     "config_path": "configs/runtime/demo-stage.yaml",
                                 },
                             },
-                            "produces_outputs": ["run logs", "metrics", "crash / stability notes"],
+                            "produces_outputs": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
                         },
                         {
                             "action_id": "decide-replication-readiness",
@@ -2162,8 +2162,8 @@ class MissionRuntimeTests(unittest.TestCase):
                                 },
                             },
                             "produces_outputs": [
-                                "evidence assessment",
-                                "confound notes",
+                                "critique_evidence.json",
+                                "confound_notes",
                                 "next-step recommendation",
                             ],
                         },

@@ -37,9 +37,9 @@ ROLE_OUTPUTS = {
     "planner": ["mission plan updates", "phase transitions"],
     "literature-scout": ["prior-art notes", "benchmark watchlists"],
     "dataset-strategist": ["dataset promotion plans", "slice notes"],
-    "experiment-designer": ["manifest drafts", "baseline configs"],
-    "execution-operator": ["run manifests", "metrics", "logs"],
-    "critic-verifier": ["critique summaries", "evidence-state recommendations"],
+    "experiment-designer": ["manifest.json", "execution_profile.json", "resource_tier.json"],
+    "execution-operator": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+    "critic-verifier": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
     "report-synthesizer": ["findings summaries", "paper-ready notes"],
 }
 DATASET_ARTIFACT_ROLES = {"dataset-strategist", "execution-operator"}

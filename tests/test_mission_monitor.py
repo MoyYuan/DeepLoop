@@ -243,7 +243,7 @@ class MissionMonitorTests(unittest.TestCase):
                     "selected_action_ids": ["run-baseline"],
                     "selected_branch_ids": [],
                     "artifacts": [],
-                    "notes": ["missing output: run logs", "missing output: metrics"],
+                    "notes": ["missing output: run_manifest.json", "missing output: metrics.json"],
                 },
                 {
                     "decision_id": "demo-critique-missing-outputs",
@@ -257,7 +257,7 @@ class MissionMonitorTests(unittest.TestCase):
                     "selected_action_ids": ["critique-missing-outputs"],
                     "selected_branch_ids": [],
                     "artifacts": [],
-                    "notes": ["missing output: evidence assessment"],
+                    "notes": ["missing output: critique_evidence.json"],
                 },
             ],
         )
@@ -507,7 +507,7 @@ class MissionMonitorTests(unittest.TestCase):
                             "branch_id": "analysis-critique",
                             "runtime_owner": "deeploop",
                             "requires_operator_approval": False,
-                            "notes": ["missing output: evidence assessment", "Awaiting critique outputs."],
+                            "notes": ["missing output: critique_evidence.json", "Awaiting critique outputs."],
                         },
                     ],
                 },
@@ -525,7 +525,7 @@ class MissionMonitorTests(unittest.TestCase):
                     }
                 ],
                 "runtime_recovery": {"report_json_path": str(runtime_report_path)},
-                "phase_outputs_by_phase": {"execution": ["run logs", "metrics"]},
+                "phase_outputs_by_phase": {"execution": ["run_manifest.json", "metrics"]},
                 "produced_outputs": [],
                 "recent_failures": ["Executor `stage-kernel` previously timed out."],
                 "failure_count": 1,
