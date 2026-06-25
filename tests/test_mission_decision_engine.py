@@ -106,16 +106,16 @@ class MissionDecisionEngineTests(unittest.TestCase):
 
     def test_engine_synthesizes_current_phase_work_for_missing_outputs(self) -> None:
         mission_state = _base_state(current_phase="critique", next_phase="experiment-design")
-        evidence = MissionEvidence(produced_outputs=("evidence assessment",))
+        evidence = MissionEvidence(produced_outputs=("critique_evidence.json",))
 
         outcome = self.engine.decide(mission_state, evidence=evidence)
 
         self.assertEqual(outcome.directive, MissionDecisionDirective.CONTINUE)
-        self.assertEqual(set(outcome.missing_outputs), {"confound notes", "next-step recommendation"})
+        self.assertEqual(set(outcome.missing_outputs), {"confound_notes", "next-step recommendation"})
         self.assertIsNotNone(outcome.action)
         assert outcome.action is not None
         self.assertEqual(outcome.action.role, "critic-verifier")
-        self.assertIn("confound notes", outcome.action.task)
+        self.assertIn("confound_notes", outcome.action.task)
 
     def test_engine_downscopes_repeated_artifact_failures_to_planner(self) -> None:
         mission_state = _base_state(current_phase="literature-review", next_phase="question-design")
@@ -133,7 +133,7 @@ class MissionDecisionEngineTests(unittest.TestCase):
     def test_engine_reroutes_through_recovery_transition(self) -> None:
         mission_state = _base_state(current_phase="critique", next_phase="experiment-design")
         evidence = MissionEvidence(
-            produced_outputs=("evidence assessment", "confound notes", "next-step recommendation"),
+            produced_outputs=("critique_evidence.json", "confound_notes", "next-step recommendation"),
             recent_failures=("failed-1", "failed-2", "failed-3"),
             failure_count=4,
         )
@@ -227,8 +227,8 @@ class MissionDecisionEngineTests(unittest.TestCase):
         mission_state = _base_state(current_phase="final-report", next_phase="final-report")
         mission_state["completed_phases"] = ["idea-intake", "literature-review", "question-design", "experiment-design", "execution", "critique", "replication"]
         mission_state["phase_outputs_by_phase"] = {
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "replication": ["repeated-run manifests", "replication summary"],
             "final-report": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         }
@@ -248,7 +248,7 @@ class MissionDecisionEngineTests(unittest.TestCase):
         mission_state = _base_state(current_phase="final-report", next_phase="final-report")
         mission_state["completed_phases"] = ["idea-intake", "literature-review", "question-design", "experiment-design", "critique", "replication"]
         mission_state["phase_outputs_by_phase"] = {
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "replication": ["repeated-run manifests", "replication summary"],
             "final-report": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         }
@@ -261,14 +261,14 @@ class MissionDecisionEngineTests(unittest.TestCase):
 
         self.assertEqual(outcome.directive, MissionDecisionDirective.BLOCK)
         self.assertIn("completion contract requires completed phase `execution`", outcome.notes)
-        self.assertIn("completion contract missing `execution` output `run logs`", outcome.notes)
+        self.assertIn("completion contract missing `execution` output `run_manifest.json`", outcome.notes)
 
     def test_engine_blocks_final_report_transition_when_acceptance_criteria_are_unmet(self) -> None:
         mission_state = _base_state(current_phase="replication", next_phase="final-report")
         mission_state["completed_phases"] = ["execution", "critique"]
         mission_state["phase_outputs_by_phase"] = {
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "replication": ["repeated-run manifests", "replication summary"],
         }
         mission_state["acceptance_criteria"] = {
@@ -289,8 +289,8 @@ class MissionDecisionEngineTests(unittest.TestCase):
         mission_state = _base_state(current_phase="replication", next_phase="final-report")
         mission_state["completed_phases"] = ["execution", "critique"]
         mission_state["phase_outputs_by_phase"] = {
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "replication": ["repeated-run manifests", "replication summary"],
         }
         mission_state["acceptance_criteria"] = {
@@ -324,8 +324,8 @@ class MissionDecisionEngineTests(unittest.TestCase):
             "replication",
         ]
         mission_state["phase_outputs_by_phase"] = {
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "replication": ["repeated-run manifests", "replication summary"],
             "final-report": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         }
@@ -350,8 +350,8 @@ class MissionDecisionEngineTests(unittest.TestCase):
         mission_state = _base_state(current_phase="final-report", next_phase="final-report")
         mission_state["completed_phases"] = ["idea-intake", "literature-review", "question-design", "experiment-design", "execution", "critique"]
         mission_state["phase_outputs_by_phase"] = {
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "final-report": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         }
         mission_state["completion_contract"] = {
@@ -372,8 +372,8 @@ class MissionDecisionEngineTests(unittest.TestCase):
         mission_state = _base_state(current_phase="final-report", next_phase="final-report")
         mission_state["completed_phases"] = ["idea-intake", "literature-review", "question-design", "experiment-design", "execution", "critique"]
         mission_state["phase_outputs_by_phase"] = {
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "final-report": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         }
         mission_state["branch_closure_mode"] = "no-win-under-budget"
@@ -392,8 +392,8 @@ class MissionDecisionEngineTests(unittest.TestCase):
         mission_state = _base_state(current_phase="final-report", next_phase="final-report")
         mission_state["completed_phases"] = ["idea-intake", "literature-review", "question-design", "experiment-design", "execution", "critique"]
         mission_state["phase_outputs_by_phase"] = {
-            "execution": ["run logs", "metrics", "crash / stability notes"],
-            "critique": ["evidence assessment", "confound notes", "next-step recommendation"],
+            "execution": ["run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"],
+            "critique": ["critique_evidence.json", "confound_notes", "next-step recommendation"],
             "final-report": ["findings summary", "paper-candidate recommendation", "artifact readiness notes"],
         }
         mission_state["final_report"] = {
@@ -430,7 +430,7 @@ class MissionDecisionEngineTests(unittest.TestCase):
             ],
         )
         evidence = MissionEvidence(
-            produced_outputs=("run logs", "metrics", "crash / stability notes"),
+            produced_outputs=("run_manifest.json", "predictions.jsonl", "metrics.json", "runtime_report.json"),
         )
 
         outcome = self.engine.decide(mission_state, evidence=evidence)
@@ -461,7 +461,7 @@ class MissionDecisionEngineTests(unittest.TestCase):
         }
         mission_state["adaptation_training"] = {"metric_ratchet": {"decision": "keep", "route_to": "replication"}}
         evidence = MissionEvidence(
-            produced_outputs=("evidence assessment", "confound notes", "next-step recommendation"),
+            produced_outputs=("critique_evidence.json", "confound_notes", "next-step recommendation"),
         )
 
         outcome = self.engine.decide(mission_state, evidence=evidence)
@@ -488,7 +488,7 @@ class MissionDecisionEngineTests(unittest.TestCase):
         }
         mission_state["adaptation_training"] = {"metric_ratchet": {"decision": "discard", "route_to": "experiment-design"}}
         evidence = MissionEvidence(
-            produced_outputs=("evidence assessment", "confound notes", "next-step recommendation"),
+            produced_outputs=("critique_evidence.json", "confound_notes", "next-step recommendation"),
             recent_failures=("failed-1", "failed-2", "failed-3"),
             failure_count=4,
         )
@@ -515,7 +515,7 @@ class MissionDecisionEngineTests(unittest.TestCase):
             }
         }
         evidence = MissionEvidence(
-            produced_outputs=("evidence assessment", "confound notes", "next-step recommendation"),
+            produced_outputs=("critique_evidence.json", "confound_notes", "next-step recommendation"),
         )
 
         with self.assertRaisesRegex(ValueError, "Deterministic routes must declare `when`"):
