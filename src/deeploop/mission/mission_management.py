@@ -993,14 +993,7 @@ def _handle_start(args: argparse.Namespace) -> int:
             # 1. Ensure workspace dirs exist (fold in setup)
             ensure_expected_external_dirs()
 
-            # 2. Check provider readiness
-            report = check_provider_readiness(selection_profile="deepseek-chat-control-plane")
-            if report["status"] != "ready":
-                print(f"Provider not ready: {report['next_step']}")
-                print(f"  Run: {report.get('recheck_command', 'deeploop provider-ready')}")
-                return 1
-
-            # 3. Get idea text
+            # 2. Get idea text
             idea = getattr(args, "idea", None)
             if not idea:
                 print("Usage: deeploop start \"your research idea\"")
@@ -1042,6 +1035,13 @@ def _handle_start(args: argparse.Namespace) -> int:
             print(f"Provider ready (deepseek-chat)")
             print(f"Project bootstrapped ({mission_state_path.parent.name})")
             print(f"Running — deeploop status for progress")
+
+    # Provider readiness check — fail fast before launching daemon
+    report = check_provider_readiness(selection_profile="deepseek-chat-control-plane")
+    if report["status"] != "ready":
+        print(f"Provider not ready: {report['next_step']}")
+        print(f"  Run: {report.get('recheck_command', 'deeploop provider-ready')}")
+        return 1
 
     mission_state_path = _resolve_existing_path(args.mission_state)
     resume_context = None
@@ -1166,6 +1166,7 @@ def _handle_triage(args: argparse.Namespace) -> int:
         cwd=Path(target_repo).expanduser().resolve() if target_repo else REPO_ROOT,
         capture_output=True,
         text=True,
+        timeout=300,
         check=False,
     )
     completed_at = now_utc()

@@ -192,7 +192,9 @@ class MissionManagementTests(unittest.TestCase):
         self.assertEqual(args.format, "github-repo")
         self.assertTrue(args.force)
 
-    def test_start_launches_canonical_runtime_and_writes_metadata(self) -> None:
+    @patch("deeploop.mission.mission_management.check_provider_readiness",
+           return_value={"status": "ready"})
+    def test_start_launches_canonical_runtime_and_writes_metadata(self, _mock_check) -> None:
         test_root = _fresh_test_root("start_launches_runtime")
         mission_state_path = test_root / "mission" / "mission_state.json"
         launch_metadata_path = test_root / "launch" / "launch.json"
@@ -236,7 +238,9 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIn("## Advanced commands", stdout.getvalue())
         self.assertIn("deeploop start", log_path.read_text(encoding="utf-8"))
 
-    def test_start_uses_configured_launch_env_when_present(self) -> None:
+    @patch("deeploop.mission.mission_management.check_provider_readiness",
+           return_value={"status": "ready"})
+    def test_start_uses_configured_launch_env_when_present(self, _mock_check) -> None:
         test_root = _fresh_test_root("start_uses_launch_env")
         mission_state_path = test_root / "mission" / "mission_state.json"
         launch_metadata_path = test_root / "launch" / "launch.json"
@@ -266,7 +270,9 @@ class MissionManagementTests(unittest.TestCase):
         self.assertEqual(command[:5], ["conda", "run", "-n", "llm", "python"])
         self.assertEqual(Path(command[5]).resolve(), REPO_ROOT / "scripts" / "mission" / "run_mission.py")
 
-    def test_start_uses_configured_max_iterations_when_cli_omitted(self) -> None:
+    @patch("deeploop.mission.mission_management.check_provider_readiness",
+           return_value={"status": "ready"})
+    def test_start_uses_configured_max_iterations_when_cli_omitted(self, _mock_check) -> None:
         test_root = _fresh_test_root("start_uses_configured_iterations")
         mission_state_path = test_root / "mission" / "mission_state.json"
         launch_metadata_path = test_root / "launch" / "launch.json"
@@ -296,7 +302,9 @@ class MissionManagementTests(unittest.TestCase):
         metadata = json.loads(launch_metadata_path.read_text(encoding="utf-8"))
         self.assertEqual(metadata["max_iterations"], 33)
 
-    def test_start_injects_runtime_cache_env_for_editable_install(self) -> None:
+    @patch("deeploop.mission.mission_management.check_provider_readiness",
+           return_value={"status": "ready"})
+    def test_start_injects_runtime_cache_env_for_editable_install(self, _mock_check) -> None:
         """When the package is editable, start should snapshot src and set DEEPLOOP_RUNTIME_CACHE_SRC."""
         import importlib.metadata as _meta
         from deeploop.mission.mission_management import _snapshot_src_for_mission
@@ -668,7 +676,9 @@ class MissionManagementTests(unittest.TestCase):
         self.assertIn("deeploop resume", stdout.getvalue())
         self.assertIn("operator_feedback: `retry`", stdout.getvalue())
 
-    def test_resume_surfaces_recorded_operator_feedback(self) -> None:
+    @patch("deeploop.mission.mission_management.check_provider_readiness",
+           return_value={"status": "ready"})
+    def test_resume_surfaces_recorded_operator_feedback(self, _mock_check) -> None:
         test_root = _fresh_test_root("resume_surfaces_feedback")
         mission_root = test_root / "mission"
         mission_state_path = mission_root / "mission_state.json"

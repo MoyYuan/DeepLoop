@@ -13,6 +13,7 @@ import yaml
 
 from deeploop.core.ledger import append_jsonl, make_ledger_entry, now_utc
 from deeploop.core.paths import resolve_workspace_path
+from deeploop.mission.mission_state import write_mission_state
 from deeploop.core.paths import REPO_ROOT as DEEPLOOP_REPO_ROOT
 from deeploop.core.shared import build_command as _build_command, is_relative_to as _is_relative_to
 from deeploop.research.sanity_gates import evaluate_research_sanity, extract_proposal_config_path
@@ -635,7 +636,7 @@ def _update_mission_state(
         state = "runtime-completed"
         reason = "Queue completed without needing recovery."
     mission_state["autonomy_status"] = {"state": state, "reason": reason}
-    mission_state_path.write_text(json.dumps(mission_state, indent=2) + "\n", encoding="utf-8")
+    write_mission_state(mission_state_path, mission_state)
 
 def _entry_terminal_status(failure: dict[str, Any]) -> tuple[str, str | None]:
     if failure["kind"] == "scientific-failure":
